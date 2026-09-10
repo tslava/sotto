@@ -65,6 +65,16 @@ places:
   require_operational: true
   cache_ttl_days: 30       # раз в месяц перегнать скриптом наполнения
   max_per_reply: 2
+  # запросы для офлайн-наполнения кэша (places_fill.py), можно переопределить --queries
+  queries:
+    - craft beer pub Wolsań
+    - cichy pub Wolsań
+    - piwo rzemieślnicze Wolsań
+    - pub Dolna Wolsań
+    - pub Rożyce Wolsań
+    - kawiarnia planszówki Wolsań
+    - restauracja Bórnik
+    - Leszczykowo bar
 
 filters:
   shadow: true              # true = фильтры логируют, но не режут ответ (щадящий старт)
