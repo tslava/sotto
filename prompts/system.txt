@@ -31,6 +31,8 @@
 
 {chat_memory}
 
+{weather}
+
 {life}
 
 КАК ТЫ ПИШЕШЬ:
