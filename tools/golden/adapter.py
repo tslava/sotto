@@ -2,7 +2,7 @@
 
 Layout assumed here (``Pack``): a directory holding ``config.yaml``, ``few_shot.yaml``,
 ``prompts/*.txt``, ``CHANGELOG.md``, ``stickers.yaml``, ``places_manual.yaml``. The engine
-package name (``trolobot``) appears only in the imports below; later PRs adapt this file
+package name (``sotto``) appears only in the imports below; later PRs adapt this file
 (package rename, pack loader) and nothing else in ``tools/golden``.
 
 Determinism: ``time.time`` and ``asyncio.sleep`` are replaced by a virtual clock for the run,
@@ -35,45 +35,45 @@ import httpx
 import yaml
 from aiogram.types import Chat, Document, Message, PhotoSize, Sticker, User, Voice
 
-from tools.golden.schema import Scenario, parse_offset
-from trolobot import alerts as engine_alerts
-from trolobot import filters as engine_filters
-from trolobot import motifs as engine_motifs
-from trolobot import places as engine_places
-from trolobot import places_fill as engine_places_fill
-from trolobot import postprocess as engine_postprocess
-from trolobot import prompt as engine_prompt
-from trolobot import sanitize as engine_sanitize
-from trolobot import stickers_fill as engine_stickers_fill
-from trolobot import vocab as engine_vocab
-from trolobot import weather as engine_weather
-from trolobot.alerts import OwnerAlerter
-from trolobot.bot import Deps, build_router
-from trolobot.chat_memory import ChatMemorizer
-from trolobot.commands import build_commands_router
-from trolobot.config import flatten_config, load_config
-from trolobot.config_models import Config
-from trolobot.db import Database, MessageRow, PlaceRow
-from trolobot.diary import DiaryExtractor
-from trolobot.followup import FollowupChecker
-from trolobot.gate_types import GateMessage, Trigger
-from trolobot.judge import Judge
-from trolobot.llm import LLMClient
-from trolobot.morph import name_forms, name_pattern
-from trolobot.reactions import (
+from sotto import alerts as engine_alerts
+from sotto import filters as engine_filters
+from sotto import motifs as engine_motifs
+from sotto import places as engine_places
+from sotto import places_fill as engine_places_fill
+from sotto import postprocess as engine_postprocess
+from sotto import prompt as engine_prompt
+from sotto import sanitize as engine_sanitize
+from sotto import stickers_fill as engine_stickers_fill
+from sotto import vocab as engine_vocab
+from sotto import weather as engine_weather
+from sotto.alerts import OwnerAlerter
+from sotto.bot import Deps, build_router
+from sotto.chat_memory import ChatMemorizer
+from sotto.commands import build_commands_router
+from sotto.config import flatten_config, load_config
+from sotto.config_models import Config
+from sotto.db import Database, MessageRow, PlaceRow
+from sotto.diary import DiaryExtractor
+from sotto.followup import FollowupChecker
+from sotto.gate_types import GateMessage, Trigger
+from sotto.judge import Judge
+from sotto.llm import LLMClient
+from sotto.morph import name_forms, name_pattern
+from sotto.reactions import (
     REPLY_UNAVAILABLE,
     ReactionChooser,
     ReactionScheduler,
     palette_without_repeats,
 )
-from trolobot.responder import Responder
-from trolobot.settings import Settings
-from trolobot.stickers import StickerChooser, load_catalog
-from trolobot.stores import ConfigStore, PromptStore
-from trolobot.timeutil import day_key, week_key
-from trolobot.vision import VisionDescriber
-from trolobot.vocab import VocabStore
-from trolobot.weather import Place, WeatherClient, WeatherPlaceExtractor
+from sotto.responder import Responder
+from sotto.settings import Settings
+from sotto.stickers import StickerChooser, load_catalog
+from sotto.stores import ConfigStore, PromptStore
+from sotto.timeutil import day_key, week_key
+from sotto.vision import VisionDescriber
+from sotto.vocab import VocabStore
+from sotto.weather import Place, WeatherClient, WeatherPlaceExtractor
+from tools.golden.schema import Scenario, parse_offset
 
 CHAT_ID = -1001234500001
 OWNER_ID = 7001

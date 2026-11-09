@@ -18,11 +18,11 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
-from trolobot.chat_memory import ChatMemorizer, format_period, render_chat_memory
-from trolobot.config_models import Config
-from trolobot.db import ChatMemoryRow, Database
-from trolobot.llm import LLMClient
-from trolobot.patterns import Patterns
+from sotto.chat_memory import ChatMemorizer, format_period, render_chat_memory
+from sotto.config_models import Config
+from sotto.db import ChatMemoryRow, Database
+from sotto.llm import LLMClient
+from sotto.patterns import Patterns
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 CHAT_ID = -100123

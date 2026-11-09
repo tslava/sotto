@@ -1,4 +1,4 @@
-"""Тесты для trolobot.export_parser — маленький result.json собирается вручную."""
+"""Тесты для sotto.export_parser — маленький result.json собирается вручную."""
 
 import json
 import logging
@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from trolobot.export_parser import ExportMessage, parse_export
+from sotto.export_parser import ExportMessage, parse_export
 
 TZ = "Europe/Warsaw"
 
@@ -187,7 +187,7 @@ def test_service_messages_are_skipped(tmp_path: Path) -> None:
 
 def test_broken_record_without_date_is_skipped_with_warning(tmp_path: Path, caplog) -> None:
     path = _write_export(tmp_path, _RAW_MESSAGES)
-    with caplog.at_level(logging.WARNING, logger="trolobot.export_parser"):
+    with caplog.at_level(logging.WARNING, logger="sotto.export_parser"):
         result = parse_export(path, TZ)
 
     assert 9 not in [m.tg_message_id for m in result]
@@ -213,7 +213,7 @@ def test_broken_record_without_id_is_skipped_with_warning(tmp_path: Path, caplog
         },
     ]
     path = _write_export(tmp_path, messages)
-    with caplog.at_level(logging.WARNING, logger="trolobot.export_parser"):
+    with caplog.at_level(logging.WARNING, logger="sotto.export_parser"):
         result = parse_export(path, TZ)
 
     assert [m.tg_message_id for m in result] == [1]

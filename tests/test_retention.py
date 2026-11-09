@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from trolobot.db import Database
-from trolobot.retention import retention_loop, run_retention
+from sotto.db import Database
+from sotto.retention import retention_loop, run_retention
 
 
 @dataclass

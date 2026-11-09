@@ -1,4 +1,4 @@
-"""Тесты для trolobot.app. main() не запускается — только setup_logging.
+"""Тесты для sotto.app. main() не запускается — только setup_logging.
 
 Полная сборка процесса (Settings -> ConfigStore -> PromptStore -> Bot -> Deps ->
 Dispatcher -> Responder) проверяется сквозным тестом в
@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import logging
 
-from trolobot.app import setup_logging
+from sotto.app import setup_logging
 
 
 def test_setup_logging_does_not_raise() -> None:
     setup_logging("DEBUG")
-    logging.getLogger("trolobot").info("still works")
+    logging.getLogger("sotto").info("still works")
 
 
 def test_setup_logging_accepts_default_level() -> None:

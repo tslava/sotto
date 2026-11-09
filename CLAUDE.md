@@ -1,4 +1,4 @@
-# trolobot — правила для агентов
+# sotto — правила для агентов
 
 Телеграм-бот-персонаж «Отец Фёдор» для одного группового чата. Что он делает и почему —
 `PLAN.md` (код) и `CHARACTER.md` (персонаж). Читать оба перед любой задачей.
@@ -19,9 +19,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .gitignore, .env.exampl
 config.yaml            # дефолты поведения, раздел 6 CHARACTER.md
 few_shot.yaml          # примеры, раздел 5 CHARACTER.md
 prompts/system.txt     # системный промпт, раздел 4 CHARACTER.md, со слотами {age} ...
-src/trolobot/
+src/sotto/
   __init__.py          # __version__
-  __main__.py          # python -m trolobot -> app.main()
+  __main__.py          # python -m sotto -> app.main()
   settings.py          # Settings из .env
   config_models.py     # pydantic-модели config.yaml с диапазонами
   config.py            # load_config(path, overrides) -> Config
@@ -215,7 +215,7 @@ async def load_gate_state(db: Database, cfg: Config, msg: GateMessage, now: int)
                                 reply_to_tg_message_id: int | None; created_at: int
 def parse_export(path: Path, tz: str) -> list[ExportMessage]   # text через normalize_text либо media_placeholder-аналог
 
-# replay.py — `python -m trolobot.replay exports/result.json [--config config.yaml] [--seed 1] [--bot-username x]
+# replay.py — `python -m sotto.replay exports/result.json [--config config.yaml] [--seed 1] [--bot-username x]
 #   [--bot-user-id N] [--verbose]`
 # Прогоняет гейт по экспорту с in-memory состоянием: для PASS считает, что ответ отправлен (инкремент
 # mention_count/ambient_count, last_*_at = created_at) — иначе лимиты не проверить. Ничего не отправляет,
@@ -588,7 +588,7 @@ def validate_fact(raw: str) -> str | None      # только кириллица
 #     district: Rożyce            # переопределяет то, что вернул Google, если задано
 # Стартовый список — из CHARACTER.md раздел 7, quiet по таблице.
 
-# places_fill.py — офлайн CLI: `python -m trolobot.places_fill [--dry-run] [--no-llm] [--queries q1;q2] [--manual places_manual.yaml]`
+# places_fill.py — офлайн CLI: `python -m sotto.places_fill [--dry-run] [--no-llm] [--queries q1;q2] [--manual places_manual.yaml]`
 # Google Places API (New): POST https://places.googleapis.com/v1/places:searchText с заголовками X-Goog-Api-Key и
 # X-Goog-FieldMask (places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.businessStatus,
 # places.formattedAddress,places.reviews,places.primaryType), тело {"textQuery": q, "languageCode": "pl", "regionCode": "PL",
@@ -825,7 +825,7 @@ class StickerChooser:
 # изображений, stickers_fill.py). Никакого дублирования логики.
 async def call_raw(self, messages: list[dict[str, Any]], *, model: str, max_tokens: int, now: int) -> LLMResult
 
-# stickers_fill.py — офлайн CLI: `python -m trolobot.stickers_fill <set_name> [--out stickers.yaml]
+# stickers_fill.py — офлайн CLI: `python -m sotto.stickers_fill <set_name> [--out stickers.yaml]
 #   [--dry-run] [--no-llm] [--model X]`
 # aiogram Bot.get_sticker_set(set_name) -> для каждого стикера: is_animated/is_video -> пропустить с WARNING
 # (tgs/webm не распознаём), иначе bot.download(file_id) в память (webp). Распознавание — один вызов LLMClient
@@ -1496,8 +1496,8 @@ shadow=true, слот {avoid} в system), `tests/test_motifs.py`, `tests/test_fi
 ## Интерфейсы: версии и changelog
 
 Решение владельца: ребята в чате просят release notes. Версия — SemVer с мажором 0 (минор за фичу, патч за
-правку поведения и багфиксы), единственный источник — `pyproject.toml`; `trolobot.__version__` читается через
-`importlib.metadata.version("trolobot")` (fallback "0.0.0" при отсутствии метаданных). Тег `vX.Y.Z` ставится
+правку поведения и багфиксы), единственный источник — `pyproject.toml`; `sotto.__version__` читается через
+`importlib.metadata.version("sotto")` (fallback "0.0.0" при отсутствии метаданных). Тег `vX.Y.Z` ставится
 на squash-коммит релиза в main. `CHANGELOG.md` — Keep a Changelog, у каждой версии два блока: `### Для чата`
 (3–5 строк по-русски без технических слов — их владелец публикует сам) и `### Для владельца` (конфиг, команды,
 промпт, ссылки на PR). Бот релиз-ноты в чат НЕ постит — это ломает персонажа.
@@ -1513,7 +1513,7 @@ def latest_release(text: str) -> Release | None
 #                         «CHANGELOG.md не найден или пуст.»
 #   /changelog owner    → «v<version> (<date>)\n<for_owner>» (обрезка 3500)
 #   /changelog <ver>    → то же для указанной версии («0.4.0» или «v0.4.0»); нет → «Версии <ver> нет.»
-#   /status: первая строка «trolobot v<__version__>».
+#   /status: первая строка «sotto v<__version__>».
 #   _HELP_TEXT: «/changelog [owner|<версия>] — что нового: блок для чата или для владельца».
 ```
 

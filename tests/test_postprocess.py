@@ -1,12 +1,12 @@
-"""Тесты для trolobot.postprocess: normalize_dashes, strip_emoji, keep_first_emoji, soften.
+"""Тесты для sotto.postprocess: normalize_dashes, strip_emoji, keep_first_emoji, soften.
 
 Чистые функции, без I/O — как и сам модуль (CLAUDE.md, "Интерфейсы: пост-обработка").
 """
 
 from __future__ import annotations
 
-from trolobot.config_models import FiltersConfig
-from trolobot.postprocess import (
+from sotto.config_models import FiltersConfig
+from sotto.postprocess import (
     Fixed,
     keep_first_emoji,
     normalize_dashes,

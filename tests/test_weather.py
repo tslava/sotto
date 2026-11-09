@@ -1,4 +1,4 @@
-"""Тесты для trolobot.weather: рендер блока, кэш клиента, геокодер, извлечение места.
+"""Тесты для sotto.weather: рендер блока, кэш клиента, геокодер, извлечение места.
 
 Сети нет ни в одном тесте: Open-Meteo подделывается через ``httpx.MockTransport``
 (как в tests/test_llm.py), время — фиксированный ``clock``. Координаты в тестах
@@ -18,10 +18,10 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
-from trolobot.config_models import Config
-from trolobot.llm import LLMClient
-from trolobot.timeutil import day_key
-from trolobot.weather import (
+from sotto.config_models import Config
+from sotto.llm import LLMClient
+from sotto.timeutil import day_key
+from sotto.weather import (
     Place,
     Weather,
     WeatherClient,
@@ -679,7 +679,7 @@ async def test_extract_llm_error_returns_none_and_warns(
     llm, _calls = _llm(lambda _req: httpx.Response(500, text="boom"), cfg, store)
     extractor = WeatherPlaceExtractor(llm, lambda: cfg, PLACE_PROMPT)
     try:
-        with caplog.at_level(logging.WARNING, logger="trolobot.weather"):
+        with caplog.at_level(logging.WARNING, logger="sotto.weather"):
             assert await extractor.extract("погода в Варшаве?", now=NOW) is None
     finally:
         await llm.aclose()

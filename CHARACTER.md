@@ -613,7 +613,7 @@ logistics/not_live/injection и т.д. — там уже решено молча
 обязателен.
 
 Как собрать каталог: набор стикеров с надписями делается в самом Telegram
-(`t.me/addstickers/<имя>`), дальше `uv run python -m trolobot.stickers_fill <имя>`
+(`t.me/addstickers/<имя>`), дальше `uv run python -m sotto.stickers_fill <имя>`
 скачивает картинки, распознаёт надпись моделью со зрением и пишет черновик в
 `stickers.yaml` — текст и `when` («когда уместен») обязательно проверяются и
 правятся руками перед выкатом.

@@ -1,10 +1,10 @@
-"""Тесты для trolobot.sanitize — таблично, через pytest.mark.parametrize."""
+"""Тесты для sotto.sanitize — таблично, через pytest.mark.parametrize."""
 
 from types import SimpleNamespace
 
 import pytest
 
-from trolobot.sanitize import (
+from sotto.sanitize import (
     media_placeholder,
     normalize_text,
     sanitize_display_name,

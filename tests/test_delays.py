@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import random
 
-from trolobot.config_models import BehaviourConfig
-from trolobot.delays import debounce_seconds, fast_delay, pick_delay
+from sotto.config_models import BehaviourConfig
+from sotto.delays import debounce_seconds, fast_delay, pick_delay
 
 
 def _cfg() -> BehaviourConfig:

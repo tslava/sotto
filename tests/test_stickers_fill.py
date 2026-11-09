@@ -1,4 +1,4 @@
-"""Тесты trolobot.stickers_fill: без сети — фейковый Bot (get_sticker_set/download) и
+"""Тесты sotto.stickers_fill: без сети — фейковый Bot (get_sticker_set/download) и
 фейковый LLM (call_raw), по образцу tests/test_places_fill.py.
 """
 
@@ -12,9 +12,9 @@ from typing import Any
 import pytest
 import yaml
 
-from trolobot.settings import Settings
-from trolobot.stickers import Sticker, StickerCatalog, load_catalog
-from trolobot.stickers_fill import (
+from sotto.settings import Settings
+from sotto.stickers import Sticker, StickerCatalog, load_catalog
+from sotto.stickers_fill import (
     build_catalog,
     recognize_sticker,
     render_report,
@@ -83,7 +83,7 @@ class FakeLLM:
     async def call_raw(
         self, messages: list[dict[str, object]], *, model: str, max_tokens: int, now: int
     ) -> Any:
-        from trolobot.llm import LLMResult
+        from sotto.llm import LLMResult
 
         self.calls.append({"messages": messages, "model": model, "max_tokens": max_tokens})
         return LLMResult(text=self.text, cost_usd=0.0001, prompt_tokens=5, completion_tokens=5)

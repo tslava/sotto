@@ -1,4 +1,4 @@
-"""Тесты для trolobot.patterns — таблично, через pytest.mark.parametrize.
+"""Тесты для sotto.patterns — таблично, через pytest.mark.parametrize.
 
 CHARACTER.md раздел 6 (стоп-лист, маркеры) и PLAN.md этап 2/3/5 задают дефолты
 и обязательные кейсы (в т.ч. принятые ложные срабатывания: «фронт работ», «24.50 злотых»).
@@ -6,8 +6,8 @@ CHARACTER.md раздел 6 (стоп-лист, маркеры) и PLAN.md эт�
 
 import pytest
 
-from trolobot.config_models import Config
-from trolobot.patterns import Patterns
+from sotto.config_models import Config
+from sotto.patterns import Patterns
 
 _CFG = Config()
 PATTERNS = Patterns(_CFG.filters, _CFG.persona.name_triggers, "example_persona_bot")

@@ -7,9 +7,9 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from trolobot.config_models import Config
-from trolobot.llm import LLMClient, LLMError, LLMResult
-from trolobot.timeutil import day_key
+from sotto.config_models import Config
+from sotto.llm import LLMClient, LLMError, LLMResult
+from sotto.timeutil import day_key
 
 API_KEY = "sk-super-secret-key-do-not-log"
 NOW = 1_768_003_200  # 2026-01-10 00:00 UTC -> Europe/Warsaw дата тоже 2026-01-10
@@ -97,7 +97,7 @@ async def test_successful_call_returns_result_and_updates_state() -> None:
     request = calls[0]
     assert request.url == URL
     assert request.headers["authorization"] == f"Bearer {API_KEY}"
-    assert request.headers["x-title"] == "trolobot"
+    assert request.headers["x-title"] == "sotto"
     payload = json.loads(request.content)
     assert payload["model"] == "openrouter/foo"
     assert payload["messages"] == MESSAGES

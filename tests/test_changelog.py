@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import trolobot
-from trolobot.changelog import Release, latest_release, parse_changelog
+import sotto
+from sotto.changelog import Release, latest_release, parse_changelog
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REAL_CHANGELOG = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
 
-def test_trolobot_version_is_0_9_1() -> None:
-    assert trolobot.__version__ == "0.9.1"
+def test_sotto_version_is_0_9_1() -> None:
+    assert sotto.__version__ == "0.9.1"
 
 
 def test_parse_real_changelog_latest_is_0_9_1_with_date_and_nonempty_blocks() -> None:

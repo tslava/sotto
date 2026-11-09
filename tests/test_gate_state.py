@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from trolobot.config_models import Config
-from trolobot.db import Database
-from trolobot.gate_state import load_gate_state
-from trolobot.gate_types import GateMessage
+from sotto.config_models import Config
+from sotto.db import Database
+from sotto.gate_state import load_gate_state
+from sotto.gate_types import GateMessage
 
 CONFIG = Config()
 
@@ -65,7 +65,7 @@ async def test_load_gate_state_reads_filled_keys(tmp_path: Path) -> None:
         now = 1_768_003_200  # 2026-01-10 00:00 UTC
         msg = _msg(user_id=42, created_at=now)
 
-        from trolobot.timeutil import day_key
+        from sotto.timeutil import day_key
 
         await db.set_state("panic", "1")
         await db.set_state("stop_until", "12345")
@@ -125,7 +125,7 @@ async def test_load_gate_state_garbage_numeric_value_falls_back_to_default(
 
         import logging as _logging
 
-        with caplog.at_level(_logging.WARNING, logger="trolobot.gate_state"):  # type: ignore[attr-defined]
+        with caplog.at_level(_logging.WARNING, logger="sotto.gate_state"):  # type: ignore[attr-defined]
             state = await load_gate_state(db, CONFIG, _msg(), now=1000)
 
         assert state.stop_until is None
@@ -142,12 +142,12 @@ async def test_load_gate_state_garbage_count_falls_back_to_zero(
     await db.connect()
     try:
         now = 1_768_003_200
-        from trolobot.timeutil import day_key
+        from sotto.timeutil import day_key
 
         key = day_key("mention_count", now, CONFIG.persona.timezone)
         await db.set_state(key, "garbage")
 
-        with caplog.at_level(logging.WARNING, logger="trolobot.gate_state"):  # type: ignore[attr-defined]
+        with caplog.at_level(logging.WARNING, logger="sotto.gate_state"):  # type: ignore[attr-defined]
             state = await load_gate_state(db, CONFIG, _msg(), now)
 
         assert state.mention_count_today == 0

@@ -1,4 +1,4 @@
-"""Тесты для trolobot.timeutil: in_window, day_key/week_key, seconds_until.
+"""Тесты для sotto.timeutil: in_window, day_key/week_key, seconds_until.
 
 Всё время — unix seconds (int), таймзона — persona.timezone (Europe/Warsaw по дефолту,
 с летним/зимним переходом в 2026 году: 29 марта 01:00->03:00 UTC+1->+2,
@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from trolobot.timeutil import day_key, in_window, seconds_until, week_key
+from sotto.timeutil import day_key, in_window, seconds_until, week_key
 
 TZ = "Europe/Warsaw"
 _ZONE = ZoneInfo(TZ)

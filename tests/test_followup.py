@@ -8,11 +8,11 @@ from pathlib import Path
 import httpx
 import pytest
 
-from trolobot.config_models import Config
-from trolobot.db import MessageRow
-from trolobot.followup import FollowupChecker
-from trolobot.llm import LLMClient
-from trolobot.timeutil import day_key
+from sotto.config_models import Config
+from sotto.db import MessageRow
+from sotto.followup import FollowupChecker
+from sotto.llm import LLMClient
+from sotto.timeutil import day_key
 
 NOW = 1_768_003_200  # см. tests/test_llm.py
 FOLLOWUP_PROMPT_PATH = Path("prompts/followup.txt")

@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from trolobot.config_models import VocabConfig
-from trolobot.db import Database
-from trolobot.vocab import (
+from sotto.config_models import VocabConfig
+from sotto.db import Database
+from sotto.vocab import (
     Vocab,
     VocabStore,
     explain_requested,
@@ -394,7 +394,7 @@ async def test_vocab_store_skips_broken_body(
         await db.upsert_vocab_dict("битый", "name: [", 100)
         await db.upsert_vocab_dict("дворовые", SIBERIAN, 100)
         store = VocabStore(db)
-        with caplog.at_level(logging.WARNING, logger="trolobot.vocab"):
+        with caplog.at_level(logging.WARNING, logger="sotto.vocab"):
             await store.load()
         assert "битый" in caplog.text
         assert len(store.get().entries) == 9

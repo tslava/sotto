@@ -3,7 +3,7 @@
 Google Places API замокан через ``httpx.MockTransport`` (сеть не трогаем — конвенция
 проекта, CLAUDE.md "Конвенции"), LLM — подделкой под ``LLMLike`` (Protocol с ``call``,
 как ``FakeStore``/фейковые клиенты в ``test_llm.py``/``test_injections.py``). База —
-временный файл через ``tmp_path`` и настоящий ``trolobot.db.Database`` (проверяем
+временный файл через ``tmp_path`` и настоящий ``sotto.db.Database`` (проверяем
 через ``places_all(operational_only=False)``, а не приватные детали SQL).
 """
 
@@ -19,9 +19,9 @@ import httpx
 import pytest
 import yaml
 
-from trolobot.db import Database
-from trolobot.llm import LLMResult
-from trolobot.places_fill import (
+from sotto.db import Database
+from sotto.llm import LLMResult
+from sotto.places_fill import (
     FetchedPlace,
     ManualEntry,
     build_manual_only_rows,
@@ -34,7 +34,7 @@ from trolobot.places_fill import (
     render_report,
     run,
 )
-from trolobot.settings import Settings
+from sotto.settings import Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REAL_MANUAL_PATH = REPO_ROOT / "places_manual.yaml"

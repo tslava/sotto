@@ -6,8 +6,8 @@ import pytest
 from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
 from aiogram.methods import SendMessage
 
-from trolobot.alerts import OwnerAlerter, is_refusal, render_alert
-from trolobot.config_models import Config
+from sotto.alerts import OwnerAlerter, is_refusal, render_alert
+from sotto.config_models import Config
 
 ADMIN_ID = 42
 NOW = 1_793_000_000

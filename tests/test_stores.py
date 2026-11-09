@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from trolobot.db import Database
-from trolobot.stores import ConfigStore, PromptStore
+from sotto.db import Database
+from sotto.stores import ConfigStore, PromptStore
 
 # -- ConfigStore ---------------------------------------------------------------
 

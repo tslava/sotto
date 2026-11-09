@@ -1,4 +1,4 @@
-"""Тесты trolobot.diary: DiaryExtractor и render_diary (CLAUDE.md, "дневник дня").
+"""Тесты sotto.diary: DiaryExtractor и render_diary (CLAUDE.md, "дневник дня").
 
 Сети нет: LLM подделывается через ``httpx.MockTransport`` (как в tests/test_weather.py).
 """
@@ -14,11 +14,11 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
-from trolobot.config_models import Config
-from trolobot.db import SelfFactRow
-from trolobot.diary import DiaryExtractor, render_diary
-from trolobot.llm import LLMClient
-from trolobot.timeutil import day_key
+from sotto.config_models import Config
+from sotto.db import SelfFactRow
+from sotto.diary import DiaryExtractor, render_diary
+from sotto.llm import LLMClient
+from sotto.timeutil import day_key
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 TZ = "Europe/Warsaw"
@@ -187,7 +187,7 @@ async def test_extract_llm_error_returns_none_and_warns(
     llm, _calls = _llm(lambda _req: httpx.Response(500, text="boom"), cfg, FakeStore())
     extractor = DiaryExtractor(llm, lambda: cfg, PROMPT)
     try:
-        with caplog.at_level(logging.WARNING, logger="trolobot.diary"):
+        with caplog.at_level(logging.WARNING, logger="sotto.diary"):
             assert await extractor.extract("текст", now=NOW) is None
     finally:
         await llm.aclose()

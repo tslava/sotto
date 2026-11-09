@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from trolobot.few_shot import FewShot, load_few_shot, render_few_shot
+from sotto.few_shot import FewShot, load_few_shot, render_few_shot
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FEW_SHOT_PATH = REPO_ROOT / "few_shot.yaml"

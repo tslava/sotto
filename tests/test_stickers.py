@@ -1,4 +1,4 @@
-"""Тесты trolobot.stickers: каталог, меню, разбор ответа чузера, бюджет, сам чузер.
+"""Тесты sotto.stickers: каталог, меню, разбор ответа чузера, бюджет, сам чузер.
 
 LLM — настоящий ``LLMClient`` с ``httpx.MockTransport`` (по образцу
 ``test_judge.py``): проверяем и реальную сборку запроса, и разбор ответа.
@@ -14,9 +14,9 @@ import httpx
 import pytest
 import yaml
 
-from trolobot.config_models import Config, StickersConfig
-from trolobot.llm import LLMClient
-from trolobot.stickers import (
+from sotto.config_models import Config, StickersConfig
+from sotto.llm import LLMClient
+from sotto.stickers import (
     Sticker,
     StickerCatalog,
     StickerChooser,

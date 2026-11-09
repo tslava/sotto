@@ -8,8 +8,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from trolobot.db import LifeEventRow, MessageRow
-from trolobot.prompt import (
+from sotto.db import LifeEventRow, MessageRow
+from sotto.prompt import (
     CHAT_CLOSE,
     CHAT_OPEN,
     PLACES_NONE,

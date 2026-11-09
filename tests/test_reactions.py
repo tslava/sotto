@@ -1,4 +1,4 @@
-"""Тесты для trolobot.reactions: pick_reaction (чистая функция), load_reaction_state
+"""Тесты для sotto.reactions: pick_reaction (чистая функция), load_reaction_state
 (настоящая Database), react() (фейковый бот, без aiogram), а также ReactionChooser
 (дешёвый вызов модели через MockTransport) и ReactionScheduler (пауза и перепроверка;
 настоящих пауз в тестах нет — asyncio.sleep патчится)."""
@@ -20,10 +20,10 @@ from aiogram.methods import SendMessage
 from aiogram.types import ReactionTypeEmoji
 from pydantic import ValidationError
 
-from trolobot.config_models import TELEGRAM_REACTIONS, Config, ReactionsConfig
-from trolobot.db import Database, MessageRow
-from trolobot.llm import LLMClient
-from trolobot.reactions import (
+from sotto.config_models import TELEGRAM_REACTIONS, Config, ReactionsConfig
+from sotto.db import Database, MessageRow
+from sotto.llm import LLMClient
+from sotto.reactions import (
     REACT_REASONS,
     REPLY_UNAVAILABLE,
     ReactionChooser,
@@ -35,7 +35,7 @@ from trolobot.reactions import (
     pick_reaction,
     react,
 )
-from trolobot.timeutil import day_key
+from sotto.timeutil import day_key
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 TZ = "Europe/Warsaw"
@@ -243,7 +243,7 @@ async def test_load_reaction_state_garbage_value_falls_back_to_default(
     db: Database, caplog: pytest.LogCaptureFixture
 ) -> None:
     await db.set_state("last_reaction_at", "не число")
-    with caplog.at_level("WARNING", logger="trolobot.reactions"):
+    with caplog.at_level("WARNING", logger="sotto.reactions"):
         state = await load_reaction_state(db, TZ, NOW)
     assert state.last_reaction_at is None
     assert any("garbage value" in r.message for r in caplog.records)
@@ -307,7 +307,7 @@ async def test_react_telegram_bad_request_leaves_state_untouched(
     )
     bot = FakeBot(raise_error=error)
 
-    with caplog.at_level("WARNING", logger="trolobot.reactions"):
+    with caplog.at_level("WARNING", logger="sotto.reactions"):
         ok = await react(
             bot,
             db,
@@ -557,7 +557,7 @@ async def test_chooser_emoji_outside_allowed_returns_none(
     cfg = _full_config()
     handler, _calls = _counting_handler(lambda _req: _choice_response("🐸"))
     chooser, llm = _chooser(handler, cfg, db)
-    caplog.set_level(logging.WARNING, logger="trolobot.reactions")
+    caplog.set_level(logging.WARNING, logger="sotto.reactions")
     try:
         result = await chooser.choose(
             text="смешно",
@@ -600,7 +600,7 @@ async def test_chooser_invalid_answer_warning_contains_truncated_text(
     garbage = "ы" * 200
     handler, _calls = _counting_handler(lambda _req: _llm_response(garbage))
     chooser, llm = _chooser(handler, cfg, db)
-    caplog.set_level(logging.WARNING, logger="trolobot.reactions")
+    caplog.set_level(logging.WARNING, logger="sotto.reactions")
     try:
         result = await chooser.choose(
             text="привет", display_name="Гена", context_rows=[], allowed={"👍": ""}, now=NOW
@@ -635,7 +635,7 @@ async def test_chooser_null_as_string_is_decline(
         lambda _req: _llm_response('{"emoji": "null", "reason": "нет"}')
     )
     chooser, llm = _chooser(handler, cfg, db)
-    caplog.set_level(logging.WARNING, logger="trolobot.reactions")
+    caplog.set_level(logging.WARNING, logger="sotto.reactions")
     try:
         result = await chooser.choose(
             text="ок", display_name="Гена", context_rows=[], allowed={"👍": ""}, now=NOW
@@ -667,7 +667,7 @@ async def test_chooser_llm_error_returns_none_and_logs_warning(
     cfg = _full_config()
     handler, _calls = _counting_handler(lambda _req: httpx.Response(500, text="boom"))
     chooser, llm = _chooser(handler, cfg, db)
-    caplog.set_level(logging.WARNING, logger="trolobot.reactions")
+    caplog.set_level(logging.WARNING, logger="sotto.reactions")
     try:
         result = await chooser.choose(
             text="привет", display_name="Гена", context_rows=[], allowed={"👍": ""}, now=NOW
@@ -1236,7 +1236,7 @@ async def test_scheduler_task_failure_does_not_propagate(
 
     cfg = Config()
     scheduler = _scheduler(FakeBot(), db, cfg, chooser=_BoomChooser())
-    caplog.set_level(logging.ERROR, logger="trolobot.reactions")
+    caplog.set_level(logging.ERROR, logger="sotto.reactions")
 
     scheduler.schedule(
         chat_id=CHAT_ID, tg_message_id=42, user_id=USER_A, text="байка", display_name="Гена"

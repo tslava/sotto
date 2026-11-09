@@ -1,4 +1,4 @@
-"""Тесты для trolobot.bot: хендлер сообщений без сети и без реального Bot.
+"""Тесты для sotto.bot: хендлер сообщений без сети и без реального Bot.
 
 Message/Chat/User собираются напрямую (обычные конструкторы pydantic-моделей aiogram,
 без обращения к Telegram API) — этого достаточно, чтобы прогнать хендлер и проверить
@@ -21,16 +21,16 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import GetFile
 from aiogram.types import Chat, Message, PhotoSize, User
 
-from trolobot.bot import Deps, build_router
-from trolobot.config_models import Config
-from trolobot.db import Database, MessageRow
-from trolobot.gate_types import Trigger
-from trolobot.patterns import Patterns
-from trolobot.sanitize import stable_n
-from trolobot.settings import Settings
-from trolobot.stores import ConfigStore, PromptStore
-from trolobot.timeutil import day_key
-from trolobot.vocab import VocabStore
+from sotto.bot import Deps, build_router
+from sotto.config_models import Config
+from sotto.db import Database, MessageRow
+from sotto.gate_types import Trigger
+from sotto.patterns import Patterns
+from sotto.sanitize import stable_n
+from sotto.settings import Settings
+from sotto.stores import ConfigStore, PromptStore
+from sotto.timeutil import day_key
+from sotto.vocab import VocabStore
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
@@ -168,7 +168,7 @@ async def test_discovery_mode_logs_and_skips_db(
         text="привет",
     )
 
-    with caplog.at_level(logging.WARNING, logger="trolobot.bot"):
+    with caplog.at_level(logging.WARNING, logger="sotto.bot"):
         await handler(message)
 
     assert await db.recent_messages(777, 10) == []
@@ -191,7 +191,7 @@ async def test_foreign_chat_is_silently_dropped(
         text="привет",
     )
 
-    with caplog.at_level(logging.DEBUG, logger="trolobot.bot"):
+    with caplog.at_level(logging.DEBUG, logger="sotto.bot"):
         await handler(message)
 
     assert await db.recent_messages(FOREIGN_CHAT_ID, 10) == []
@@ -214,7 +214,7 @@ async def test_own_chat_text_is_sanitized_and_stored(
         reply_to_message=trigger,
     )
 
-    with caplog.at_level(logging.INFO, logger="trolobot.bot"):
+    with caplog.at_level(logging.INFO, logger="sotto.bot"):
         await handler(message)
 
     rows = await db.recent_messages(OWN_CHAT_ID, 10)
@@ -348,7 +348,7 @@ async def test_display_name_with_injection_marker_becomes_participant_and_warns_
         date=DAY,
     )
 
-    with caplog.at_level(logging.WARNING, logger="trolobot.bot"):
+    with caplog.at_level(logging.WARNING, logger="sotto.bot"):
         await handler(first)
         await handler(second)
 
@@ -586,7 +586,7 @@ async def test_gate_error_does_not_break_message_write(
 
     message = _message(from_user=_user(user_id=5, first_name="Гена"), text="привет", date=DAY)
 
-    with caplog.at_level(logging.ERROR, logger="trolobot.bot"):
+    with caplog.at_level(logging.ERROR, logger="sotto.bot"):
         await handler(message)
 
     rows = await db.recent_messages(OWN_CHAT_ID, 10)
@@ -614,8 +614,8 @@ async def test_gate_pass_without_trigger_logs_error_and_skips_responder(
     """Инвариант "PASS всегда несёт trigger" защищён явной проверкой, а не assert:
     если гейт всё же вернул PASS без trigger, хендлер логирует ошибку и просто не
     зовёт responder, вместо падения на AssertionError."""
-    import trolobot.bot as bot_module
-    from trolobot.gate_types import Decision, Verdict
+    import sotto.bot as bot_module
+    from sotto.gate_types import Decision, Verdict
 
     def fake_should_consider(*_args: object, **_kwargs: object) -> Decision:
         return Decision(verdict=Verdict.PASS, trigger=None, reason="pass:mention")
@@ -631,7 +631,7 @@ async def test_gate_pass_without_trigger_logs_error_and_skips_responder(
 
     message = _message(from_user=_user(user_id=5, first_name="Гена"), text="привет", date=DAY)
 
-    with caplog.at_level(logging.ERROR, logger="trolobot.bot"):
+    with caplog.at_level(logging.ERROR, logger="sotto.bot"):
         await handler(message)
 
     errors = [r for r in caplog.records if r.levelno == logging.ERROR]
@@ -659,7 +659,7 @@ async def test_stale_message_after_restart_is_stored_but_not_gated(
     deps.clock = lambda: int(DAY.timestamp()) + 3 * 3600  # «сейчас» на три часа позже
     handler = build_router(deps).message.handlers[0].callback
 
-    with caplog.at_level(logging.INFO, logger="trolobot.bot"):
+    with caplog.at_level(logging.INFO, logger="sotto.bot"):
         await handler(
             _message(
                 from_user=_user(user_id=5, first_name="Гена"),
@@ -1460,7 +1460,7 @@ async def test_photo_download_error_falls_back_to_placeholder(
         caption="вот",
         date=DAY,
     )
-    with caplog.at_level(logging.WARNING, logger="trolobot.bot"):
+    with caplog.at_level(logging.WARNING, logger="sotto.bot"):
         await handler(message)
 
     rows = await db.recent_messages(OWN_CHAT_ID, 10)

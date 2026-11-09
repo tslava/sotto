@@ -8,8 +8,8 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from trolobot.db import Database, PlaceRow
-from trolobot.gate_types import StateChange
+from sotto.db import Database, PlaceRow
+from sotto.gate_types import StateChange
 
 EXPECTED_TABLES = {
     "messages",
@@ -1693,7 +1693,7 @@ async def test_mark_places_not_seen_already_not_operational_not_recounted(tmp_pa
 def _schema_sql_v1() -> str:
     """schema.sql, но как будто ещё нет ни life_events, ни chat_memory (реальная
     БД на сервере, user_version == 1) — для теста миграции 1 -> 3."""
-    schema_sql = importlib.resources.files("trolobot").joinpath("schema.sql").read_text("utf-8")
+    schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
     life_events_block = (
         '-- События жизни персонажа (/life, CLAUDE.md "события жизни") — память, не\n'
         "-- переписка: retention.py её не трогает, чистит только /life rm.\n"
@@ -1716,7 +1716,7 @@ def _schema_sql_v1() -> str:
 def _schema_sql_v2() -> str:
     """schema.sql, но как будто ещё нет chat_memory (user_version == 2) — для
     теста миграции 2 -> 3 (CLAUDE.md, "долгая память чата")."""
-    schema_sql = importlib.resources.files("trolobot").joinpath("schema.sql").read_text("utf-8")
+    schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
     old_schema_sql = _strip_self_facts(_strip_chat_memory(schema_sql))
     old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 2;")
     assert "chat_memory" not in old_schema_sql
@@ -1726,7 +1726,7 @@ def _schema_sql_v2() -> str:
 def _schema_sql_v3() -> str:
     """schema.sql, но как будто ещё нет self_facts (user_version == 3) — для теста
     миграции 3 -> 4 (CLAUDE.md, "дневник дня")."""
-    schema_sql = importlib.resources.files("trolobot").joinpath("schema.sql").read_text("utf-8")
+    schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
     old_schema_sql = _strip_self_facts(schema_sql)
     old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 3;")
     assert "self_facts" not in old_schema_sql
@@ -1736,7 +1736,7 @@ def _schema_sql_v3() -> str:
 def _schema_sql_v4() -> str:
     """schema.sql, но как будто ещё нет chat_jokes/people_threads (user_version == 4) —
     для теста миграции 4 -> 5 (CLAUDE.md, "шутки чата и истории людей")."""
-    schema_sql = importlib.resources.files("trolobot").joinpath("schema.sql").read_text("utf-8")
+    schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
     start = schema_sql.index("-- Шутки чата и истории людей")
     end = schema_sql.index("CREATE INDEX idx_messages_chat_created")
     old_schema_sql = schema_sql[:start] + schema_sql[end:]
@@ -1750,7 +1750,7 @@ def _schema_sql_v4() -> str:
 def _schema_sql_v5() -> str:
     """schema.sql, но как будто ещё нет vocab_dicts (user_version == 5) — для теста
     миграции 5 -> 6 (CLAUDE.md, "словечки из словаря")."""
-    schema_sql = importlib.resources.files("trolobot").joinpath("schema.sql").read_text("utf-8")
+    schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
     start = schema_sql.index("-- Словари словечек")
     end = schema_sql.index("CREATE INDEX idx_messages_chat_created")
     old_schema_sql = schema_sql[:start] + schema_sql[end:]

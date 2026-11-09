@@ -1,5 +1,5 @@
 [project]
-name = "trolobot"
+name = "sotto"
 version = "0.9.1"
 description = "Telegram bot-persona for one group chat"
 requires-python = ">=3.12,<3.13"
@@ -28,7 +28,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/trolobot"]
+packages = ["src/sotto"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -51,7 +51,7 @@ ignore = ["RUF001", "RUF002", "RUF003"]  # кириллица в строках 
 python_version = "3.12"
 strict = true
 mypy_path = "src"
-packages = ["trolobot", "tools"]
+packages = ["sotto", "tools"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]

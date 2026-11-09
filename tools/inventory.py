@@ -1,6 +1,6 @@
 """Cyrillic inventory of a source tree (review aid for the stage 2/3 refactoring, not a gate).
 
-``python -m tools.inventory [ROOT] [--json]`` walks ``ROOT/*.py`` (default ``src/trolobot``)
+``python -m tools.inventory [ROOT] [--json]`` walks ``ROOT/*.py`` (default ``src/sotto``)
 and counts, per file, string constants with Cyrillic by role: docstrings, comments, and the
 other literals classified by where they sit (``field_desc``, ``cli_help``, ``log``, ``exc``,
 ``const:UPPER``, ``const:var``, ``field_default``, ``inline_in_func``, ``other``).
@@ -118,7 +118,7 @@ def totals(per_file: dict[str, dict[str, int]]) -> dict[str, int]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m tools.inventory")
-    parser.add_argument("root", nargs="?", type=Path, default=Path("src/trolobot"))
+    parser.add_argument("root", nargs="?", type=Path, default=Path("src/sotto"))
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
     per_file = inventory(args.root)

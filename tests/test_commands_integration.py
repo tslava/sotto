@@ -21,15 +21,15 @@ import pytest
 from aiogram import Bot, Dispatcher
 from aiogram.types import Chat, Message, MessageEntity, Update, User
 
-from trolobot.bot import Deps, build_router
-from trolobot.commands import build_commands_router
-from trolobot.db import Database
-from trolobot.gate import should_consider
-from trolobot.gate_state import load_gate_state
-from trolobot.gate_types import GateMessage, Verdict
-from trolobot.settings import Settings
-from trolobot.stores import ConfigStore, PromptStore
-from trolobot.timeutil import local_dt
+from sotto.bot import Deps, build_router
+from sotto.commands import build_commands_router
+from sotto.db import Database
+from sotto.gate import should_consider
+from sotto.gate_state import load_gate_state
+from sotto.gate_types import GateMessage, Verdict
+from sotto.settings import Settings
+from sotto.stores import ConfigStore, PromptStore
+from sotto.timeutil import local_dt
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CONFIG_PATH = _REPO_ROOT / "config.yaml"

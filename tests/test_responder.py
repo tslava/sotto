@@ -1,4 +1,4 @@
-"""Тесты для trolobot.responder: дебаунс, отложенный ответ, генерация, джобы.
+"""Тесты для sotto.responder: дебаунс, отложенный ответ, генерация, джобы.
 
 Bot — простая подделка (FakeBot), без aiogram. БД — настоящая ``Database`` на
 временном файле, ``Patterns`` — настоящий из ``Config()``. LLM — настоящий
@@ -34,20 +34,20 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
-from trolobot import filters as filters_module
-from trolobot.config_models import Config
-from trolobot.db import Database, MessageRow, PendingRow, PlaceRow
-from trolobot.filters import FilterContext, FilterVerdict
-from trolobot.gate_types import GateMessage, Trigger
-from trolobot.judge import Judge
-from trolobot.llm import LLMClient
-from trolobot.patterns import Patterns
-from trolobot.prompt import PLACES_NONE, SITUATION_AMBIENT, SITUATION_LATE, SITUATION_MORNING
-from trolobot.responder import Responder
-from trolobot.stickers import Sticker
-from trolobot.timeutil import day_key, in_window
-from trolobot.vocab import Vocab, parse_vocab
-from trolobot.weather import Place, Weather
+from sotto import filters as filters_module
+from sotto.config_models import Config
+from sotto.db import Database, MessageRow, PendingRow, PlaceRow
+from sotto.filters import FilterContext, FilterVerdict
+from sotto.gate_types import GateMessage, Trigger
+from sotto.judge import Judge
+from sotto.llm import LLMClient
+from sotto.patterns import Patterns
+from sotto.prompt import PLACES_NONE, SITUATION_AMBIENT, SITUATION_LATE, SITUATION_MORNING
+from sotto.responder import Responder
+from sotto.stickers import Sticker
+from sotto.timeutil import day_key, in_window
+from sotto.vocab import Vocab, parse_vocab
+from sotto.weather import Place, Weather
 
 CHAT_ID = -100123456
 BOT_USER_ID = 999
@@ -2216,7 +2216,7 @@ async def test_maybe_spontaneous_sends_once_and_bumps_counters(db: Database) -> 
         tz = cfg.persona.timezone
         assert await db.get_state(day_key("ambient_count", clock.now(), tz)) == "1"
         assert await db.get_state("last_ambient_at") is not None
-        from trolobot.timeutil import week_key
+        from sotto.timeutil import week_key
 
         assert await db.get_state(week_key("spontaneous_count", clock.now(), tz)) == "1"
     finally:
@@ -2257,7 +2257,7 @@ async def test_maybe_spontaneous_skipped_when_week_budget_exhausted(db: Database
     responder = _make_responder(db, cfg, llm, bot, clock, rng=FixedRandom(0.0))
     tz = cfg.persona.timezone
     try:
-        from trolobot.timeutil import week_key
+        from sotto.timeutil import week_key
 
         await db.set_state(
             week_key("spontaneous_count", DAY_NOW, tz), str(cfg.behaviour.spontaneous.per_week)
@@ -5815,7 +5815,7 @@ async def test_diary_extraction_error_is_logged_and_does_not_break_reply(
     diary = FakeDiary(error=RuntimeError("boom"))
     responder = _make_responder(db, cfg, llm, bot, clock, diary=diary)
     try:
-        with caplog.at_level(logging.ERROR, logger="trolobot.responder"):
+        with caplog.at_level(logging.ERROR, logger="sotto.responder"):
             await _ambient(clock, responder)
             await _drain_diary(responder)
 

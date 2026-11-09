@@ -1,0 +1,328 @@
+"""Сборка процесса: настройки, БД, конфиг/промпт-хранилища, бот, фоновые таски.
+
+PLAN.md, этапы 1 и 6.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import logging
+import random
+import sys
+
+import httpx
+from aiogram import Bot, Dispatcher
+
+from sotto.alerts import OwnerAlerter
+from sotto.bot import Deps, build_router
+from sotto.chat_memory import ChatMemorizer
+from sotto.commands import build_commands_router
+from sotto.db import Database
+from sotto.diary import DiaryExtractor
+from sotto.followup import FollowupChecker
+from sotto.judge import Judge
+from sotto.llm import LLMClient
+from sotto.reactions import ReactionChooser, ReactionScheduler
+from sotto.responder import Responder
+from sotto.retention import retention_loop
+from sotto.settings import Settings
+from sotto.stickers import StickerChooser, load_catalog
+from sotto.stores import ConfigStore, PromptStore
+from sotto.vision import VisionDescriber
+from sotto.vocab import VocabStore
+from sotto.weather import Place, WeatherClient, WeatherPlaceExtractor
+
+logger = logging.getLogger(__name__)
+
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
+
+
+def setup_logging(level: str) -> None:
+    """stdout, формат из CLAUDE.md. Секреты сюда никогда не попадают."""
+    logging.basicConfig(stream=sys.stdout, level=level, format=_LOG_FORMAT)
+
+
+async def main() -> None:
+    settings = Settings()
+    setup_logging(settings.log_level)
+
+    db = Database(settings.db_path)
+    await db.connect()
+
+    bot: Bot | None = None
+    retention_task: asyncio.Task[None] | None = None
+    morning_task: asyncio.Task[None] | None = None
+    spontaneous_task: asyncio.Task[None] | None = None
+    checkin_task: asyncio.Task[None] | None = None
+    callback_task: asyncio.Task[None] | None = None
+    memory_task: asyncio.Task[None] | None = None
+    llm: LLMClient | None = None
+    alerter: OwnerAlerter | None = None
+    responder: Responder | None = None
+    reaction_scheduler: ReactionScheduler | None = None
+    weather: WeatherClient | None = None
+    try:
+        config_store = ConfigStore(settings.config_path, db)
+        await config_store.load()
+
+        prompt_store = PromptStore(db, settings.prompt_path, settings.few_shot_path)
+        await prompt_store.load()
+
+        # Словари словечек (CLAUDE.md, "словечки из словаря") живут в БД: владелец
+        # грузит их файлом в личку, в репозитории их нет.
+        vocab_store = VocabStore(db)
+        await vocab_store.load()
+
+        bot = Bot(token=settings.bot_token.get_secret_value())
+        me = await bot.get_me()
+        config_store.set_bot_username(me.username or "")
+
+        cfg = config_store.get()
+        reserved_names = {
+            cfg.persona.name,
+            cfg.persona.display_name,
+            *cfg.persona.name_triggers,
+            me.username or "",
+        } - {""}
+
+        rng = random.Random()
+
+        if settings.admin_user_id == 0:
+            logger.warning("команды владельца отключены: admin_user_id не задан")
+
+        # Погода (CLAUDE.md, "Интерфейсы: погода"): ключ API не нужен, клиент
+        # создаётся всегда. Домашняя точка — из .env, а не из конфига: репозиторий
+        # публичный, координаты владельца в нём не лежат. Заданы не обе — клиент
+        # живёт без домашней точки: блок «за окном» пуст, а погода по месту,
+        # про которое спросили в чате, работает.
+        home: Place | None = None
+        if settings.weather_latitude is not None and settings.weather_longitude is not None:
+            home = Place(
+                name=settings.weather_home_name,
+                latitude=settings.weather_latitude,
+                longitude=settings.weather_longitude,
+            )
+        else:
+            logger.warning(
+                "погода за окном выключена: WEATHER_LATITUDE/WEATHER_LONGITUDE не заданы"
+            )
+        weather = WeatherClient(config_store.get, home=home)
+
+        deps = Deps(
+            settings=settings,
+            config_getter=config_store.get,
+            db=db,
+            bot_user_id=me.id,
+            reserved_names=reserved_names,
+            patterns_getter=config_store.patterns,
+            rng=rng,
+            config_store=config_store,
+            prompt_store=prompt_store,
+            bot_username=me.username or "",
+            bot=bot,
+            weather=weather,
+            vocab_store=vocab_store,
+        )
+
+        dispatcher = Dispatcher()
+        # Роутер команд ПЕРВЫМ: иначе команды в разрешённом чате попали бы в гейт
+        # основного роутера и записались бы в messages как обычный текст.
+        dispatcher.include_router(build_commands_router(deps))
+        dispatcher.include_router(build_router(deps))
+
+        api_key = settings.openrouter_api_key
+        reaction_chooser: ReactionChooser | None = None
+        if api_key is None:
+            logger.warning("LLM отключён, ответы не генерируются: openrouter_api_key не задан")
+        else:
+            # LLMClient/Judge/Responder создаются, как только есть ключ, независимо
+            # от того, заданы ли llm.main_model/llm.judge_model сейчас — оба меняются
+            # на горячую через /set, и Responder/Judge сами проверяют пустую модель
+            # на каждом вызове (llm:no_model, judge.check -> []), а не один раз при
+            # старте процесса.
+            if not cfg.llm.main_model:
+                logger.warning("llm.main_model не задан: ответы не генерируются до /set")
+            if not cfg.llm.judge_model:
+                logger.warning("судья отключён: llm.judge_model не задан")
+
+            http = httpx.AsyncClient(timeout=cfg.llm.timeout_sec)
+            # Отказ провайдера (кончились кредиты, ключ не принят) — сообщение владельцу
+            # в личку (CLAUDE.md, "Интерфейсы: тревога владельцу").
+            alerter = OwnerAlerter(
+                bot=bot, db=db, admin_user_id=settings.admin_user_id, cfg_getter=config_store.get
+            )
+            llm = LLMClient(
+                api_key=api_key.get_secret_value(),
+                cfg_getter=config_store.get,
+                db=db,
+                http=http,
+                on_refusal=alerter.provider_refused,
+            )
+
+            judge_prompt = settings.judge_prompt_path.read_text(encoding="utf-8")
+            judge: Judge | None = Judge(llm, config_store.get, judge_prompt)
+
+            # Дешёвая проверка «это мне?» в горячем окне (CLAUDE.md, "внимание как
+            # у живого человека") — создаётся вместе с остальными LLM-зависимыми
+            # компонентами, как только есть ключ; enabled/model проверяются на
+            # каждом вызове, а не один раз при старте.
+            followup_prompt = settings.followup_prompt_path.read_text(encoding="utf-8")
+            # Дешёвый предфильтр "вернулся проверить" (CLAUDE.md, "Интерфейсы:
+            # дешёвый предфильтр для «вернулся проверить»") — тот же чекер, второй
+            # промпт: пачка сообщений вместо одного, перед основной моделью.
+            checkin_prefilter_prompt = settings.checkin_prefilter_prompt_path.read_text(
+                encoding="utf-8"
+            )
+            # Подтверждение обращения по имени (CLAUDE.md, "имя в падежах и
+            # проверка обращения по имени") — тот же чекер, третий промпт: имя
+            # в любом падеже нашла регулярка, а обращение это или разговор о
+            # нём в третьем лице, решает дешёвая модель.
+            name_check_prompt = settings.name_check_prompt_path.read_text(encoding="utf-8")
+            followup_checker = FollowupChecker(
+                llm,
+                config_store.get,
+                followup_prompt,
+                checkin_prefilter_prompt,
+                name_check_prompt,
+            )
+            deps.followup = followup_checker
+
+            # Зрение на фото (CLAUDE.md, "зрение на фото") — как и followup,
+            # создаётся вместе с остальными LLM-зависимыми компонентами; enabled и
+            # модель проверяются на каждом снимке, а не один раз при старте.
+            vision_prompt = settings.vision_prompt_path.read_text(encoding="utf-8")
+            deps.vision = VisionDescriber(llm, config_store.get, vision_prompt)
+
+            # Выбор реакции моделью (CLAUDE.md, "реакции с задержкой и смыслом") —
+            # как followup и зрение, создаётся при наличии ключа; модель и
+            # semantic проверяются на каждом вызове, а не один раз при старте.
+            reaction_prompt = settings.reaction_prompt_path.read_text(encoding="utf-8")
+            reaction_chooser = ReactionChooser(llm, config_store.get, reaction_prompt)
+
+            # Каталог стикеров — офлайн-файл (CLAUDE.md, "Интерфейсы: стикеры"),
+            # правится stickers_fill.py и владельцем руками. Пустой/отсутствующий
+            # файл -> пустой каталог, чузер не создаётся, всё остальное работает
+            # как раньше (Responder.sticker_chooser=None).
+            catalog = load_catalog(settings.stickers_path)
+            deps.sticker_catalog_enabled = sum(1 for sticker in catalog.stickers if sticker.enabled)
+            sticker_chooser: StickerChooser | None = None
+            if deps.sticker_catalog_enabled:
+                sticker_prompt = settings.sticker_prompt_path.read_text(encoding="utf-8")
+                sticker_chooser = StickerChooser(llm, config_store.get, catalog, sticker_prompt)
+
+            # Долгая память чата (CLAUDE.md, "долгая память чата"): фоновый таск
+            # раз в час смотрит, попало ли локальное время в run_window, и
+            # пересказывает завершённые периоды. enabled проверяется на каждом
+            # заходе, а не один раз при старте — /set включает без рестарта.
+            memory_prompt = settings.memory_prompt_path.read_text(encoding="utf-8")
+            # Два дополнительных вызова недельного пересказа: шутки чата и незакрытые
+            # истории людей (CLAUDE.md, "шутки чата и истории людей").
+            jokes_prompt = settings.jokes_prompt_path.read_text(encoding="utf-8")
+            threads_prompt = settings.threads_prompt_path.read_text(encoding="utf-8")
+            memorizer = ChatMemorizer(
+                llm,
+                db,
+                config_store.get,
+                memory_prompt,
+                chat_id=settings.allowed_chat_id,
+                jokes_prompt=jokes_prompt,
+                threads_prompt=threads_prompt,
+                patterns_getter=config_store.patterns,
+            )
+            deps.memorizer = memorizer
+
+            # Место из вопроса про погоду достаёт дешёвая модель (CLAUDE.md,
+            # "погода в другом месте") — как followup и зрение, создаётся при
+            # наличии ключа; модель и place_lookup проверяются на каждом вызове.
+            weather_place_prompt = settings.weather_place_prompt_path.read_text(encoding="utf-8")
+            weather_places = WeatherPlaceExtractor(llm, config_store.get, weather_place_prompt)
+
+            # Дневник дня (CLAUDE.md, "дневник дня"): дешёвое извлечение факта о себе
+            # из каждой своей текстовой реплики; модель и enabled — на каждом вызове.
+            diary_prompt = settings.diary_prompt_path.read_text(encoding="utf-8")
+            diary = DiaryExtractor(llm, config_store.get, diary_prompt)
+
+            responder = Responder(
+                bot=bot,
+                db=db,
+                cfg_getter=config_store.get,
+                llm=llm,
+                judge=judge,
+                sticker_chooser=sticker_chooser,
+                weather=weather,
+                weather_places=weather_places,
+                diary=diary,
+                vocab_getter=vocab_store.get,
+                patterns_getter=config_store.patterns,
+                prompt_store=prompt_store,
+                rng=rng,
+                chat_id=settings.allowed_chat_id,
+                bot_user_id=me.id,
+                # Та же дешёвая проверка "это мне?", что и в горячем окне: Responder
+                # перепроверяет ею строку, которую выбрал checkin (CLAUDE.md, "меньше
+                # и разнообразнее", мера 3).
+                followup=followup_checker,
+            )
+            deps.responder = responder
+
+        # Планировщик реакций нужен всегда: пауза перед реакцией не зависит от LLM.
+        # Без чузера (ключ не задан) он бросает кубик, как до семантических реакций —
+        # предупреждаем один раз на старте, чтобы semantic: true не выглядел рабочим.
+        if reaction_chooser is None and cfg.behaviour.reactions.semantic:
+            logger.warning("реакции выбираются кубиком: openrouter_api_key не задан")
+        reaction_scheduler = ReactionScheduler(
+            bot=bot,
+            db=db,
+            cfg_getter=config_store.get,
+            chooser=reaction_chooser,
+            rng=rng,
+        )
+        deps.reaction_scheduler = reaction_scheduler
+
+        retention_task = asyncio.create_task(retention_loop(db, config_store.get))
+        if responder is not None:
+            await responder.restore_pending()
+            morning_task = asyncio.create_task(responder.morning_job())
+            spontaneous_task = asyncio.create_task(responder.spontaneous_job())
+            checkin_task = asyncio.create_task(responder.checkin_job())
+            callback_task = asyncio.create_task(responder.callback_job())
+        if deps.memorizer is not None:
+            memory_task = asyncio.create_task(deps.memorizer.job())
+
+        logger.info(
+            "started as @%s, allowed_chat_id=%s, discovery=%s",
+            me.username,
+            settings.allowed_chat_id,
+            settings.allowed_chat_id == 0,
+        )
+
+        await dispatcher.start_polling(bot, allowed_updates=["message", "edited_message"])
+    finally:
+        for task in (
+            memory_task,
+            callback_task,
+            checkin_task,
+            spontaneous_task,
+            morning_task,
+            retention_task,
+        ):
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        if responder is not None:
+            await responder.shutdown()
+        if reaction_scheduler is not None:
+            await reaction_scheduler.shutdown()
+        if alerter is not None:
+            await alerter.shutdown()
+        if llm is not None:
+            await llm.aclose()
+        if weather is not None:
+            await weather.aclose()
+        if bot is not None:
+            # aiogram закрывает сессию сама при штатном выходе из start_polling; повторный
+            # вызов идемпотентен и здесь нужен на случай исключения до start_polling.
+            await bot.session.close()
+        await db.close()

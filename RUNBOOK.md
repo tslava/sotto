@@ -1,4 +1,4 @@
-# RUNBOOK — эксплуатация trolobot
+# RUNBOOK — эксплуатация sotto
 
 Операционная книжка владельца. Что делать руками, когда и с телефона. Устройство
 кода — `CLAUDE.md`, поведение персонажа — `CHARACTER.md`, установка и первый
@@ -102,9 +102,9 @@ sqlite3 data/bot.db "
 ssh owner@host
 cd /opt/trolobot
 sudo -u bot docker compose -f docker-compose.yml --env-file deploy.env \
-  exec bot python -m trolobot.places_fill --dry-run   # сначала просмотреть fact, ничего не пишет
+  exec bot python -m sotto.places_fill --dry-run   # сначала просмотреть fact, ничего не пишет
 sudo -u bot docker compose -f docker-compose.yml --env-file deploy.env \
-  exec bot python -m trolobot.places_fill              # настоящий прогон, пишет в data/bot.db
+  exec bot python -m sotto.places_fill              # настоящий прогон, пишет в data/bot.db
 ```
 
 Обязательно просмотреть колонку `fact` в напечатанной таблице (отзыв — чужой
@@ -130,9 +130,9 @@ sqlite3 data/bot.db "SELECT name, fact FROM places;"
 ssh owner@host
 cd /opt/trolobot
 sudo -u bot docker compose -f docker-compose.yml --env-file deploy.env \
-  exec bot python -m trolobot.stickers_fill <имя_набора> --dry-run   # сначала посмотреть таблицу
+  exec bot python -m sotto.stickers_fill <имя_набора> --dry-run   # сначала посмотреть таблицу
 sudo -u bot docker compose -f docker-compose.yml --env-file deploy.env \
-  exec bot python -m trolobot.stickers_fill <имя_набора>             # настоящий прогон, пишет stickers.yaml
+  exec bot python -m sotto.stickers_fill <имя_набора>             # настоящий прогон, пишет stickers.yaml
 ```
 
 Скрипт мержит с уже существующим `stickers.yaml`: правки владельца (`text`,

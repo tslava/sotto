@@ -8,9 +8,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from trolobot.config_models import Config
-from trolobot.judge import Judge
-from trolobot.llm import LLMClient
+from sotto.config_models import Config
+from sotto.judge import Judge
+from sotto.llm import LLMClient
 
 NOW = 1_768_003_200  # см. tests/test_llm.py
 JUDGE_PROMPT_PATH = Path("prompts/judge.txt")

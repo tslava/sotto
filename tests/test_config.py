@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from trolobot.config import describe_key, flatten_config, load_config
-from trolobot.config_models import (
+from sotto.config import describe_key, flatten_config, load_config
+from sotto.config_models import (
     BehaviourConfig,
     CallbackConfig,
     Config,

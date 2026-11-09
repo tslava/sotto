@@ -49,4 +49,4 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=20s --retries=3 \
   CMD ["python", "-c", "import os, sys, httpx\nurl = 'https://api.telegram.org/bot' + os.environ['BOT_TOKEN'] + '/getMe'\nr = httpx.get(url, timeout=5.0)\nsys.exit(0 if r.status_code == 200 else 1)"]
 
 # Без uv в рантайме: у пользователя bot нет домашнего каталога, uv падает на кэше.
-CMD ["python", "-m", "trolobot"]
+CMD ["python", "-m", "sotto"]

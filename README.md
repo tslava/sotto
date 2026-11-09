@@ -1,4 +1,4 @@
-# trolobot
+# sotto
 
 Телеграм-бот-персонаж «Отец Фёдор» для одного дружеского чата. Фёдору 52 года,
 он живёт в Волсани, у него гараж со старой машиной и участок под городом.
@@ -270,7 +270,7 @@ polling, без вебхуков и без веб-панели.
 ```bash
 uv sync
 cp .env.example .env   # заполнить BOT_TOKEN и остальные ключи
-uv run python -m trolobot
+uv run python -m sotto
 ```
 
 ### Docker
@@ -312,7 +312,7 @@ docker compose up -d --build
    один из них очистить через `/set`/`/unset`, бот молчит (`llm:no_model`
    в `/why`), пока модель не задана снова.
 5. Заведения: либо ключ Google Places (`GOOGLE_PLACES_KEY`) и настоящий прогон
-   `places_fill.py`, либо `python -m trolobot.places_fill --manual-only` —
+   `places_fill.py`, либо `python -m sotto.places_fill --manual-only` —
    без этого шага бот не сможет ответить на вопрос про место.
 6. Погода (необязательно): `WEATHER_LATITUDE`, `WEATHER_LONGITUDE` и
    `WEATHER_HOME_NAME` в `.env` — координаты места, погоду которого бот считает
@@ -509,7 +509,7 @@ few-shot версионируются отдельно (`prompt_versions`, `few_
 
 ## Реплей
 
-`python -m trolobot.replay <result.json|bot.db>` прогоняет гейт (и, с `--generate`,
+`python -m sotto.replay <result.json|bot.db>` прогоняет гейт (и, с `--generate`,
 весь пайплайн генерации и выходного фильтра) по истории чата — либо по выгрузке из
 Telegram Desktop, либо напрямую по базе самого бота. Ничего не отправляется в чат и
 никуда не пишется — только печатается в stdout. Полезно перед выкатом: проверить, что
@@ -522,7 +522,7 @@ Telegram Desktop, либо напрямую по базе самого бота.
 `exports/` в `.gitignore`):
 
 ```bash
-uv run python -m trolobot.replay exports/result.json \
+uv run python -m sotto.replay exports/result.json \
   --config config.yaml --bot-username example_persona_bot --seed 1
 ```
 
@@ -532,7 +532,7 @@ uv run python -m trolobot.replay exports/result.json \
 использует сам бот в проде):
 
 ```bash
-uv run python -m trolobot.replay data/bot.db --since 2026-09-01
+uv run python -m sotto.replay data/bot.db --since 2026-09-01
 ```
 
 Источник определяется по расширению файла (`.db`/`.sqlite`/`.sqlite3` → база бота,
@@ -552,7 +552,7 @@ uv run python -m trolobot.replay data/bot.db --since 2026-09-01
 ### Только гейт
 
 ```bash
-uv run python -m trolobot.replay exports/result.json \
+uv run python -m sotto.replay exports/result.json \
   --config config.yaml --bot-username example_persona_bot --seed 1
 ```
 
@@ -565,7 +565,7 @@ pass по триггерам, night, топ-5 причин drop) и итог с�
 ### С генерацией: `--generate`
 
 ```bash
-uv run python -m trolobot.replay exports/result.json \
+uv run python -m sotto.replay exports/result.json \
   --config config.yaml --bot-username example_persona_bot \
   --generate --max-calls 20
 ```
@@ -717,21 +717,21 @@ Jezioro Strzechyńskie помечены `ДОБИТЬ РУКАМИ` в комм�
 
 ```bash
 # ничего не пишет в БД, только печатает таблицу найденного — смотреть fact
-uv run python -m trolobot.places_fill --dry-run
+uv run python -m sotto.places_fill --dry-run
 
 # настоящий прогон: пишет в places, печатает ту же таблицу
-uv run python -m trolobot.places_fill
+uv run python -m sotto.places_fill
 
 # без ключа Google вообще — только стартовый список из places_manual.yaml,
 # rating=5.0/reviews=999 (честно ручные данные, в логе строка "данные ручные"),
 # чтобы бот отвечал про места до появления ключа
-uv run python -m trolobot.places_fill --manual-only
+uv run python -m sotto.places_fill --manual-only
 
 # без вызова LLM (например, чтобы посмотреть на сырой список без денег на API)
-uv run python -m trolobot.places_fill --no-llm
+uv run python -m sotto.places_fill --no-llm
 
 # свои запросы вместо cfg.places.queries, через ';'
-uv run python -m trolobot.places_fill --queries "kraft Wolsań;cichy pub Wolsań"
+uv run python -m sotto.places_fill --queries "kraft Wolsań;cichy pub Wolsań"
 ```
 
 ### 4. Обязательно проверить `fact` руками
@@ -752,7 +752,7 @@ LLM-вызов сжимает до 5 отзывов в короткую хара
 
 Заведения закрываются, рейтинги плывут. Раз в месяц (`places.cache_ttl_days`,
 по умолчанию 30 — заодно и напоминание, когда следующий прогон) — перегнать
-`uv run python -m trolobot.places_fill`, проверить `fact`. Место, которое в
+`uv run python -m sotto.places_fill`, проверить `fact`. Место, которое в
 этом прогоне не нашлось среди ответов Google (закрылось, перестало проходить
 по `min_rating`/`min_reviews`, или просто не попало ни в один из
 `places.queries`), не удаляется из БД — оно тихо помечается `operational=0`
@@ -776,13 +776,13 @@ Google (не `--dry-run` и не `--manual-only`) — записи `--manual-onl
 ```bash
 # скачивает набор, распознаёт надписи моделью со зрением, мержит с уже
 # существующим stickers.yaml (правки владельца не теряются) и печатает таблицу
-uv run python -m trolobot.stickers_fill <имя_набора>
+uv run python -m sotto.stickers_fill <имя_набора>
 
 # только посмотреть, не писать файл
-uv run python -m trolobot.stickers_fill <имя_набора> --dry-run
+uv run python -m sotto.stickers_fill <имя_набора> --dry-run
 
 # без модели: text/when пустые, заполнить руками
-uv run python -m trolobot.stickers_fill <имя_набора> --no-llm
+uv run python -m sotto.stickers_fill <имя_набора> --no-llm
 ```
 
 Дальше **обязательно** проверить `text`/`when` в `stickers.yaml` руками —
@@ -870,7 +870,7 @@ healthy за 60 секунд, или если `docker compose pull`/`up -d` не
 ## Версии и changelog
 
 Версия — SemVer с мажором 0, единственный источник — `version` в `pyproject.toml`
-(`trolobot.__version__` читает её через метаданные пакета, видна в `/status`).
+(`sotto.__version__` читает её через метаданные пакета, видна в `/status`).
 Release-notes — [`CHANGELOG.md`](CHANGELOG.md), два блока на версию: «Для чата»
 (без технических слов, `/changelog` отдаёт его владельцу для копирования в группу)
 и «Для владельца» (`/changelog owner`, `/changelog <версия>`). Процесс релиза:

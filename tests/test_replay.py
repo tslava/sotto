@@ -1,4 +1,4 @@
-"""Тесты для trolobot.replay.
+"""Тесты для sotto.replay.
 
 ReplayState — чистый класс состояния реплея, тестируется без gate.py/patterns.py.
 run_replay() тянет за собой gate.py и patterns.py (пишутся параллельно другими
@@ -15,16 +15,16 @@ from pathlib import Path
 import httpx
 import pytest
 
-from trolobot import replay as replay_module
-from trolobot.db import Database
-from trolobot.gate_types import GateMessage, StateChange, Trigger
-from trolobot.replay import ReplayState, run_replay
+from sotto import replay as replay_module
+from sotto.db import Database
+from sotto.gate_types import GateMessage, StateChange, Trigger
+from sotto.replay import ReplayState, run_replay
 
 TZ = "Europe/Warsaw"
 
 _GATE_AND_PATTERNS_AVAILABLE = (
-    importlib.util.find_spec("trolobot.gate") is not None
-    and importlib.util.find_spec("trolobot.patterns") is not None
+    importlib.util.find_spec("sotto.gate") is not None
+    and importlib.util.find_spec("sotto.patterns") is not None
 )
 
 
@@ -176,7 +176,7 @@ def _write_synthetic_export(path: Path, tz: str) -> None:
 
 @pytest.mark.skipif(
     not _GATE_AND_PATTERNS_AVAILABLE,
-    reason="trolobot.gate и/или trolobot.patterns ещё не написаны",
+    reason="sotto.gate и/или sotto.patterns ещё не написаны",
 )
 def test_run_replay_produces_day_line_and_summary(tmp_path: Path) -> None:
     export_path = tmp_path / "result.json"
@@ -235,7 +235,7 @@ def _write_minimal_generate_config(path: Path) -> None:
 
 @pytest.mark.skipif(
     not _GATE_AND_PATTERNS_AVAILABLE,
-    reason="trolobot.gate и/или trolobot.patterns ещё не написаны",
+    reason="sotto.gate и/или sotto.patterns ещё не написаны",
 )
 def test_run_replay_generate_prints_reply_and_verdict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -504,7 +504,7 @@ def _db_args(source: Path, **overrides: object) -> argparse.Namespace:
 
 @pytest.mark.skipif(
     not _GATE_AND_PATTERNS_AVAILABLE,
-    reason="trolobot.gate и/или trolobot.patterns ещё не написаны",
+    reason="sotto.gate и/или sotto.patterns ещё не написаны",
 )
 def test_run_replay_from_bot_db_produces_day_line_and_summary(tmp_path: Path) -> None:
     db_path = tmp_path / "bot.db"
@@ -519,7 +519,7 @@ def test_run_replay_from_bot_db_produces_day_line_and_summary(tmp_path: Path) ->
 
 @pytest.mark.skipif(
     not _GATE_AND_PATTERNS_AVAILABLE,
-    reason="trolobot.gate и/или trolobot.patterns ещё не написаны",
+    reason="sotto.gate и/или sotto.patterns ещё не написаны",
 )
 def test_run_replay_from_bot_db_since_cuts_off_early_messages(tmp_path: Path) -> None:
     db_path = tmp_path / "bot.db"
@@ -533,7 +533,7 @@ def test_run_replay_from_bot_db_since_cuts_off_early_messages(tmp_path: Path) ->
 
 @pytest.mark.skipif(
     not _GATE_AND_PATTERNS_AVAILABLE,
-    reason="trolobot.gate и/или trolobot.patterns ещё не написаны",
+    reason="sotto.gate и/или sotto.patterns ещё не написаны",
 )
 def test_run_replay_from_bot_db_does_not_modify_live_file(tmp_path: Path) -> None:
     """Реплей читает базу бота read-only (sqlite3 URI mode=ro) — живой файл (и его
@@ -551,8 +551,8 @@ def test_run_replay_from_bot_db_does_not_modify_live_file(tmp_path: Path) -> Non
 
 
 def test_situation_for_ambient_matches_responder() -> None:
-    from trolobot.gate_types import Trigger
-    from trolobot.prompt import SITUATION_AMBIENT
+    from sotto.gate_types import Trigger
+    from sotto.prompt import SITUATION_AMBIENT
 
     assert replay_module.situation_for(Trigger.AMBIENT) == SITUATION_AMBIENT
     assert replay_module.situation_for(Trigger.NAME) == ""

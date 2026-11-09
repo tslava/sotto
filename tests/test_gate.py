@@ -9,9 +9,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from trolobot.config_models import Config, HotWindowConfig
-from trolobot.gate import should_consider
-from trolobot.gate_types import (
+from sotto.config_models import Config, HotWindowConfig
+from sotto.gate import should_consider
+from sotto.gate_types import (
     GateMessage,
     GateState,
     RecentActivity,

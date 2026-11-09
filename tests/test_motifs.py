@@ -6,8 +6,8 @@ import re
 
 import pytest
 
-from trolobot.config_models import FiltersConfig
-from trolobot.motifs import (
+from sotto.config_models import FiltersConfig
+from sotto.motifs import (
     SelfShare,
     motifs_in,
     render_avoid,
@@ -17,7 +17,7 @@ from trolobot.motifs import (
     story_count,
     used_motifs,
 )
-from trolobot.patterns import Patterns
+from sotto.patterns import Patterns
 
 
 def _patterns() -> Patterns:

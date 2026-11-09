@@ -1,4 +1,4 @@
-"""Тесты для trolobot.commands: диспетчер команд без сети и без реального Bot.
+"""Тесты для sotto.commands: диспетчер команд без сети и без реального Bot.
 
 Message/Chat/User собираются напрямую, как в tests/test_bot.py. Хендлер достаётся
 из router и вызывается напрямую. ConfigStore/PromptStore/Database подделаны через
@@ -18,10 +18,10 @@ from zoneinfo import ZoneInfo
 import pytest
 from aiogram.types import Chat, Document, Message, MessageEntity, PhotoSize, User
 
-from trolobot.commands import build_commands_router
-from trolobot.config import KeyInfo
-from trolobot.config_models import Config
-from trolobot.db import (
+from sotto.commands import build_commands_router
+from sotto.config import KeyInfo
+from sotto.config_models import Config
+from sotto.db import (
     ChatMemoryRow,
     Database,
     JokeRow,
@@ -29,13 +29,13 @@ from trolobot.db import (
     PeopleThreadRow,
     SelfFactRow,
 )
-from trolobot.few_shot import FewShot
-from trolobot.patterns import Patterns
-from trolobot.responder import PreviewOutcome, SendOutcome
-from trolobot.settings import Settings
-from trolobot.timeutil import day_key, local_dt
-from trolobot.vocab import VocabStore
-from trolobot.weather import Place, Weather
+from sotto.few_shot import FewShot
+from sotto.patterns import Patterns
+from sotto.responder import PreviewOutcome, SendOutcome
+from sotto.settings import Settings
+from sotto.timeutil import day_key, local_dt
+from sotto.vocab import VocabStore
+from sotto.weather import Place, Weather
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
@@ -2488,7 +2488,7 @@ async def test_status_starts_with_version(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status")
     await handler(message)
 
-    assert sent[0].startswith("trolobot v")
+    assert sent[0].startswith("sotto v")
 
 
 # --- /diary (CLAUDE.md, "дневник дня") ------------------------------------------

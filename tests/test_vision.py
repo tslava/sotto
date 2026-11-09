@@ -1,4 +1,4 @@
-"""Тесты для trolobot.vision: выбор размера, решение «описывать ли», сам вызов
+"""Тесты для sotto.vision: выбор размера, решение «описывать ли», сам вызов
 модели со зрением и сборка текста сообщения. Сети нет — httpx.MockTransport,
 как в tests/test_followup.py и tests/test_llm.py.
 """
@@ -16,10 +16,10 @@ from pathlib import Path
 import httpx
 import pytest
 
-from trolobot.config_models import Config, VisionConfig
-from trolobot.llm import LLMClient
-from trolobot.timeutil import day_key
-from trolobot.vision import (
+from sotto.config_models import Config, VisionConfig
+from sotto.llm import LLMClient
+from sotto.timeutil import day_key
+from sotto.vision import (
     VisionDescriber,
     photo_text,
     pick_photo_size,

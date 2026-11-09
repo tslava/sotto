@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from trolobot.db import JokeRow
-from trolobot.jokes import joke_used, render_jokes
+from sotto.db import JokeRow
+from sotto.jokes import joke_used, render_jokes
 
 DAY = 86400
 NOW = 100 * DAY

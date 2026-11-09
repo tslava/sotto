@@ -24,17 +24,17 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from trolobot.config_models import Config
-from trolobot.db import MessageRow
-from trolobot.filters import FilterContext, check_output
-from trolobot.gate import should_consider
-from trolobot.gate_types import Decision, GateMessage, GateState
-from trolobot.judge import Judge
-from trolobot.llm import LLMClient
-from trolobot.patterns import Patterns
-from trolobot.places import validate_fact
-from trolobot.prompt import CHAT_OPEN, build_messages
-from trolobot.sanitize import normalize_text, sanitize_display_name, stable_n
+from sotto.config_models import Config
+from sotto.db import MessageRow
+from sotto.filters import FilterContext, check_output
+from sotto.gate import should_consider
+from sotto.gate_types import Decision, GateMessage, GateState
+from sotto.judge import Judge
+from sotto.llm import LLMClient
+from sotto.patterns import Patterns
+from sotto.places import validate_fact
+from sotto.prompt import CHAT_OPEN, build_messages
+from sotto.sanitize import normalize_text, sanitize_display_name, stable_n
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 DAY_NOW = int(datetime(2026, 6, 10, 15, 0, tzinfo=WARSAW).timestamp())  # день, вне ночного окна

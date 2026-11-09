@@ -1,4 +1,4 @@
-"""Тесты для trolobot.places — таблично, где возможно (по образцу test_patterns.py).
+"""Тесты для sotto.places — таблично, где возможно (по образцу test_patterns.py).
 
 Rows строятся вручную (_row), не через Database — select_places/render_places_block/
 validate_fact чистые синхронные функции без I/O (CLAUDE.md, "Интерфейсы этапа 5").
@@ -10,10 +10,10 @@ import random
 
 import pytest
 
-from trolobot.config_models import PlacesConfig
-from trolobot.db import PlaceRow
-from trolobot.places import render_places_block, render_places_menu, select_places, validate_fact
-from trolobot.prompt import PLACES_NONE
+from sotto.config_models import PlacesConfig
+from sotto.db import PlaceRow
+from sotto.places import render_places_block, render_places_menu, select_places, validate_fact
+from sotto.prompt import PLACES_NONE
 
 
 def _row(

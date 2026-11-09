@@ -21,11 +21,11 @@ from pathlib import Path
 
 import pytest
 
-from trolobot.config_models import Config
-from trolobot.db import MessageRow
-from trolobot.few_shot import load_few_shot
-from trolobot.filters import FilterContext, FilterVerdict, check_output
-from trolobot.vocab import Vocab, parse_vocab
+from sotto.config_models import Config
+from sotto.db import MessageRow
+from sotto.few_shot import load_few_shot
+from sotto.filters import FilterContext, FilterVerdict, check_output
+from sotto.vocab import Vocab, parse_vocab
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SYSTEM_PROMPT = (REPO_ROOT / "prompts" / "system.txt").read_text(encoding="utf-8")
