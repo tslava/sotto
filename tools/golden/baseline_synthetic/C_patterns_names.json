@@ -1,0 +1,148 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+01:00"
+ },
+ "group": "C",
+ "id": "C_patterns_names",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "Фёдор, ты тут?"
+    },
+    "result": "\\bфёдор(а|у|ом|е|ы)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "Федор, ты тут?"
+    },
+    "result": "\\bфедор(а|у|ом|е|ы)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "спроси у Федора"
+    },
+    "result": "\\bфедор(а|у|ом|е|ы)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "скажи Фёдору"
+    },
+    "result": "\\bфёдор(а|у|ом|е|ы)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "с Федей не спорь"
+    },
+    "result": "\\bфед(я|и|е|ю|ей)\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "отец вчера звонил"
+    },
+    "result": "\\b(отец|отц(а|у|ом|е))\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "передай отцу привет"
+    },
+    "result": "\\b(отец|отц(а|у|ом|е))\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "поговори с отцом"
+    },
+    "result": "\\b(отец|отц(а|у|ом|е))\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "у батюшки спроси"
+    },
+    "result": "\\bбатюшк(а|и|е|у|ой)\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "вот дед даёт"
+    },
+    "result": "\\bдед(а|у|ом|е|ы)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "с дедом не поспоришь"
+    },
+    "result": "\\bдед(а|у|ом|е|ы)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "федерация и дедлайн"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "Федяев опять опоздал"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "отечество в опасности"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "ФЁДОР"
+    },
+    "result": "\\bфёдор(а|у|ом|е|ы)?\\b"
+   },
+   {
+    "case": {
+     "method": "mentions_bot",
+     "text": "@golden_bot привет"
+    },
+    "result": true
+   },
+   {
+    "case": {
+     "method": "mentions_bot",
+     "text": "привет@golden_bot"
+    },
+    "result": false
+   },
+   {
+    "case": {
+     "method": "mentions_bot",
+     "text": "@golden_botik привет"
+    },
+    "result": false
+   },
+   {
+    "case": {
+     "method": "mentions_bot",
+     "text": "@GOLDEN_BOT привет"
+    },
+    "result": true
+   }
+  ]
+ ],
+ "sent": []
+}

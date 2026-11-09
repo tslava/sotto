@@ -12,3 +12,8 @@ __pycache__/
 # Свои словари словечек (/words) живут в БД бота, не в репо; пример — vocab.example.yaml
 vocab*.yaml
 !vocab.example.yaml
+
+# coverage
+.coverage
+coverage.json
+htmlcov/

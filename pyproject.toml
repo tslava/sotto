@@ -17,6 +17,7 @@ dependencies = [
 dev = [
     "pytest>=9.1",
     "pytest-asyncio>=1.4",
+    "pytest-cov>=7.1",
     "ruff>=0.16",
     "mypy>=2.3",
     "types-PyYAML>=6.0",
@@ -32,12 +33,12 @@ packages = ["src/trolobot"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = ["src", "tests", "tools"]
 # ruff format переписывает python-блоки внутри markdown, а CLAUDE.md — контракт,
 # а не исполняемый код: в нём есть сигнатуры без тел и комментарии-пояснения.
 extend-exclude = ["*.md"]
@@ -50,9 +51,17 @@ ignore = ["RUF001", "RUF002", "RUF003"]  # кириллица в строках 
 python_version = "3.12"
 strict = true
 mypy_path = "src"
-packages = ["trolobot"]
+packages = ["trolobot", "tools"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = ["aiosqlite.*"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+# src/ feeds the total floor, tools/ (and future src modules) the per-module floor:
+# tools/coverage_gate.py.
+source = ["src", "tools"]
+
+[tool.coverage.report]
+exclude_also = ["if TYPE_CHECKING:", "if __name__ == .__main__.:"]

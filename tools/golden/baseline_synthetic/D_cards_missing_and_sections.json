@@ -1,0 +1,21 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+01:00"
+ },
+ "group": "D",
+ "id": "D_cards_missing_and_sections",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  {
+   "behaviour": null,
+   "behaviour.live_talk": null,
+   "behaviour.nope": null,
+   "filters": null,
+   "llm": null,
+   "nonexistent.key": null
+  }
+ ],
+ "sent": []
+}

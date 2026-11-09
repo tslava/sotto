@@ -1,0 +1,41 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+01:00"
+ },
+ "group": "B",
+ "id": "B_stickers_ocr",
+ "logged_exceptions": [],
+ "requests": [
+  {
+   "kind": "llm",
+   "max_tokens": 120,
+   "messages": [
+    {
+     "content": [
+      {
+       "text": "На стикере надпись. Ответь одним JSON без markdown: {\"text\": \"надпись дословно\", \"when\": \"когда такой стикер уместен в дружеском чате, 3-8 слов\"}. Если надписи нет — text пустой.",
+       "type": "text"
+      },
+      {
+       "image_url": {
+        "url": "data:image/webp;base64,Z29sZGVuLXN0aWNrZXItYnl0ZXM="
+       },
+       "type": "image_url"
+      }
+     ],
+     "role": "user"
+    }
+   ],
+   "model": "anthropic/claude-opus-5",
+   "temperature": 0.8
+  }
+ ],
+ "result": [
+  [
+   "НЕ ЗНАЮ, НЕ ПРОВЕРЯЛ",
+   "когда не хотят отвечать"
+  ]
+ ],
+ "sent": []
+}

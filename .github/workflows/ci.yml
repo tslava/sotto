@@ -23,13 +23,19 @@ jobs:
         run: uv sync --frozen
 
       - name: Lint (ruff check)
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests tools
 
       - name: Format check (ruff format)
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check src tests tools
 
       - name: Type check (mypy)
-        run: uv run mypy src
+        run: uv run mypy
 
-      - name: Tests (pytest)
-        run: uv run pytest -q
+      - name: Tests (pytest, with coverage)
+        run: uv run pytest -q --cov --cov-report=json
+
+      - name: Coverage gate (total >= 93 %, new modules >= 95 %)
+        run: uv run python -m tools.coverage_gate
+
+      - name: Language gate (report only)
+        run: uv run python -m tools.check_language

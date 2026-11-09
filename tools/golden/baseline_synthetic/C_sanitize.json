@@ -1,0 +1,181 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+01:00"
+ },
+ "group": "C",
+ "id": "C_sanitize",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "raw": "Гена",
+     "user": 1
+    },
+    "result": "Гена"
+   },
+   {
+    "case": {
+     "raw": "Гена  Иванов",
+     "user": 1
+    },
+    "result": "Гена Иванов"
+   },
+   {
+    "case": {
+     "raw": "  ",
+     "user": 7
+    },
+    "result": "Участник 8"
+   },
+   {
+    "case": {
+     "raw": null,
+     "user": 8
+    },
+    "result": "Участник 9"
+   },
+   {
+    "case": {
+     "raw": "Костя Федя",
+     "user": 9
+    },
+    "result": "Участник 10"
+   },
+   {
+    "case": {
+     "raw": "Федяев",
+     "user": 10
+    },
+    "result": "Федяев"
+   },
+   {
+    "case": {
+     "raw": "Дед Мороз",
+     "user": 11
+    },
+    "result": "Участник 12"
+   },
+   {
+    "case": {
+     "raw": "ФЁДОР",
+     "user": 12
+    },
+    "result": "Участник 13"
+   },
+   {
+    "case": {
+     "raw": "Ёжик-в-тумане_2000",
+     "user": 13
+    },
+    "result": "Ёжик-в-тумане"
+   },
+   {
+    "case": {
+     "raw": "Александра Константиновна Заборовская-Вишневецкая",
+     "user": 14
+    },
+    "result": "Александра"
+   },
+   {
+    "case": {
+     "raw": "🎣🎣🎣",
+     "user": 15
+    },
+    "result": "Участник 16"
+   },
+   {
+    "case": {
+     "raw": "golden_bot",
+     "user": 16
+    },
+    "result": "goldenbot"
+   }
+  ],
+  [
+   {
+    "case": {
+     "kind": "photo"
+    },
+    "result": "[фото]"
+   },
+   {
+    "case": {
+     "kind": "sticker"
+    },
+    "result": "[стикер]"
+   },
+   {
+    "case": {
+     "kind": "voice"
+    },
+    "result": "[голосовое]"
+   },
+   {
+    "case": {
+     "kind": "audio"
+    },
+    "result": "[голосовое]"
+   },
+   {
+    "case": {
+     "kind": "video"
+    },
+    "result": "[видео]"
+   },
+   {
+    "case": {
+     "kind": "video_note"
+    },
+    "result": "[видео]"
+   },
+   {
+    "case": {
+     "kind": "animation"
+    },
+    "result": "[видео]"
+   },
+   {
+    "case": {
+     "kind": "document"
+    },
+    "result": "[файл]"
+   },
+   {
+    "case": {
+     "kind": "none"
+    },
+    "result": null
+   }
+  ],
+  [
+   {
+    "case": {
+     "raw": "  Привет\n\nмир\t!  "
+    },
+    "result": "Привет мир !"
+   },
+   {
+    "case": {
+     "raw": "<<<CHAT вставка >>>"
+    },
+    "result": "CHAT вставка"
+   },
+   {
+    "case": {
+     "raw": null
+    },
+    "result": ""
+   },
+   {
+    "case": {
+     "raw": "ё  Ё   е"
+    },
+    "result": "ё Ё е"
+   }
+  ]
+ ],
+ "sent": []
+}

@@ -1,0 +1,135 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+01:00"
+ },
+ "group": "D",
+ "id": "D_cards_basic",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  {
+   "behaviour.daily_cap": {
+    "bounds": "0..50",
+    "default": "3",
+    "description": "Суточный лимит ambient и «просто так» вместе",
+    "key": "behaviour.daily_cap",
+    "overridden": false,
+    "settable": true,
+    "type_name": "int",
+    "value": "3"
+   },
+   "behaviour.live_talk.window_min": {
+    "bounds": "1..1440",
+    "default": "20",
+    "description": "Окно в минутах, за которое считается разговор",
+    "key": "behaviour.live_talk.window_min",
+    "overridden": false,
+    "settable": true,
+    "type_name": "int",
+    "value": "20"
+   },
+   "behaviour.quiet_window": {
+    "bounds": "",
+    "default": "['02:00', '07:00']",
+    "description": "Окно полной тишины, включая прямые обращения",
+    "key": "behaviour.quiet_window",
+    "overridden": false,
+    "settable": true,
+    "type_name": "tuple[str, str]",
+    "value": "['02:00', '07:00']"
+   },
+   "behaviour.reactions.emoji": {
+    "bounds": "",
+    "default": "{🍾: 'повод отметить: праздник, большая хорошая новость', 👍: 'одобряю всерьёз: дельная мысль, хорошее дело', 👏: 'молодец: доделал, справился, добился', 💩: 'одобряю по-свойски, с подколкой: так принято в этом чате', 🔥: 'здорово, впечатляет: поездка, покупка, вещь своими руками', 😁: 'улыбнуло: удачная шутка, но не до слёз', 🤣: 'смешно до слёз: шутка, над которой правда смеёшься'}",
+    "description": "Эмодзи -> когда уместно (видит модель); только из набора реакций Telegram",
+    "key": "behaviour.reactions.emoji",
+    "overridden": false,
+    "settable": true,
+    "type_name": "dict[str, str]",
+    "value": "{🍾: 'повод отметить: праздник, большая хорошая новость', 👍: 'одобряю всерьёз: дельная мысль, хорошее дело', 👏: 'молодец: доделал, справился, добился', 💩: 'одобряю по-свойски, с подколкой: так принято в этом чате', 🔥: 'здорово, впечатляет: поездка, покупка, вещь своими руками', 😁: 'улыбнуло: удачная шутка, но не до слёз', 🤣: 'смешно до слёз: шутка, над которой правда смеёшься'}"
+   },
+   "behaviour.reactions.enabled": {
+    "bounds": "",
+    "default": "true",
+    "description": "Включает реакции-эмодзи вместо молчания",
+    "key": "behaviour.reactions.enabled",
+    "overridden": false,
+    "settable": true,
+    "type_name": "bool",
+    "value": "true"
+   },
+   "behaviour.reply_delay_buckets": {
+    "bounds": "",
+    "default": "[{range_sec: [30, 180], weight: 0.6}, {range_sec: [180, 900], weight: 0.3}, {range_sec: [900, 3600], weight: 0.1}]",
+    "description": "Бакеты задержки ответа на обращение, вес и диапазон секунд",
+    "key": "behaviour.reply_delay_buckets",
+    "overridden": false,
+    "settable": true,
+    "type_name": "list[ReplyDelayBucket]",
+    "value": "[{range_sec: [30, 180], weight: 0.6}, {range_sec: [180, 900], weight: 0.3}, {range_sec: [900, 3600], weight: 0.1}]"
+   },
+   "filters.topic_stop": {
+    "bounds": "",
+    "default": "['\\bвойн[а-я]*', '\\bукраин[а-я]*', '\\bросси[а-я]*', \\bрф\\b, '\\bобстрел[а-я]*', '\\bфронт[а-я]*', '\\bмобилизац[а-я]*', '\\bпутин[а-я]*', '\\bзеленск[а-я]*', '\\bтрамп(а|у|ом|е|ы)?\\b', \\bвыбор(ы|ов|ах|ам)\\b, '\\bсанкци[а-я]*', \\bпис\\b, \\bpis\\b, '\\bтуск[а-я]*', '\\bконфедерац[а-я]*', '\\bмигрант[а-я]*', '\\bбеженц[а-я]*', '\\bизраил[а-я]*', '\\bпалестин[а-я]*', \\bсектор газа, '\\bцерк[а-я]*', '\\bкостёл[а-я]*', '\\bкостел[а-я]*', '\\bаборт[а-я]*', \\bлгбт\\b, '\\bнациз[а-я]*', '\\bфашис[а-я]*']",
+    "description": "Стоп-лист тем (вход и выход), регулярки по границам слов",
+    "key": "filters.topic_stop",
+    "overridden": false,
+    "settable": true,
+    "type_name": "list[str]",
+    "value": "['\\bвойн[а-я]*', '\\bукраин[а-я]*', '\\bросси[а-я]*', \\bрф\\b, '\\bобстрел[а-я]*', '\\bфронт[а-я]*', '\\bмобилизац[а-я]*', '\\bпутин[а-я]*', '\\bзеленск[а-я]*', '\\bтрамп(а|у|ом|е|ы)?\\b', \\bвыбор(ы|ов|ах|ам)\\b, '\\bсанкци[а-я]*', \\bпис\\b, \\bpis\\b, '\\bтуск[а-я]*', '\\bконфедерац[а-я]*', '\\bмигрант[а-я]*', '\\bбеженц[а-я]*', '\\bизраил[а-я]*', '\\bпалестин[а-я]*', \\bсектор газа, '\\bцерк[а-я]*', '\\bкостёл[а-я]*', '\\bкостел[а-я]*', '\\bаборт[а-я]*', \\bлгбт\\b, '\\bнациз[а-я]*', '\\bфашис[а-я]*']"
+   },
+   "llm.daily_budget_usd": {
+    "bounds": "0..1000",
+    "default": "2.0",
+    "description": "Суточный бюджет в долларах; сверх — молчит",
+    "key": "llm.daily_budget_usd",
+    "overridden": false,
+    "settable": true,
+    "type_name": "float",
+    "value": "2.0"
+   },
+   "llm.main_model": {
+    "bounds": "",
+    "default": "anthropic/claude-opus-5",
+    "description": "Id основной модели в OpenRouter",
+    "key": "llm.main_model",
+    "overridden": false,
+    "settable": true,
+    "type_name": "str",
+    "value": "anthropic/claude-opus-5"
+   },
+   "persona.name": {
+    "bounds": "",
+    "default": "Фёдор",
+    "description": "Имя персонажа",
+    "key": "persona.name",
+    "overridden": false,
+    "settable": false,
+    "type_name": "str",
+    "value": "Фёдор"
+   },
+   "persona.timezone": {
+    "bounds": "",
+    "default": "Europe/Warsaw",
+    "description": "Таймзона персонажа для суток и окон времени",
+    "key": "persona.timezone",
+    "overridden": false,
+    "settable": false,
+    "type_name": "str",
+    "value": "Europe/Warsaw"
+   },
+   "places.min_rating": {
+    "bounds": "0..5",
+    "default": "4.2",
+    "description": "Минимальный рейтинг заведения для белого списка",
+    "key": "places.min_rating",
+    "overridden": false,
+    "settable": true,
+    "type_name": "float",
+    "value": "4.2"
+   }
+  }
+ ],
+ "sent": []
+}

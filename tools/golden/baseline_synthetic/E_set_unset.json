@@ -1,0 +1,158 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+01:00"
+ },
+ "db": {
+  "config_audit": [
+   {
+    "changed_by": 7001,
+    "created_at": 1793790000,
+    "id": 1,
+    "key": "behaviour.daily_cap",
+    "new_value": "7",
+    "old_value": null
+   },
+   {
+    "changed_by": 7001,
+    "created_at": 1793790000,
+    "id": 2,
+    "key": "filters.topic_stop",
+    "new_value": "[газон, забор]",
+    "old_value": null
+   },
+   {
+    "changed_by": 7001,
+    "created_at": 1793790000,
+    "id": 3,
+    "key": "behaviour.daily_cap",
+    "new_value": null,
+    "old_value": "7"
+   },
+   {
+    "changed_by": 7001,
+    "created_at": 1793790000,
+    "id": 4,
+    "key": "filters.topic_stop",
+    "new_value": null,
+    "old_value": "[газон, забор]"
+   }
+  ],
+  "few_shot_versions": [
+   {
+    "active": 1,
+    "body_yaml": {
+     "len": 3609,
+     "sha256": "95c579f515869e1660027a9fc9696f6c29dca658a574a2bda9e62e8179964d7d"
+    },
+    "created_at": 1793790000,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "prompt_versions": [
+   {
+    "active": 1,
+    "body": {
+     "len": 5562,
+     "sha256": "9ae642cafce060640c71552d0b192948577f44ae4ebb89f264d3a9697fe9fb40"
+    },
+    "created_at": 1793790000,
+    "note": "seed from file",
+    "version": 1
+   }
+  ]
+ },
+ "group": "E",
+ "id": "E_set_unset",
+ "logged_exceptions": [
+  "ValueError",
+  "ValueError",
+  "ValueError"
+ ],
+ "result": [
+  [
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "behaviour.daily_cap: None → 7"
+     }
+    ],
+    "command": "/set behaviour.daily_cap 7"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Ошибка: behaviour.daily_cap: Input should be less than or equal to 50"
+     }
+    ],
+    "command": "/set behaviour.daily_cap 9999"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Ошибка: persona меняется только в config.yaml"
+     }
+    ],
+    "command": "/set persona.name Вася"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Ошибка: неизвестный раздел: 'nothing.here'"
+     }
+    ],
+    "command": "/set nothing.here 1"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "filters.topic_stop: None → [газон, забор]"
+     }
+    ],
+    "command": "/set filters.topic_stop [газон, забор]"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Использование: /set <ключ> <значение>. Ключи: /get, описание: /get <ключ>"
+     }
+    ],
+    "command": "/set"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "behaviour.daily_cap: 7\nтип: int, 0..50\nСуточный лимит ambient и «просто так» вместе\nпереопределён, в yaml: 3"
+     }
+    ],
+    "command": "/get behaviour.daily_cap"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "behaviour.daily_cap: сброшен к 3"
+     }
+    ],
+    "command": "/unset behaviour.daily_cap"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "filters.topic_stop: сброшен к ['\\bвойн[а-я]*', '\\bукраин[а-я]*', '\\bросси[а-я]*', \\bрф\\b, '\\bобстрел[а-я]*', '\\bфронт[а-я]*', '\\bмобилизац[а-я]*', '\\bпутин[а-я]*', '\\bзеленск[а-я]*', '\\bтрамп(а|у|ом|е|ы)?\\b', \\bвыбор(ы|ов|ах|ам)\\b, '\\bсанкци[а-я]*', \\bпис\\b, \\bpis\\b, '\\bтуск[а-я]*', '\\bконфедерац[а-я]*', '\\bмигрант[а-я]*', '\\bбеженц[а-я]*', '\\bизраил[а-я]*', '\\bпалестин[а-я]*', \\bсектор газа, '\\bцерк[а-я]*', '\\bкостёл[а-я]*', '\\bкостел[а-я]*', '\\bаборт[а-я]*', \\bлгбт\\b, '\\bнациз[а-я]*', '\\bфашис[а-я]*']"
+     }
+    ],
+    "command": "/unset filters.topic_stop"
+   }
+  ]
+ ]
+}

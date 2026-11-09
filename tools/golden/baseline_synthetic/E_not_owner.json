@@ -1,0 +1,47 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+01:00"
+ },
+ "db": {
+  "few_shot_versions": [
+   {
+    "active": 1,
+    "body_yaml": {
+     "len": 3609,
+     "sha256": "95c579f515869e1660027a9fc9696f6c29dca658a574a2bda9e62e8179964d7d"
+    },
+    "created_at": 1793790000,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "prompt_versions": [
+   {
+    "active": 1,
+    "body": {
+     "len": 5562,
+     "sha256": "9ae642cafce060640c71552d0b192948577f44ae4ebb89f264d3a9697fe9fb40"
+    },
+    "created_at": 1793790000,
+    "note": "seed from file",
+    "version": 1
+   }
+  ]
+ },
+ "group": "E",
+ "id": "E_not_owner",
+ "logged_exceptions": [],
+ "result": [
+  [
+   {
+    "answers": [],
+    "command": "/help"
+   },
+   {
+    "answers": [],
+    "command": "/panic"
+   }
+  ]
+ ]
+}
