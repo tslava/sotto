@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -1 64 64" width="128" height="128" role="img" aria-label="sotto">
+  <title>sotto</title>
+  <path d="M14 8h36a8 8 0 0 1 8 8v22a8 8 0 0 1-8 8H29l-11 9v-9h-4a8 8 0 0 1-8-8V16a8 8 0 0 1 8-8z" fill="#cfd6de" stroke="#1b1e23" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="13" y="16" width="38" height="11" rx="5.5" fill="#1b1e23"/>
+  <circle cx="24" cy="21.5" r="3.2" fill="#39c2b4"/>
+  <path d="M26 35q6 4 12 0" fill="none" stroke="#1b1e23" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M32 8V3" stroke="#1b1e23" stroke-width="2.6" stroke-linecap="round"/>
+  <circle cx="32" cy="3" r="2.4" fill="#39c2b4"/>
+</svg>
