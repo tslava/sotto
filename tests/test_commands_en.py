@@ -214,6 +214,22 @@ async def test_owner_errors_render_through_the_english_catalog(setup, sent: list
     assert sent == ["Error: persona can only be changed in config.yaml"]
 
 
+async def test_a_config_validator_error_renders_through_the_validation_area(
+    setup,
+    sent: list[str],  # type: ignore[no-untyped-def]
+) -> None:
+    _, _, store, _, handler = setup()
+
+    async def refuse(key: str, value: str, changed_by: int, now: int):  # type: ignore[no-untyped-def]
+        from sotto.errors import OwnerError
+
+        raise OwnerError("validation.time", key=key, value=value)
+
+    store.set = refuse  # type: ignore[method-assign]
+    await _run(handler, "/set behaviour.quiet_window 25:00")
+    assert sent == ["Error: behaviour.quiet_window: invalid time '25:00', expected HH:MM"]
+
+
 async def test_changelog_in_english(setup, sent: list[str]) -> None:  # type: ignore[no-untyped-def]
     deps, _, _, _, handler = setup()
     deps.persona = replace(

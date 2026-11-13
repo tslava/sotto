@@ -30,7 +30,7 @@ from sotto.weather import (
     render_weather,
     render_weather_place,
 )
-from tests.packs import LEGACY_FRAG
+from tests.packs import LEGACY_FRAG, legacy_config
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 TZ = "Europe/Warsaw"
@@ -437,7 +437,7 @@ def test_home_name_property() -> None:
 
 
 async def test_geocode_parses_first_result() -> None:
-    cfg = Config()
+    cfg = legacy_config()
     client, calls = _client(lambda _req: httpx.Response(200, json=_geocode_body()), cfg)
     try:
         place = await client.geocode("Гданьск")

@@ -1,8 +1,10 @@
 """Owner-facing errors: a code plus parameters, rendered through the pack's catalog.
 
 ``OwnerError`` is a ``ValueError`` so existing ``except ValueError`` keeps working. The text the
-owner reads is ``catalog.t("errors." + code, **params)`` (``commands.py`` renders it); ``str(exc)``
-is only a diagnostic for logs and tests. Pydantic's own validation messages are not wrapped.
+owner reads is ``catalog.t(key, **params)`` (``commands.py`` renders it) where ``key`` is
+``errors.<code>``, or the code itself when it already names a catalog area
+(``validation.time``: the config validators). ``str(exc)`` is only a diagnostic for logs and tests.
+Pydantic's own validation messages are not wrapped.
 """
 
 from __future__ import annotations
@@ -19,5 +21,9 @@ class OwnerError(ValueError):
         detail = ", ".join(f"{key}={value!r}" for key, value in params.items())
         super().__init__(f"{code}: {detail}" if detail else code)
 
+    @property
+    def catalog_key(self) -> str:
+        return self.code if "." in self.code else f"errors.{self.code}"
+
     def render(self, catalog: Catalog) -> str:
-        return catalog.t(f"errors.{self.code}", **self.params)
+        return catalog.t(self.catalog_key, **self.params)

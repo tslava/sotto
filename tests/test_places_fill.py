@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +19,6 @@ import httpx
 import pytest
 import yaml
 
-from sotto.config_models import PlacesConfig
 from sotto.db import Database
 from sotto.llm import LLMResult
 from sotto.persona import load_persona
@@ -39,16 +38,14 @@ from sotto.places_fill import (
     run as run_fill,
 )
 from sotto.settings import Settings
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_PACK, legacy_config
 
 REAL_MANUAL_PATH = LEGACY_PACK / "places_manual.yaml"
 API_KEY = "gp-test-key"
 
 
-# No config file at all: the engine defaults, as these tests were written for.
-_NO_CONFIG_PERSONA = replace(
-    load_persona(LEGACY_PACK), config_path=Path("/nonexistent/config.yaml")
-)
+# The legacy pack carries the search anchor and queries these tests were written for.
+_NO_CONFIG_PERSONA = load_persona(LEGACY_PACK)
 
 
 async def run(argv: list[str] | None = None, **kwargs: Any) -> list[FetchedPlace]:
@@ -369,7 +366,7 @@ async def test_manual_only_without_key_writes_all_manual_rows(tmp_path: Path) ->
 
 def test_build_manual_only_rows_marks_rating_and_reviews_as_manual() -> None:
     manual = [ManualEntry(name="Bórnik", quiet=True, category="outskirts", district="Bórnik")]
-    rows = build_manual_only_rows(manual, now=1_000, cfg=PlacesConfig())
+    rows = build_manual_only_rows(manual, now=1_000, cfg=legacy_config().places)
 
     assert rows == [
         FetchedPlace(
@@ -502,7 +499,7 @@ async def test_dry_run_does_not_mark_places_not_seen(tmp_path: Path) -> None:
 
 
 def test_pick_district_from_address_and_manual_override() -> None:
-    cfg = PlacesConfig()
+    cfg = legacy_config().places
     assert pick_district(address="Leśna 38, Dolna, Wolsań", manual=None, cfg=cfg) == "Dolna"
     assert pick_district(address="Leszczykowo, ul. Główna 1", manual=None, cfg=cfg) == "Leszczykowo"
     assert pick_district(address="Nowhere specific", manual=None, cfg=cfg) == "Wolsań"

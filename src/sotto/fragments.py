@@ -90,6 +90,9 @@ FRAGMENT_SPEC: dict[str, frozenset[str]] = _spec(
     ("placeholders.messages_empty", ""),
     ("placeholders.reply_to_none", ""),
     ("placeholders.reply_to_unavailable", ""),
+    # Name and text of the few-shot pair /ex add stores when the bot's reply has no trigger message.
+    ("placeholders.ex_add_name", ""),
+    ("placeholders.ex_add_user", ""),
     # The "situation" paragraph of the user message, one per trigger.
     ("situations.ambient", ""),
     ("situations.late", ""),

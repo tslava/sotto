@@ -29,6 +29,7 @@ from typing import Any
 import httpx
 
 from sotto.config import load_config
+from sotto.fragments import PROMPT_NAMES
 from sotto.i18n import ENGINE_LOCALES_DIR, FALLBACK_LOCALE, catalog_parity, read_locale_dir
 from sotto.persona import PackError, Persona, load_persona
 from sotto.stores import SeedPlan, build_seed_plan
@@ -41,6 +42,37 @@ EXIT_SEED = 3
 SEED_TARGETS = ("prompt", "few_shot")
 
 
+def required_pack_files() -> list[str]:
+    """Files ``load_persona`` / ``packcheck`` cannot do without, relative to the pack root."""
+    return [
+        "pack.yaml",
+        "config.yaml",
+        "few_shot.yaml",
+        "fragments.yaml",
+        *(f"prompts/{name}.txt" for name in PROMPT_NAMES),
+    ]
+
+
+def _shipped(ship: Sequence[str], relative: str) -> bool:
+    """``ship`` names the file itself or a directory (``prompts/``) that contains it."""
+    for entry in ship:
+        normal = entry.strip("/")
+        if normal == relative or relative.startswith(normal + "/"):
+            return True
+    return False
+
+
+def ship_coverage_errors(persona: Persona) -> list[str]:
+    """Every file the loader requires must be listed in ``ship``: a payload that leaves one out
+    would boot a different (or no) pack on the server."""
+    ship = persona.manifest.ship
+    return [
+        f"pack.yaml: ship does not cover required file {name!r}"
+        for name in required_pack_files()
+        if not _shipped(ship, name)
+    ]
+
+
 def check_pack(persona: Persona) -> list[str]:
     """Static checks of a loaded pack (no database, no wiring). Empty list = fine."""
     errors: list[str] = []
@@ -48,6 +80,7 @@ def check_pack(persona: Persona) -> list[str]:
     for entry in persona.manifest.ship:
         if not (persona.root / entry).exists():
             errors.append(f"pack.yaml: ship entry {entry!r} does not exist")
+    errors += ship_coverage_errors(persona)
 
     errors += persona.prompt_errors()
 

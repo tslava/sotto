@@ -2444,8 +2444,8 @@ class Fragments: get(key) | text(key) -> str | items(key) -> list[str] | table(k
 
 Всё, что бот пишет владельцу в личку (`/help`, `/status`, ответы команд, тревога о отказе провайдера,
 тексты ошибок), живёт в каталоге, а не в коде. Английский каталог — часть движка: `locales/en/{help,
-status,commands,alerts,errors}.yaml` (копируется в образ рядом с `personas/`). Пакет может нести свой
-`locale/<код>/` с теми же пятью файлами; чего в нём нет, берётся из английского (один WARNING на ключ).
+status,commands,alerts,errors,validation,config_keys}.yaml` (копируется в образ рядом с `personas/`). Пакет
+может нести свой `locale/<код>/` с теми же семью файлами; чего в нём нет, берётся из английского (один WARNING на ключ).
 Продакшен-пакет после перехода — `locale: en` без своего каталога; `personas/_legacy_ru/locale/ru/` —
 доказательство миграции (дословно прежние литералы), на котором golden и тесты остаются побайтно теми же.
 
@@ -2459,10 +2459,18 @@ def engine_catalog(locale="en") -> Catalog          # locales/<locale> + анг�
 def read_locale_dir(directory) -> dict[str, str | dict[str, str]]
 def catalog_parity(reference, other, plural_categories, *, other_name) -> list[str]
 # errors.py
-class OwnerError(ValueError): code, params; render(catalog) = catalog.t("errors." + code, **params)
+class OwnerError(ValueError): code, params; render(catalog) = catalog.t(catalog_key, **params)
+# catalog_key = "errors.<code>", а код с точкой («validation.time») — уже ключ каталога.
 # stores.py поднимает OwnerError("set_persona" | "set_unknown_section", key= | "ex_rm_range", index=, total=);
 # commands.py печатает errors.generic с текстом OwnerError.render или str(exc) (сообщения pydantic и
-# vocab.py идут как были).
+# vocab.py идут как были). Валидаторы config_models.py поднимают OwnerError("validation.<код>", ...): load_config
+# заворачивает их в ConfigError(.owner) с ключом из пути ошибки, ConfigStore.set отдаёт .owner наружу;
+# тексты — validation.yaml («{key}: invalid time {value!r}, expected HH:MM»).
+# config_keys.yaml: «config_keys.<ключ>» -> описание ключа для /get <ключ>; в движке английское, в пакете —
+# своё. Описания лежат в Field(description=...) моделей (английский, ≤ 90 символов), файл en из них
+# генерируется (`python -m tools.extract_config_keys write|check ФАЙЛ`); фигурные скобки в описании удвоены.
+# describe_key(current, base, overrides, key, catalog) берёт текст из каталога (свой язык пака, иначе английский
+# запасной), без каталога — Field.description. Каждый ключ-лист (включая persona.*) обязан иметь запись.
 # commands.py: _t(deps, "commands.x", **params) — каталог берётся из deps.persona.catalog (нет персоны —
 # английский движка). Ни одной строки владельцу в коде нет; общий хвост /help и неизвестной команды — help.text.
 # alerts.render_alert(..., catalog=None): alerts.*; OwnerAlerter берёт persona.catalog.
@@ -2479,7 +2487,11 @@ class OwnerError(ValueError): code, params; render(catalog) = catalog.t("errors.
 без места в каталоге, значение без литерала). `tools/split_changelog.py CHANGELOG.md --out chat_notes.md`
 выделяет блоки «Для чата» в `chat_notes.md` и проверяет, что они читаются обратно без потерь. Тесты:
 `tests/test_i18n.py` (паритет en и ru, статическая сверка каждого вызова каталога с английскими текстами),
-`tests/test_commands_en.py` (команды с английским каталогом).
+`tests/test_commands_en.py` (команды с английским каталогом), `tests/test_config_keys.py` (описания ключей,
+генератор, ошибки валидаторов). Строки `/ex add`, которые попадают в few-shot (имя и текст пары без сообщения-повода),
+не в каталоге владельца, а в `fragments.yaml` пака: `placeholders.ex_add_name` / `placeholders.ex_add_user`.
+`packcheck` требует, чтобы `ship` в `pack.yaml` покрывал каждый файл, без которого пак не грузится
+(`pack.yaml`, `config.yaml`, `few_shot.yaml`, `fragments.yaml`, все 13 промптов).
 
 ## Конвенции
 

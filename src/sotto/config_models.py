@@ -9,6 +9,8 @@ from datetime import date, time
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from sotto.errors import OwnerError
+
 _HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 # OpenRouter model id: "provider/model", например "openai/gpt-4o-mini" или
 # "anthropic/claude-3.5-sonnet:beta" — используется и llm.main_model, и llm.judge_model.
@@ -96,25 +98,23 @@ TELEGRAM_REACTIONS: frozenset[str] = frozenset(
     }
 )
 
-# Палитра реакций по умолчанию (решение владельца 05.11.2026): за 10 дней из трёх эмодзи
-# 🤣 было 21 раз, 👍 8, 💩 ни разу — у «смешно» был один вариант, а 👍 и 💩 описаны
-# одинаково. Описание уходит модели выбора реакции, по нему она различает оттенки.
-# Замер на 150 случаях: просьбу «не повторяйся» модель не слушает (34 из 41 стали 😁),
-# поэтому повтор ограничивает код — ReactionsConfig.max_repeat.
+# Default reaction palette: emoji -> when it fits (the text the reaction model sees). The
+# pack's config.yaml carries its own descriptions; these are generic. The model does not obey
+# "do not repeat yourself", so repeats are limited in code (ReactionsConfig.max_repeat).
 DEFAULT_REACTION_EMOJI: dict[str, str] = {
-    "🤣": "смешно до слёз: шутка, над которой правда смеёшься",
-    "😁": "улыбнуло: удачная шутка, но не до слёз",
-    "👍": "одобряю всерьёз: дельная мысль, хорошее дело",
-    "💩": "одобряю по-свойски, с подколкой: так принято в этом чате",
-    "🔥": "здорово, впечатляет: поездка, покупка, вещь своими руками",
-    "👏": "молодец: доделал, справился, добился",
-    "🍾": "повод отметить: праздник, большая хорошая новость",
+    "🤣": "very funny: a joke that really makes you laugh",
+    "😁": "amusing: a good joke, but not a loud laugh",
+    "👍": "genuine approval: a sound idea, a good deed",
+    "💩": "playful approval, with a tease",
+    "🔥": "impressive: a trip, a purchase, something made by hand",
+    "👏": "well done: finished it, managed, achieved it",
+    "🍾": "worth celebrating: a holiday, big good news",
 }
 
 
 def _validate_hhmm(value: str) -> str:
     if not _HHMM_RE.match(value):
-        raise ValueError(f"invalid time {value!r}, expected HH:MM")
+        raise OwnerError("validation.time", value=value)
     return value
 
 
@@ -125,20 +125,22 @@ def parse_hhmm(value: str) -> time:
 
 
 class PersonaConfig(BaseModel):
-    name: str = Field(default="Persona", description="Имя персонажа")
-    display_name: str = Field(default="Persona", description="Имя профиля бота в Telegram")
+    name: str = Field(default="Persona", description="Character name")
+    display_name: str = Field(default="Persona", description="Bot profile name in Telegram")
     name_triggers: list[str] = Field(
         default_factory=list,
-        description="Слова-обращения к персонажу без @, по границам слов",
+        description="Words that address the character without @, matched on word boundaries",
     )
     birth_date: date = Field(
-        default=date(1974, 4, 12), description="Дата рождения; возраст считается на лету"
+        default=date(1970, 1, 1), description="Date of birth; the age is computed on the fly"
     )
     arrived_wolsan: int = Field(
-        default=2006, ge=1950, le=2100, description="Год переезда в Волсань"
+        default=2000, ge=1950, le=2100, description="Year the character moved to the city"
     )
-    district: str = Field(default="Dolna", description="Родной район, который персонаж защищает")
-    timezone: str = Field(default="UTC", description="Таймзона персонажа для суток и окон времени")
+    district: str = Field(default="", description="Home district the character stands up for")
+    timezone: str = Field(
+        default="UTC", description="Character's timezone for days and time windows"
+    )
 
     def age(self, today: date) -> int:
         years = today.year - self.birth_date.year
@@ -151,13 +153,22 @@ class LiveTalkConfig(BaseModel):
     """Что считается «живым разговором» для ambient-реплик."""
 
     min_messages: int = Field(
-        default=2, ge=1, le=50, description="Минимум сообщений в окне для живого разговора"
+        default=2,
+        ge=1,
+        le=50,
+        description="Minimum messages in the window to count as a live conversation",
     )
     min_people: int = Field(
-        default=2, ge=1, le=50, description="Минимум разных людей в окне для живого разговора"
+        default=2,
+        ge=1,
+        le=50,
+        description="Minimum distinct people in the window to count as a live conversation",
     )
     window_min: int = Field(
-        default=20, ge=1, le=1440, description="Окно в минутах, за которое считается разговор"
+        default=20,
+        ge=1,
+        le=1440,
+        description="Window in minutes over which a conversation is counted",
     )
 
 
@@ -165,13 +176,13 @@ class SpontaneousConfig(BaseModel):
     """«Просто так» — бот пишет сам, без повода, когда в чате тихо."""
 
     per_week: int = Field(
-        default=2, ge=0, le=50, description="Сколько раз в неделю можно написать «просто так»"
+        default=2, ge=0, le=50, description="How many unprompted messages per week are allowed"
     )
     window: tuple[str, str] = Field(
-        default=("10:00", "22:00"), description="Окно времени HH:MM-HH:MM для «просто так»"
+        default=("10:00", "22:00"), description="Time window HH:MM-HH:MM for unprompted messages"
     )
     min_quiet_hours: int = Field(
-        default=3, ge=0, le=24, description="Часов тишины подряд перед репликой «просто так»"
+        default=3, ge=0, le=24, description="Hours of silence in a row before an unprompted message"
     )
 
     @field_validator("window")
@@ -186,15 +197,17 @@ class SpontaneousConfig(BaseModel):
 class ReplyDelayBucket(BaseModel):
     """Один бакет задержки ответа на обращение."""
 
-    weight: float = Field(ge=0.0, le=1.0, description="Вес бакета при выборе задержки ответа")
-    range_sec: tuple[int, int] = Field(description="Диапазон задержки в секундах, [мин, макс]")
+    weight: float = Field(
+        ge=0.0, le=1.0, description="Weight of the bucket when picking a reply delay"
+    )
+    range_sec: tuple[int, int] = Field(description="Delay range in seconds, [min, max]")
 
     @field_validator("range_sec")
     @classmethod
     def _validate_range(cls, value: tuple[int, int]) -> tuple[int, int]:
         lo, hi = value
         if not (0 <= lo <= hi <= 86400):
-            raise ValueError(f"invalid range_sec {value!r}: expected 0 <= min <= max <= 86400")
+            raise OwnerError("validation.range_sec", value=value)
         return value
 
 
@@ -212,45 +225,45 @@ class ReactionsConfig(BaseModel):
     иначе ``/set behaviour.reactions.emoji`` падает с понятной ошибкой.
     """
 
-    enabled: bool = Field(default=True, description="Включает реакции-эмодзи вместо молчания")
+    enabled: bool = Field(default=True, description="Enables emoji reactions instead of silence")
     probability: float = Field(
-        default=0.2, ge=0.0, le=1.0, description="Шанс поставить реакцию, когда она возможна"
+        default=0.2, ge=0.0, le=1.0, description="Chance to react when a reaction is possible"
     )
     cooldown_min: int = Field(
-        default=60, ge=0, le=1440, description="Не чаще одной реакции в N минут"
+        default=60, ge=0, le=1440, description="At most one reaction per N minutes"
     )
     daily_cap: int = Field(
-        default=8, ge=0, le=100, description="Потолок реакций в сутки, отдельно от ambient/mention"
+        default=8, ge=0, le=100, description="Reactions per day, separate from ambient/mention"
     )
     emoji: dict[str, str] = Field(
         default_factory=lambda: dict(DEFAULT_REACTION_EMOJI),
-        description="Эмодзи -> когда уместно (видит модель); только из набора реакций Telegram",
+        description="Emoji -> when it fits (the model sees it); only Telegram reaction emoji",
     )
     max_repeat: int = Field(
         default=2,
         ge=0,
         le=20,
-        description="Одно эмодзи не больше N раз подряд; 0 — без ограничения",
+        description="The same emoji at most N times in a row; 0 means no limit",
     )
     delay_sec: tuple[int, int] = Field(
         default=(20, 120),
-        description="Пауза перед реакцией: прочитал и хмыкнул, а не мгновенно, [мин, макс]",
+        description="Pause before a reaction: read it and nodded, not instant, [min, max]",
     )
     semantic: bool = Field(
-        default=True, description="Реакцию выбирает дешёвая модель; false — прежний кубик"
+        default=True, description="A cheap model picks the reaction; false means the old dice roll"
     )
-    model: str = Field(default="", description="Модель выбора реакции; пусто -> llm.judge_model")
+    model: str = Field(default="", description="Reaction model; empty -> llm.judge_model")
     max_tokens: int = Field(
         default=600,
         ge=10,
         le=1000,
-        description="Потолок ответа модели реакции, токенов (с размышлением модели)",
+        description="Reaction model answer cap in tokens (the model may think first)",
     )
     semantic_daily_cap: int = Field(
-        default=40, ge=0, le=1000, description="Потолок вызовов модели на реакции в сутки"
+        default=40, ge=0, le=1000, description="Reaction model calls per day"
     )
     context_messages: int = Field(
-        default=6, ge=1, le=30, description="Сколько последних сообщений чата показать модели"
+        default=6, ge=1, le=30, description="How many recent chat messages to show the model"
     )
 
     @field_validator("emoji", mode="before")
@@ -265,7 +278,7 @@ class ReactionsConfig(BaseModel):
     @classmethod
     def _validate_non_empty(cls, value: dict[str, str]) -> dict[str, str]:
         if not value:
-            raise ValueError("reactions.emoji must not be empty")
+            raise OwnerError("validation.emoji_empty")
         # Клавиатура телефона дописывает вариационный селектор U+FE0F («❤️»), а в наборе
         # реакций Telegram эмодзи без него («❤») — срезаем, чтобы /set не отвергал
         # правильную реакцию и в Telegram уходила ровно та форма, что в наборе.
@@ -276,7 +289,7 @@ class ReactionsConfig(BaseModel):
     def _validate_delay_sec(cls, value: tuple[int, int]) -> tuple[int, int]:
         lo, hi = value
         if not (0 <= lo <= hi <= 3600):
-            raise ValueError(f"invalid delay_sec {value!r}: expected 0 <= min <= max <= 3600")
+            raise OwnerError("validation.delay_sec", value=value)
         return value
 
 
@@ -288,25 +301,23 @@ class StickersConfig(BaseModel):
     стикера, либо ``null`` — и тогда уходит текст как раньше.
     """
 
-    enabled: bool = Field(default=True, description="Включает отправку стикеров вместо текста")
+    enabled: bool = Field(default=True, description="Enables sending stickers instead of text")
     min_replies_between: int = Field(
         default=2,
         ge=0,
         le=50,
-        description="Текстовых реплик должно пройти после стикера до следующего",
+        description="Text replies that must pass after a sticker before the next one",
     )
-    daily_cap: int = Field(default=1, ge=0, le=50, description="Потолок стикеров в сутки")
+    daily_cap: int = Field(default=1, ge=0, le=50, description="Stickers per day")
     recent_window: int = Field(
         default=10,
         ge=0,
         le=50,
-        description="Столько последних использованных стикеров не повторять",
+        description="Do not repeat this many of the latest used stickers",
     )
-    model: str = Field(
-        default="", description="Модель для выбора стикера; пусто -> llm.judge_model"
-    )
+    model: str = Field(default="", description="Sticker chooser model; empty -> llm.judge_model")
     max_tokens: int = Field(
-        default=60, ge=10, le=300, description="Лимит токенов ответа модели-чузера стикеров"
+        default=60, ge=10, le=300, description="Token cap of the sticker chooser answer"
     )
 
     @field_validator("model")
@@ -315,9 +326,7 @@ class StickersConfig(BaseModel):
         if value == "":
             return value
         if not _MODEL_ID_RE.match(value):
-            raise ValueError(
-                f"invalid model id {value!r}: expected empty string or 'provider/model'"
-            )
+            raise OwnerError("validation.model_id", value=value)
         return value
 
 
@@ -326,28 +335,28 @@ class HotWindowConfig(BaseModel):
     "горячее окно после /life и /say"). Вне окна поведение не меняется ни на шаг.
     """
 
-    enabled: bool = Field(default=True, description="Включает горячее окно после /life и /say")
+    enabled: bool = Field(default=True, description="Enables the hot window after /life and /say")
     minutes: int = Field(
-        default=10, ge=0, le=720, description="Длительность горячего окна после /life и /say"
+        default=10, ge=0, le=720, description="Length of the hot window after /life and /say"
     )
     mention_max_delay_sec: int = Field(
         default=120,
         ge=0,
         le=3600,
-        description="Потолок задержки ответа на обращение в горячем окне",
+        description="Cap on the reply delay to a direct address in the hot window",
     )
     ambient_probability: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Шанс ambient-реплики в горячем окне вместо ambient_probability",
+        description="Chance of an ambient reply in the hot window, replaces ambient_probability",
     )
     ambient_cap: int = Field(
-        default=8, ge=0, le=50, description="Потолок ambient-реплик за одно горячее окно"
+        default=8, ge=0, le=50, description="Cap on ambient replies per hot window"
     )
     open_on_any_reply: bool = Field(
         default=False,
-        description="Открывать горячее окно после любой реплики, не только /life и /say",
+        description="Open the hot window after any reply, not only /life and /say",
     )
 
 
@@ -359,32 +368,32 @@ class FollowupConfig(BaseModel):
     """
 
     enabled: bool = Field(
-        default=True, description="Включает дешёвую проверку «это мне?» в горячем окне"
+        default=True, description='Enables the cheap "is this for me?" check in the hot window'
     )
     model: str = Field(
-        default="", description="Модель для проверки «это мне?»; пусто -> llm.judge_model"
+        default="", description='Model for the "is this for me?" check; empty -> llm.judge_model'
     )
     max_tokens: int = Field(
-        default=60, ge=10, le=300, description="Лимит токенов ответа дешёвой проверки"
+        default=60, ge=10, le=300, description="Token cap of the cheap check answer"
     )
     daily_cap: int = Field(
         default=300,
         ge=0,
         le=5000,
-        description="Потолок вызовов дешёвой проверки в сутки, свой счётчик",
+        description="Cap on cheap-check calls per day, its own counter",
     )
     context_messages: int = Field(
-        default=10, ge=1, le=50, description="Сколько сообщений чата дать дешёвой проверке"
+        default=10, ge=1, le=50, description="How many chat messages to give the cheap check"
     )
     recent_replies: int = Field(
-        default=3, ge=1, le=10, description="Сколько последних реплик Фёдора дать проверке"
+        default=3, ge=1, le=10, description="How many of the latest bot replies to give the check"
     )
     name_check: bool = Field(
         default=True,
-        description="Обращение по имени подтверждает дешёвая модель, а не только регулярка",
+        description="A cheap model confirms an address by name, not just the regex",
     )
     name_check_max_tokens: int = Field(
-        default=60, ge=10, le=300, description="Лимит токенов ответа проверки обращения по имени"
+        default=60, ge=10, le=300, description="Token cap of the name-address check answer"
     )
 
     @field_validator("model")
@@ -393,9 +402,7 @@ class FollowupConfig(BaseModel):
         if value == "":
             return value
         if not _MODEL_ID_RE.match(value):
-            raise ValueError(
-                f"invalid model id {value!r}: expected empty string or 'provider/model'"
-            )
+            raise OwnerError("validation.model_id", value=value)
         return value
 
 
@@ -407,31 +414,39 @@ class CheckinConfig(BaseModel):
     здесь окно уже закрыто, проверка идёт основной моделью и реже.
     """
 
-    enabled: bool = Field(default=True, description="Включает периодическую проверку «вернулся»")
+    enabled: bool = Field(
+        default=True, description='Enables the periodic "come back and look" check'
+    )
     after_min: tuple[int, int] = Field(
         default=(120, 240),
-        description="Минут после закрытия горячего окна до проверки, [мин, макс]",
+        description="Minutes after the hot window closes until the check, [min, max]",
     )
     topic_max_hours: int = Field(
-        default=48, ge=1, le=720, description="Часов без реплик бота — тема считается умершей"
+        default=48,
+        ge=1,
+        le=720,
+        description="Hours without bot replies after which the topic counts as dead",
     )
     max_messages: int = Field(
-        default=40, ge=1, le=200, description="Сколько сообщений после последней реплики брать"
+        default=40, ge=1, le=200, description="How many messages after the last reply to take"
     )
     poll_sec: int = Field(
-        default=300, ge=30, le=3600, description="Период фонового цикла checkin_job, сек"
+        default=300,
+        ge=30,
+        le=3600,
+        description="Period of the background checkin_job loop, seconds",
     )
     quiet_min: int = Field(
         default=10,
         ge=0,
         le=180,
-        description="Минут тишины в чате перед проверкой «вернулся»; писали позже — отложить",
+        description="Minutes of chat silence before the check; written later -> postpone",
     )
     prefilter: bool = Field(
-        default=True, description="Дешёвая проверка пачки сообщений перед основной моделью"
+        default=True, description="Cheap check of the message batch before the main model"
     )
     prefilter_max_tokens: int = Field(
-        default=60, ge=10, le=300, description="Лимит токенов ответа дешёвого предфильтра"
+        default=60, ge=10, le=300, description="Token cap of the cheap prefilter answer"
     )
 
     @field_validator("after_min")
@@ -439,7 +454,7 @@ class CheckinConfig(BaseModel):
     def _validate_after_min(cls, value: tuple[int, int]) -> tuple[int, int]:
         lo, hi = value
         if not (0 <= lo <= hi):
-            raise ValueError(f"invalid after_min {value!r}: expected 0 <= min <= max")
+            raise OwnerError("validation.after_min", value=value)
         return value
 
 
@@ -451,18 +466,18 @@ class PresenceConfig(BaseModel):
     утренняя реплика, «вернулся проверить») молчит до конца суток.
     """
 
-    enabled: bool = Field(default=True, description="Включает суточный потолок присутствия бота")
+    enabled: bool = Field(default=True, description="Enables the daily presence cap of the bot")
     max_share: float = Field(
         default=0.15,
         ge=0.0,
         le=1.0,
-        description="Доля реплик бота от сообщений людей за локальные сутки",
+        description="Share of bot replies to people's messages over the local day",
     )
     free_replies: int = Field(
         default=2,
         ge=0,
         le=20,
-        description="Реплик в сутки сверх доли: на утро пустого чата",
+        description="Replies per day on top of the share: for the morning of an empty chat",
     )
 
     def allowance(self, human_messages_today: int) -> int:
@@ -482,34 +497,34 @@ class ChatMemoryConfig(BaseModel):
     самих сообщений (``message_retention_days``) и подмешивается в системный промпт.
     """
 
-    enabled: bool = Field(default=True, description="Включает пересказы прошедших разговоров")
+    enabled: bool = Field(default=True, description="Enables recaps of past conversations")
     period_days: int = Field(
-        default=7, ge=1, le=31, description="Длина одного периода пересказа в сутках"
+        default=7, ge=1, le=31, description="Length of one recap period in days"
     )
     run_window: tuple[str, str] = Field(
-        default=("04:00", "06:00"), description="Окно локального времени HH:MM для прогона памяти"
+        default=("04:00", "06:00"), description="Local-time window HH:MM for the memory run"
     )
     in_prompt: int = Field(
-        default=8, ge=0, le=52, description="Сколько последних пересказов класть в промпт"
+        default=8, ge=0, le=52, description="How many of the latest recaps go into the prompt"
     )
     keep_days: int = Field(
-        default=365, ge=7, le=3650, description="Сколько суток хранить пересказы в БД"
+        default=365, ge=7, le=3650, description="How many days recaps are kept in the database"
     )
     max_messages: int = Field(
         default=600,
         ge=50,
         le=5000,
-        description="Потолок сообщений на один пересказ, берутся последние",
+        description="Cap on messages per recap, the latest are taken",
     )
     max_chars: int = Field(
-        default=700, ge=100, le=3000, description="Потолок длины одного пересказа в символах"
+        default=700, ge=100, le=3000, description="Cap on the length of one recap in characters"
     )
     max_tokens: int = Field(
-        default=400, ge=50, le=2000, description="Лимит токенов ответа модели на пересказ"
+        default=400, ge=50, le=2000, description="Token cap of the model answer for a recap"
     )
-    model: str = Field(default="", description="Модель для пересказа; пусто -> llm.main_model")
+    model: str = Field(default="", description="Recap model; empty -> llm.main_model")
     backfill_periods: int = Field(
-        default=4, ge=0, le=12, description="Сколько прошлых периодов догнать при первом прогоне"
+        default=4, ge=0, le=12, description="How many past periods to catch up on the first run"
     )
 
     @field_validator("run_window")
@@ -526,9 +541,7 @@ class ChatMemoryConfig(BaseModel):
         if value == "":
             return value
         if not _MODEL_ID_RE.match(value):
-            raise ValueError(
-                f"invalid model id {value!r}: expected empty string or 'provider/model'"
-            )
+            raise OwnerError("validation.model_id", value=value)
         return value
 
 
@@ -538,18 +551,22 @@ class DiaryConfig(BaseModel):
     идут в системный промпт слотом {diary} — чтобы он не противоречил сам себе.
     """
 
-    enabled: bool = Field(default=True, description="Включает дневник дня: факты о себе из реплик")
-    model: str = Field(default="", description="Модель извлечения факта; пусто -> llm.judge_model")
+    enabled: bool = Field(
+        default=True, description="Enables the day diary: facts about itself from its replies"
+    )
+    model: str = Field(default="", description="Fact extraction model; empty -> llm.judge_model")
     max_tokens: int = Field(
-        default=80, ge=20, le=300, description="Лимит токенов ответа модели на извлечение факта"
+        default=80, ge=20, le=300, description="Token cap of the fact extraction answer"
     )
     daily_cap: int = Field(
-        default=30, ge=0, le=500, description="Вызовов извлечения в сутки, счётчик diary_calls"
+        default=30, ge=0, le=500, description="Extraction calls per day, counter diary_calls"
     )
     week_days: int = Field(
-        default=6, ge=0, le=30, description="Сколько прошлых суток показывать строкой «на неделе»"
+        default=6, ge=0, le=30, description='How many past days to show in the "this week" line'
     )
-    keep_days: int = Field(default=14, ge=1, le=90, description="Сколько суток хранить факты в БД")
+    keep_days: int = Field(
+        default=14, ge=1, le=90, description="How many days facts are kept in the database"
+    )
 
     @field_validator("model")
     @classmethod
@@ -557,9 +574,7 @@ class DiaryConfig(BaseModel):
         if value == "":
             return value
         if not _MODEL_ID_RE.match(value):
-            raise ValueError(
-                f"invalid model id {value!r}: expected empty string or 'provider/model'"
-            )
+            raise OwnerError("validation.model_id", value=value)
         return value
 
 
@@ -568,15 +583,15 @@ class JokesConfig(BaseModel):
     достаёт словечки, которые чат подхватил, и они идут в системный промпт слотом {jokes}.
     """
 
-    enabled: bool = Field(default=True, description="Включает память о общих шутках чата")
+    enabled: bool = Field(default=True, description="Enables the memory of the chat's shared jokes")
     per_period: int = Field(
-        default=3, ge=0, le=10, description="Сколько шуток доставать из одного недельного периода"
+        default=3, ge=0, le=10, description="How many jokes to pull from one weekly period"
     )
     in_prompt: int = Field(
-        default=6, ge=0, le=30, description="Сколько шуток класть в системный промпт"
+        default=6, ge=0, le=30, description="How many jokes to put into the system prompt"
     )
     cooldown_days: int = Field(
-        default=5, ge=0, le=60, description="Сколько суток не показывать уже использованную шутку"
+        default=5, ge=0, le=60, description="Days during which an already used joke is not shown"
     )
 
 
@@ -585,66 +600,58 @@ class VocabConfig(BaseModel):
     модели пару слов из загруженного владельцем словаря, а мелькнувшее в разговоре — объяснить.
     """
 
-    enabled: bool = Field(default=True, description="Включает словечки из словарей /words")
+    enabled: bool = Field(
+        default=True, description="Enables vocabulary words from the /words dictionaries"
+    )
     probability: float = Field(
-        default=0.15, ge=0.0, le=1.0, description="Шанс предложить словечки модели в одной реплике"
+        default=0.15, ge=0.0, le=1.0, description="Chance to offer words to the model in one reply"
     )
     daily_cap: int = Field(
-        default=2, ge=0, le=20, description="Сколько словечек в сутки он может употребить"
+        default=2, ge=0, le=20, description="How many words per day the character may use"
     )
     recent_window: int = Field(
         default=10,
         ge=0,
         le=50,
-        description="Столько последних реплик должно пройти без словечек до следующего",
+        description="Replies that must pass without a word before the next one",
     )
     offer_size: int = Field(
-        default=8, ge=1, le=10, description="Сколько словечек на выбор предложить модели"
+        default=8, ge=1, le=10, description="How many words to offer the model to choose from"
     )
     meaning_context: int = Field(
         default=5,
         ge=0,
         le=30,
-        description="В скольких последних сообщениях искать словечко, чтобы дать значение",
+        description="In how many recent messages to look for a word to give its meaning",
     )
     max_meanings: int = Field(
-        default=3, ge=0, le=10, description="Сколько значений словечек класть в промпт за раз"
+        default=3, ge=0, le=10, description="How many word meanings to put into the prompt at once"
     )
     request_markers: list[str] = Field(
-        default_factory=lambda: [r"\bсловеч", r"\bсловар", r"\bдиалект"],
-        description="Просьба сказать словечком (регулярки); ещё имя словаря: «по-дворовому»",
+        default_factory=list,
+        description="Request to use dictionary words (regexes); the dictionary name counts too",
     )
     request_size: int = Field(
-        default=5, ge=1, le=20, description="Сколько словечек показать модели, когда его попросили"
+        default=5,
+        ge=1,
+        le=20,
+        description="How many words to show the model when it was asked for them",
     )
     explain_markers: list[str] = Field(
-        default_factory=lambda: [
-            r"\bне понял",
-            r"\bне поняла",
-            r"\bне понятно",
-            r"\bнепонятно",
-            r"\bчто (это |оно )?значит",
-            r"\bчто это (за слово|такое)",
-            r"\bв смысле\b",
-            r"\bэто как\b",
-            r"\bпереведи",
-            r"\bпо-русски",
-            r"\bчё это\b",
-            r"\bчо это\b",
-        ],
-        description="Регулярки «не понял, что это значит» — после его словечка это вопрос ему",
+        default_factory=list,
+        description='Regexes for "what does that mean": after its word it is a question to it',
     )
     explain_window_min: int = Field(
         default=30,
         ge=0,
         le=1440,
-        description="Сколько минут после его словечка «не понял» считается вопросом ему",
+        description='Minutes after its word during which "didn\'t get it" is a question to it',
     )
     explain_max_between: int = Field(
         default=2,
         ge=0,
         le=20,
-        description="Больше стольких сообщений людей после его словечка — «не понял» уже не ему",
+        description='More messages than this after its word: "what does that mean" is not to it',
     )
 
     @field_validator("request_markers", "explain_markers")
@@ -654,7 +661,7 @@ class VocabConfig(BaseModel):
             try:
                 re.compile(pattern, re.IGNORECASE)
             except re.error as exc:
-                raise ValueError(f"invalid regex pattern {pattern!r}: {exc}") from exc
+                raise OwnerError("validation.regex", pattern=pattern, error=str(exc)) from exc
         return value
 
 
@@ -663,18 +670,26 @@ class CallbackConfig(BaseModel):
     персонаж сам спрашивает человека, чем кончилась история, о которой тот говорил.
     """
 
-    enabled: bool = Field(default=True, description="Включает вопросы «ну как там?» людям")
+    enabled: bool = Field(
+        default=True, description='Enables the "so how did it go?" questions to people'
+    )
     min_days: int = Field(
-        default=3, ge=1, le=30, description="Не чаще одного вопроса «ну как там?» в столько суток"
+        default=3,
+        ge=1,
+        le=30,
+        description='At most one "so how did it go?" question per this many days',
     )
     max_age_days: int = Field(
-        default=14, ge=1, le=90, description="История старше этого срока в сутках не спрашивается"
+        default=14, ge=1, le=90, description="A story older than this many days is not asked about"
     )
     author_active_days: int = Field(
-        default=7, ge=1, le=60, description="Автор истории должен писать в чат за столько суток"
+        default=7,
+        ge=1,
+        le=60,
+        description="The story's author must have written in the chat within this many days",
     )
     window: tuple[str, str] = Field(
-        default=("11:00", "20:00"), description="Окно локального времени HH:MM для вопроса"
+        default=("11:00", "20:00"), description="Local-time window HH:MM for the question"
     )
 
     @field_validator("window")
@@ -692,30 +707,30 @@ class VisionConfig(BaseModel):
     со своим счётчиком ``vision_calls``.
     """
 
-    enabled: bool = Field(default=True, description="Включает описание фото моделью со зрением")
+    enabled: bool = Field(default=True, description="Enables photo descriptions by a vision model")
     model: str = Field(
-        default="", description="Модель со зрением для описания фото; пусто -> llm.main_model"
+        default="", description="Vision model for photo descriptions; empty -> llm.main_model"
     )
     max_tokens: int = Field(
-        default=120, ge=20, le=500, description="Лимит токенов ответа модели со зрением"
+        default=120, ge=20, le=500, description="Token cap of the vision model answer"
     )
     daily_cap: int = Field(
-        default=20, ge=0, le=500, description="Потолок описаний фото в сутки, свой счётчик"
+        default=20, ge=0, le=500, description="Photo descriptions per day, its own counter"
     )
     ambient_probability: float = Field(
         default=0.3,
         ge=0.0,
         le=1.0,
-        description="Шанс описать фото, присланное без повода (не обращение, не окно)",
+        description="Chance to describe a photo sent without a reason (no address, no window)",
     )
     max_width: int = Field(
         default=1024,
         ge=256,
         le=4096,
-        description="Берётся самый большой размер фото не шире этого, пикселей",
+        description="The largest photo size not wider than this, in pixels, is used",
     )
     max_chars: int = Field(
-        default=200, ge=40, le=500, description="Потолок длины описания фото, символов"
+        default=200, ge=40, le=500, description="Cap on the photo description length, characters"
     )
 
     @field_validator("model")
@@ -724,9 +739,7 @@ class VisionConfig(BaseModel):
         if value == "":
             return value
         if not _MODEL_ID_RE.match(value):
-            raise ValueError(
-                f"invalid model id {value!r}: expected empty string or 'provider/model'"
-            )
+            raise OwnerError("validation.model_id", value=value)
         return value
 
 
@@ -743,42 +756,45 @@ class WeatherConfig(BaseModel):
     """
 
     enabled: bool = Field(
-        default=True, description="Включает погоду в системном промпте (Open-Meteo, без ключа)"
+        default=True, description="Enables weather in the system prompt (Open-Meteo, no key)"
     )
     ttl_min: int = Field(
-        default=30, ge=1, le=1440, description="Сколько минут ответ о погоде считается свежим"
+        default=30, ge=1, le=1440, description="Minutes a weather answer counts as fresh"
     )
     timeout_sec: int = Field(
-        default=5, ge=1, le=60, description="Таймаут запроса к Open-Meteo, секунд"
+        default=5, ge=1, le=60, description="Open-Meteo request timeout, seconds"
     )
     place_lookup: bool = Field(
-        default=True, description="Искать погоду по месту, про которое спросили в обращении"
+        default=True, description="Look up the weather for a place asked about in an address"
     )
     lookup_model: str = Field(
         default="",
-        description="Дешёвая модель, достающая место из вопроса; пусто -> llm.judge_model",
+        description="Cheap model that extracts the place from a question; empty -> llm.judge_model",
     )
     lookup_max_tokens: int = Field(
-        default=40, ge=10, le=200, description="Лимит токенов ответа модели, достающей место"
+        default=40, ge=10, le=200, description="Token cap of the place-extraction model answer"
     )
     lookup_daily_cap: int = Field(
-        default=30, ge=0, le=500, description="Потолок таких вызовов в сутки, счётчик weather_calls"
+        default=30, ge=0, le=500, description="Cap on such calls per day, counter weather_calls"
     )
     geocode_ttl_days: int = Field(
-        default=30, ge=1, le=3650, description="Сколько дней помнятся координаты найденного места"
+        default=30,
+        ge=1,
+        le=3650,
+        description="Days the coordinates of a found place are remembered",
     )
     # Язык и «домашняя страна» геокодера (раньше были зашиты в weather.py): язык названий
     # места и страны, которые не дописываются к названию.
     geocode_language: str = Field(
-        default="ru", description="Код языка, на котором геокодер отдаёт названия мест"
+        default="en", description="Language code in which the geocoder returns place names"
     )
     home_country_codes: list[str] = Field(
-        default_factory=lambda: ["PL"],
-        description="Коды стран (ISO), которые не дописываются к названию места",
+        default_factory=list,
+        description="Country codes (ISO) that are not appended to a place name",
     )
     home_country_names: list[str] = Field(
-        default_factory=lambda: ["польша", "poland", "polska"],
-        description="Названия домашней страны (без регистра), если геокодер не дал код",
+        default_factory=list,
+        description="Home country names (case-insensitive) when the geocoder gives no code",
     )
 
     @field_validator("lookup_model")
@@ -787,110 +803,119 @@ class WeatherConfig(BaseModel):
         if value == "":
             return value
         if not _MODEL_ID_RE.match(value):
-            raise ValueError(
-                f"invalid model id {value!r}: expected empty string or 'provider/model'"
-            )
+            raise OwnerError("validation.model_id", value=value)
         return value
 
 
 class BehaviourConfig(BaseModel):
     quiet_window: tuple[str, str] = Field(
-        default=("02:00", "07:00"), description="Окно полной тишины, включая прямые обращения"
+        default=("02:00", "07:00"), description="Window of full silence, direct addresses included"
     )
     morning_reply_window: tuple[str, str] = Field(
         default=("07:00", "08:00"),
-        description="Окно утренней реплики всем, кто звал ночью; момент случайный",
+        description="Window of the morning reply to everyone who called at night; random moment",
     )
 
     live_talk: LiveTalkConfig = Field(
-        default_factory=LiveTalkConfig, description="Что считается живым разговором для ambient"
+        default_factory=LiveTalkConfig,
+        description="What counts as a live conversation for ambient replies",
     )
     ambient_probability: float = Field(
-        default=0.25, ge=0.0, le=1.0, description="Шанс ambient-реплики внутри живого разговора"
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description="Chance of an ambient reply inside a live conversation",
     )
     chat_cooldown_min: int = Field(
-        default=25, ge=0, le=1440, description="Минимум минут между ambient-репликами"
+        default=25, ge=0, le=1440, description="Minimum minutes between ambient replies"
     )
     daily_cap: int = Field(
-        default=3, ge=0, le=50, description="Суточный лимит ambient и «просто так» вместе"
+        default=3, ge=0, le=50, description="Daily limit of ambient and unprompted replies together"
     )
 
     spontaneous: SpontaneousConfig = Field(
-        default_factory=SpontaneousConfig, description="«Просто так» — бот пишет сам, когда тихо"
+        default_factory=SpontaneousConfig,
+        description="Unprompted: the bot writes by itself when the chat is quiet",
     )
     reactions: ReactionsConfig = Field(
         default_factory=ReactionsConfig,
-        description="Реакции-эмодзи вместо молчания на срез гейта по кубику",
+        description="Emoji reactions instead of silence when the gate drops on the dice",
     )
     stickers: StickersConfig = Field(
-        default_factory=StickersConfig, description="Стикеры вместо текста, второй вызов моделью"
+        default_factory=StickersConfig, description="Stickers instead of text, a second model call"
     )
     hot_window: HotWindowConfig = Field(
         default_factory=HotWindowConfig,
-        description="Горячее окно живее обычного после /life и /say",
+        description="Livelier-than-usual window after /life and /say",
     )
     followup: FollowupConfig = Field(
         default_factory=FollowupConfig,
-        description="Дешёвая проверка «это мне?» для сообщений без обращения в окне",
+        description='Cheap "is this for me?" check for messages without an address in the window',
     )
     checkin: CheckinConfig = Field(
         default_factory=CheckinConfig,
-        description="Периодическая проверка «вернулся» после закрытия горячего окна",
+        description='Periodic "come back and look" check after the hot window closes',
     )
     presence: PresenceConfig = Field(
         default_factory=PresenceConfig,
-        description="Суточный потолок присутствия: доля реплик бота от сообщений людей",
+        description="Daily presence cap: share of bot replies to people's messages",
     )
     chat_memory: ChatMemoryConfig = Field(
         default_factory=ChatMemoryConfig,
-        description="Долгая память чата: пересказы прошедших разговоров по неделям",
+        description="Long-term chat memory: recaps of past conversations by week",
     )
     diary: DiaryConfig = Field(
         default_factory=DiaryConfig,
-        description="Дневник дня: факты о себе из своих реплик, слот {diary} в промпте",
+        description="Day diary: facts about itself from its replies, slot {diary} in the prompt",
     )
     jokes: JokesConfig = Field(
         default_factory=JokesConfig,
-        description="Общие шутки чата: недельный пересказ достаёт, слот {jokes} в промпте",
+        description="Shared chat jokes: the weekly recap pulls them, slot {jokes} in the prompt",
     )
     vocab: VocabConfig = Field(
         default_factory=VocabConfig,
-        description="Словечки из словарей /words: изредка в реплике, значение по вопросу",
+        description="Words from /words dictionaries: now and then in a reply, meaning on request",
     )
     callback: CallbackConfig = Field(
         default_factory=CallbackConfig,
-        description="«Ну как там?»: вопрос человеку про его незакрытую историю",
+        description='"So how did it go?": a question to a person about their open story',
     )
     vision: VisionConfig = Field(
         default_factory=VisionConfig,
-        description="Описание фото моделью со зрением вместо плейсхолдера «[фото]»",
+        description="Photo description by a vision model instead of the photo placeholder",
     )
     weather: WeatherConfig = Field(
         default_factory=WeatherConfig,
-        description="Погода фоном в системном промпте; координаты домашней точки — в .env",
+        description="Weather as background in the system prompt; home coordinates are in .env",
     )
 
     # Кулдаун = задержка, не отказ (решение владельца): обращение всегда получает
     # ответ, кулдаун только сдвигает due_at на этапе responder (earliest).
     mention_cooldown_sec: int = Field(
-        default=60, ge=0, le=86400, description="Кулдаун ответа на обращение, на человека, сек"
+        default=60,
+        ge=0,
+        le=86400,
+        description="Cooldown of a reply to a direct address, per person, seconds",
     )
     mention_chat_cooldown_sec: int = Field(
-        default=90, ge=0, le=86400, description="Кулдаун ответа на обращение, на чат, сек"
+        default=90,
+        ge=0,
+        le=86400,
+        description="Cooldown of a reply to a direct address, per chat, seconds",
     )
     # Пока ребята наигрываются; потом снизить.
     mention_daily_cap: int = Field(
-        default=50, ge=0, le=200, description="Суточный лимит ответов на прямые обращения"
+        default=50, ge=0, le=200, description="Daily limit of replies to direct addresses"
     )
     reply_as_reply_after_sec: int = Field(
         default=300,
         ge=0,
         le=86400,
-        description="После скольких секунд отвечать реплаем, а не просто в чат",
+        description="After how many seconds to answer as a reply, not just in the chat",
     )
 
     debounce_sec: tuple[int, int] = Field(
-        default=(3, 7), description="Диапазон дебаунса: копит очередь сообщений перед ответом"
+        default=(3, 7), description="Debounce range: collects the message queue before replying"
     )
     reply_delay_buckets: list[ReplyDelayBucket] = Field(
         default_factory=lambda: [
@@ -898,40 +923,40 @@ class BehaviourConfig(BaseModel):
             ReplyDelayBucket(weight=0.3, range_sec=(180, 900)),
             ReplyDelayBucket(weight=0.1, range_sec=(900, 3600)),
         ],
-        description="Бакеты задержки ответа на обращение, вес и диапазон секунд",
+        description="Reply delay buckets for an address, weight and range in seconds",
     )
     urgent_max_delay_sec: int = Field(
         default=180,
         ge=0,
         le=86400,
-        description="Потолок задержки для срочных сообщений («сегодня», «сейчас»)",
+        description='Delay cap for urgent messages ("today", "now")',
     )
     late_reply_threshold_sec: int = Field(
-        default=600, ge=0, le=86400, description="После скольких секунд ответ считается поздним"
+        default=600, ge=0, le=86400, description="After how many seconds a reply counts as late"
     )
     context_window: int = Field(
-        default=30, ge=1, le=200, description="Сколько последних сообщений даётся модели в контекст"
+        default=30, ge=1, le=200, description="How many latest messages the model gets as context"
     )
     recent_replies_memory: int = Field(
         default=20,
         ge=1,
         le=200,
-        description="Сколько последних реплик бота помнится для дедупликации",
+        description="How many latest bot replies are remembered for dedup",
     )
     topic_cooldown_min: int = Field(
         default=45,
         ge=0,
         le=1440,
-        description="Минуты молчания после срабатывания стоп-листа на входе",
+        description="Minutes of silence after the input stop list fires",
     )
     message_retention_days: int = Field(
-        default=30, ge=1, le=3650, description="Сколько дней хранятся сообщения перед удалением"
+        default=30, ge=1, le=3650, description="How many days messages are kept before deletion"
     )
     min_gap_sec: int = Field(
         default=300,
         ge=0,
         le=3600,
-        description="Минимум секунд между любыми двумя сообщениями бота в чате",
+        description="Minimum seconds between any two bot messages in the chat",
     )
 
     @field_validator("quiet_window", "morning_reply_window")
@@ -944,16 +969,14 @@ class BehaviourConfig(BaseModel):
     def _validate_debounce(cls, value: tuple[int, int]) -> tuple[int, int]:
         lo, hi = value
         if not (0 <= lo <= hi <= 600):
-            raise ValueError(f"invalid debounce_sec {value!r}: expected 0 <= min <= max <= 600")
+            raise OwnerError("validation.debounce_sec", value=value)
         return value
 
     @model_validator(mode="after")
     def _check_bucket_weights(self) -> "BehaviourConfig":
         total = sum(bucket.weight for bucket in self.reply_delay_buckets)
         if abs(total - 1.0) > 0.01:
-            raise ValueError(
-                f"reply_delay_buckets weights must sum to 1.0 (tolerance 0.01), got {total:.4f}"
-            )
+            raise OwnerError("validation.bucket_weights", total=total)
         return self
 
     def quiet_window_time(self) -> tuple[time, time]:
@@ -964,17 +987,17 @@ class BehaviourConfig(BaseModel):
 
 
 class LlmConfig(BaseModel):
-    provider: str = Field(default="openrouter", description="Провайдер LLM, OpenAI-совместимый API")
+    provider: str = Field(default="openrouter", description="LLM provider, OpenAI-compatible API")
     main_model: str = Field(
-        default="anthropic/claude-opus-5", description="Id основной модели в OpenRouter"
+        default="anthropic/claude-opus-5", description="Main model id in OpenRouter"
     )
     judge_model: str = Field(
         default="openai/gpt-5.4-nano",
-        description="Маленькая дешёвая модель-судья (выходной фильтр), другой вендор",
+        description="Small cheap judge model (output filter), another vendor",
     )
-    timeout_sec: int = Field(default=30, ge=1, le=120, description="Таймаут запроса к модели, сек")
+    timeout_sec: int = Field(default=30, ge=1, le=120, description="Model request timeout, seconds")
     max_tokens: int = Field(
-        default=200, ge=1, le=4000, description="Лимит токенов ответа основной модели"
+        default=200, ge=1, le=4000, description="Token cap of the main model answer"
     )
     # 50 обращений + 3 ambient + утро + "просто так" ≈ 55 основных вызовов и
     # столько же судьи ≈ 110, потолок 150 с запасом.
@@ -982,31 +1005,36 @@ class LlmConfig(BaseModel):
         default=150,
         ge=0,
         le=1000,
-        description="Потолок попыток вызова модели в сутки, судья считается",
+        description="Cap on model call attempts per day, the judge counts",
     )
     daily_budget_usd: float = Field(
-        default=2.0, ge=0.0, le=1000.0, description="Суточный бюджет в долларах; сверх — молчит"
+        default=2.0,
+        ge=0.0,
+        le=1000.0,
+        description="Daily budget in dollars; beyond it the bot stays silent",
     )
     circuit_errors: int = Field(
-        default=5, ge=1, le=100, description="Ошибок подряд для срабатывания предохранителя"
+        default=5, ge=1, le=100, description="Errors in a row that trip the circuit breaker"
     )
     circuit_pause_min: int = Field(
-        default=30, ge=0, le=1440, description="Минуты паузы после срабатывания предохранителя"
+        default=30, ge=0, le=1440, description="Minutes of pause after the circuit breaker trips"
     )
     alert_owner: bool = Field(
-        default=True, description="Писать владельцу в личку, если провайдер отказывает (4xx)"
+        default=True, description="Message the owner privately when the provider refuses (4xx)"
     )
     alert_interval_hours: int = Field(
-        default=24, ge=1, le=168, description="Не чаще раза в столько часов на один код ответа"
+        default=24, ge=1, le=168, description="At most once per this many hours for one status code"
     )
     # Fallback-цены за 1M токенов: используются, только если провайдер не вернул usage.cost.
     price_in_usd_per_1m: float = Field(
-        default=5.0, ge=0.0, description="Fallback-цена входных токенов за 1M, если нет usage.cost"
+        default=5.0,
+        ge=0.0,
+        description="Fallback price of input tokens per 1M if there is no usage.cost",
     )
     price_out_usd_per_1m: float = Field(
         default=25.0,
         ge=0.0,
-        description="Fallback-цена выходных токенов за 1M, если нет usage.cost",
+        description="Fallback price of output tokens per 1M if there is no usage.cost",
     )
 
     @field_validator("main_model", "judge_model")
@@ -1015,82 +1043,62 @@ class LlmConfig(BaseModel):
         if value == "":
             return value
         if not _MODEL_ID_RE.match(value):
-            raise ValueError(
-                f"invalid model id {value!r}: expected empty string or 'provider/model'"
-            )
+            raise OwnerError("validation.model_id", value=value)
         return value
 
 
 class PlacesConfig(BaseModel):
     min_rating: float = Field(
-        default=4.2, ge=0.0, le=5.0, description="Минимальный рейтинг заведения для белого списка"
+        default=4.2, ge=0.0, le=5.0, description="Minimum venue rating for the whitelist"
     )
     min_reviews: int = Field(
-        default=50, ge=0, le=100_000, description="Минимум отзывов у заведения для белого списка"
+        default=50,
+        ge=0,
+        le=100_000,
+        description="Minimum number of venue reviews for the whitelist",
     )
     require_operational: bool = Field(
-        default=True, description="Учитывать только действующие (не закрытые) заведения"
+        default=True, description="Count only operating (not closed) venues"
     )
     cache_ttl_days: int = Field(
         default=30,
         ge=1,
         le=3650,
-        description="Раз во сколько дней перегонять кэш скриптом наполнения",
+        description="How often, in days, to refresh the cache with the fill script",
     )
     max_per_reply: int = Field(
-        default=2, ge=0, le=20, description="Максимум заведений, упомянутых в одной реплике"
+        default=2, ge=0, le=20, description="Maximum venues mentioned in one reply"
     )
-    # Запросы для офлайн-наполнения кэша (places_fill.py, PLAN.md этап 5, п.1).
-    # Дефолт — заготовленные запросы из CLAUDE.md, "Интерфейсы этапа 5".
+    # Search queries of the offline venue cache fill (places_fill.py); the pack lists them.
     queries: list[str] = Field(
-        default_factory=lambda: [
-            "craft beer pub Wolsań",
-            "cichy pub Wolsań",
-            "piwo rzemieślnicze Wolsań",
-            "pub Dolna Wolsań",
-            "pub Rożyce Wolsań",
-            "kawiarnia planszówki Wolsań",
-            "restauracja Bórnik",
-            "Leszczykowo bar",
-        ],
-        description="Поисковые запросы для офлайн-наполнения кэша заведений (places_fill.py)",
+        default_factory=list,
+        description="Search queries for the offline venue cache fill (places_fill.py)",
     )
-    # Привязка поиска Google Places (раньше была зашита в places_fill.py): центр, язык, регион.
+    # Google Places search anchor (centre, language, region); the pack sets all three.
     search_center: tuple[float, float] = Field(
-        default=(51.5, 18.0),
-        description="Широта и долгота центра поиска заведений (places_fill.py)",
+        default=(0.0, 0.0),
+        description="Latitude and longitude of the venue search centre (places_fill.py)",
     )
     region_code: str = Field(
-        default="PL", description="Код региона поиска Google Places (ISO 3166-1 alpha-2)"
+        default="", description="Google Places search region code (ISO 3166-1 alpha-2)"
     )
     language_code: str = Field(
-        default="pl", description="Код языка ответов Google Places (названия, отзывы)"
+        default="en", description="Language code of Google Places answers (names, reviews)"
     )
     district_aliases: dict[str, list[str]] = Field(
-        default_factory=lambda: {
-            "Dolna": ["dolna", "долна"],
-            "Rożyce": ["rożyce", "rozyce", "рожице", "рожицы"],
-            "Dawne Miasto": ["dawne miasto", "старый город", "давне място", "центр", "centrum"],
-            "Granwald": ["granwald", "гранвальд"],
-            "Łanowo": ["łanowo", "lanowo", "ланов"],
-            "Kępice": ["kępice", "кепице"],
-            "Ogrody": ["ogrody", "огроды"],
-            "Bórnik": ["bórnik", "bornik", "борник", "бёрник"],
-            "Leszczykowo": ["leszczykowo", "лещиково"],
-            "Strzechyn": ["strzechyn", "стшехин", "стржехин"],
-        },
-        description="Районы: каноническое имя -> варианты написания (для выбора мест и district)",
+        default_factory=dict,
+        description="Districts: canonical name -> spellings (for picking places and district)",
     )
     default_district: str = Field(
-        default="Wolsań", description="Район по умолчанию, если в адресе района не нашлось"
+        default="", description="Default district when no district is found in the address"
     )
     quiet_keywords: list[str] = Field(
-        default_factory=lambda: ["тихо", "спокойно", "поговорить", "посидеть", "не орать"],
-        description="Слова в просьбе, после которых выбираются только тихие места",
+        default_factory=list,
+        description="Words in a request that select only quiet places",
     )
     outskirts_keywords: list[str] = Field(
-        default_factory=lambda: ["за город", "съездить", "природа", "озеро", "лес"],
-        description="Слова в просьбе, после которых выбираются места за городом",
+        default_factory=list,
+        description="Words in a request that select places outside the city",
     )
 
     @field_validator("search_center")
@@ -1098,9 +1106,7 @@ class PlacesConfig(BaseModel):
     def _validate_search_center(cls, value: tuple[float, float]) -> tuple[float, float]:
         lat, lon = value
         if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
-            raise ValueError(
-                f"invalid search_center {value!r}: expected lat -90..90, lon -180..180"
-            )
+            raise OwnerError("validation.search_center", value=value)
         return value
 
 
@@ -1130,120 +1136,123 @@ _ALLOWED_EMOJI_DEFAULT = ["🙁", "🙂", "😂", "😀", "🤪", "💩", "👍"
 
 class FiltersConfig(BaseModel):
     shadow: bool = Field(
-        default=True, description="true = фильтры логируют, но не режут ответ (щадящий старт)"
+        default=True, description="true = filters log but do not cut the reply (gentle start)"
     )
     places_whitelist: list[str] = Field(
         default_factory=list,
-        description="Бытовые бренды, не заведения из CHARACTER.md раздел 7",
+        description="Everyday brands that are not venues from the character card",
     )
     # Разрешённые эмодзи для regex:emoji/style:emoji_* (CHARACTER.md раздел 3/4).
     allowed_emoji: list[str] = Field(
         default_factory=lambda: list(_ALLOWED_EMOJI_DEFAULT),
-        description="Разрешённые эмодзи персонажа, небольшой набор, редко и к месту",
+        description="Emoji the character may use: a small set, rarely and to the point",
     )
     emoji_max_per_reply: int = Field(
-        default=1, ge=0, le=3, description="Максимум разрешённых эмодзи в одной реплике"
+        default=1, ge=0, le=3, description="Maximum allowed emoji in one reply"
     )
     # Если хотя бы в одной из последних N реплик было эмодзи — новое режется (style:emoji_freq).
     emoji_recent_window: int = Field(
-        default=4, ge=0, le=20, description="Окно последних реплик для проверки частоты эмодзи"
+        default=4, ge=0, le=20, description="Window of latest replies for the emoji frequency check"
     )
     # Заведения из CHARACTER.md, раздел 7 — белый список regex:venue/regex:latin.
     known_places: list[str] = Field(
         default_factory=list,
-        description="Заведения из CHARACTER.md раздел 7, белый список regex:venue/regex:latin",
+        description="Venues from the character card, whitelist of regex:venue/regex:latin",
     )
     # Польский словарь Фёдора — тот же белый список, а для dedup:polish_freq (наоборот)
     # это и есть слова, чью частоту правило ограничивает.
     polish_words: list[str] = Field(
         default_factory=list,
-        description="Польский словарь персонажа, белый список и предмет dedup:polish_freq",
+        description="Character's foreign-word list: whitelist and subject of dedup:polish_freq",
     )
     districts: list[str] = Field(
         default_factory=list,
-        description="Районы города: латиницей они не считаются выдуманным заведением",
+        description="City districts: in Latin script they do not count as an invented venue",
     )
     latin_extra_letters: str = Field(
         default="",
-        description="Буквы чужого алфавита сверх A-Za-z (диакритики), напр. польские",
+        description="Letters of a foreign alphabet beyond A-Za-z (diacritics), e.g. Polish",
     )
     topic_stop: list[str] = Field(
         default_factory=list,
-        description="Стоп-лист тем (вход и выход), регулярки по границам слов",
+        description="Topic stop list (input and output), regexes on word boundaries",
     )
     injection_markers: list[str] = Field(
         default_factory=list,
-        description="Маркеры команд управления ботом (входной гейт, шаг 5a)",
+        description="Markers of bot control commands (input gate, step 5a)",
     )
     logistics: list[str] = Field(
         default_factory=list,
-        description="Логистические фразы: время, «кто идёт», «я пас» — не мешать договорённостям",
+        description='Logistics phrases: time, "who is going", "count me out": do not interfere',
     )
     urgent: list[str] = Field(
         default_factory=list,
-        description="Маркеры срочности («сегодня», «сейчас») — ускоряют бакет задержки ответа",
+        description='Urgency markers ("today", "now"): speed up the reply delay bucket',
     )
     places_request: list[str] = Field(
         default_factory=list,
-        description="Маркеры запроса про заведение («куда сходить», «посоветуй»)",
+        description='Markers of a venue request ("where to go", "recommend")',
     )
     weather_request: list[str] = Field(
         default_factory=list,
-        description="Маркеры разговора о погоде — повод узнать погоду в названном месте",
+        description="Markers of weather talk: a reason to look up the weather somewhere",
     )
     model_talk: list[str] = Field(
         default_factory=list,
-        description="Маркеры разговора о модели/ИИ, которых персонаж не знает (выходной фильтр)",
+        description="Markers of talk about the model/AI that the character does not know (output)",
     )
     assistant_markers: list[str] = Field(
         default_factory=list,
-        description="Фразы-маркеры ассистента, не в характере персонажа (выходной фильтр)",
+        description="Assistant marker phrases, out of character (output filter)",
     )
     # Сухие/раздражённые формулировки (style:grumpy, выходной фильтр) — добродушный
     # персонаж не отмахивается от вопросов и не злится на повторы (CHARACTER.md раздел 3).
     grumpy_markers: list[str] = Field(
         default_factory=list,
-        description="Сухие/раздражённые формулировки не в характере персонажа (выходной фильтр)",
+        description="Dry or irritated wording, out of character (output filter)",
     )
     # Мера 4 контракта «меньше и разнообразнее»: shadow остаётся щадящим для новых
     # слоёв, но дедуп и стиль режут всегда — иначе повторы уходят в чат.
     enforce_stages: list[str] = Field(
         default_factory=lambda: list(_ENFORCE_STAGES_DEFAULT),
-        description="Стадии выходного фильтра, которые режут ответ даже при shadow: true",
+        description="Output filter stages that cut the reply even with shadow: true",
     )
     # Мера 5: реквизит (жена/теплица/гараж/девяностые) — метка -> регулярки.
     motifs: dict[str, list[str]] = Field(
         default_factory=dict,
-        description="Метка мотива -> регулярки реквизита: жена, теплица, гараж, девяностые",
+        description="Motif label -> regexes of props the character keeps coming back to",
     )
     motif_recent_window: int = Field(
         default=3,
         ge=0,
         le=20,
-        description="Окно последних реплик: мотив из него режет кандидата (dedup:motif)",
+        description="Window of latest replies: a motif from it cuts the candidate (dedup:motif)",
     )
     motif_avoid_window: int = Field(
         default=10,
         ge=0,
         le=50,
-        description="Окно последних реплик, чьи мотивы уходят в промпт слотом {avoid}",
+        description="Window of latest replies whose motifs go into the prompt slot {avoid}",
     )
     story_markers: list[str] = Field(
         default_factory=list,
-        description="Маркеры байки: «девяностые», «помню», «как-то раз» (квота историй)",
+        description='Markers of a tale: "back in the day", "I remember" (tale quota)',
     )
     story_window: int = Field(
-        default=5, ge=1, le=20, description="Окно последних реплик, в котором считается квота баек"
+        default=5,
+        ge=1,
+        le=20,
+        description="Window of latest replies in which the tale quota is counted",
     )
     self_markers: list[str] = Field(
         default_factory=list,
-        description="Маркеры «говорит о себе» (я, у меня, внук): только метрика в /status",
+        description='Markers of "talks about itself" (I, my, we): a /status metric only',
     )
     story_max: int = Field(
         default=1,
         ge=0,
         le=20,
-        description="Сколько баек можно на окно story_window, дальше срез style:story_quota",
+        description="Tales allowed per story_window, beyond it style:story_quota cuts",
     )
 
     @field_validator("motifs")
@@ -1259,8 +1268,8 @@ class FiltersConfig(BaseModel):
                 try:
                     re.compile(pattern, re.IGNORECASE)
                 except re.error as exc:
-                    raise ValueError(
-                        f"invalid regex pattern {pattern!r} for motif {label!r}: {exc}"
+                    raise OwnerError(
+                        "validation.motif_regex", pattern=pattern, label=label, error=str(exc)
                     ) from exc
         return value
 
@@ -1271,26 +1280,29 @@ class FiltersConfig(BaseModel):
             try:
                 re.compile(pattern, re.IGNORECASE)
             except re.error as exc:
-                raise ValueError(f"invalid regex pattern {pattern!r}: {exc}") from exc
+                raise OwnerError("validation.regex", pattern=pattern, error=str(exc)) from exc
         return value
 
 
 class Config(BaseModel):
     persona: PersonaConfig = Field(
         default_factory=PersonaConfig,
-        description="Кто такой персонаж: имя, возраст, район, таймзона",
+        description="Who the character is: name, age, district, timezone",
     )
     behaviour: BehaviourConfig = Field(
-        default_factory=BehaviourConfig, description="Когда и как часто бот пишет и отвечает"
+        default_factory=BehaviourConfig, description="When and how often the bot writes and replies"
     )
     llm: LlmConfig = Field(
-        default_factory=LlmConfig, description="Модель, бюджет и защита от сбоев LLM-провайдера"
+        default_factory=LlmConfig,
+        description="Model, budget and protection against LLM provider failures",
     )
     places: PlacesConfig = Field(
-        default_factory=PlacesConfig, description="Наполнение и отбор заведений для рекомендаций"
+        default_factory=PlacesConfig,
+        description="Filling and selection of venues for recommendations",
     )
     filters: FiltersConfig = Field(
-        default_factory=FiltersConfig, description="Входной и выходной фильтры, белые и стоп-списки"
+        default_factory=FiltersConfig,
+        description="Input and output filters, whitelists and stop lists",
     )
 
     @model_validator(mode="after")
@@ -1303,8 +1315,7 @@ class Config(BaseModel):
         """
         bad = [e for e in self.behaviour.reactions.emoji if e not in TELEGRAM_REACTIONS]
         if bad:
-            raise ValueError(
-                f"behaviour.reactions.emoji: {bad!r} не входит в набор реакций Telegram "
-                "(например, вместо 😂 нужен 🤣)"
+            raise OwnerError(
+                "validation.emoji_not_telegram", key="behaviour.reactions.emoji", bad=bad
             )
         return self

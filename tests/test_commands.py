@@ -857,6 +857,46 @@ async def test_ex_add_by_owner_reply_to_bot_adds_example(
     assert sent == []
 
 
+async def test_ex_add_without_trigger_message_uses_the_pack_fallback_names(
+    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
+) -> None:
+    settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
+    deps, db, _, prompt_store = _deps(settings=settings, config=config)
+    db.bot_replies_by_id[100] = FakeBotReplyRow(
+        trigger="ambient",
+        trigger_tg_message_id=None,
+        text="Reply text.",
+        prompt_version=3,
+        few_shot_version=2,
+        delay_sec=0,
+        created_at=int(NOW.timestamp()),
+    )
+
+    handler = _handler(deps)
+    bot_reply_msg = _message(
+        chat=_chat(), from_user=_user(BOT_USER_ID), text="Reply text.", message_id=100
+    )
+    message = _message(
+        chat=_chat(),
+        from_user=_user(ADMIN_ID),
+        text="/ex add",
+        reply_to_message=bot_reply_msg,
+        message_id=101,
+    )
+    await handler(message)
+
+    # The pair is few-shot data the model sees, so the wording comes from the pack fragments.
+    assert prompt_store.add_example_calls == [
+        (
+            deps.frag.text("placeholders.ex_add_name"),
+            deps.frag.text("placeholders.ex_add_user"),
+            "Reply text.",
+            int(NOW.timestamp()),
+        )
+    ]
+    assert sent == []
+
+
 async def test_ex_add_by_member_does_nothing(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import shutil
 from dataclasses import replace
 from pathlib import Path
 
@@ -185,6 +186,53 @@ async def test_describe_persona_key_not_settable(tmp_path: Path) -> None:
 
         assert info is not None
         assert info.settable is False
+    finally:
+        await db.close()
+
+
+async def test_describe_reads_the_description_from_the_packs_catalog(tmp_path: Path) -> None:
+    store, db = await _make_config_store(tmp_path)
+    try:
+        info = store.describe("behaviour.daily_cap")
+
+        assert info is not None
+        # The legacy pack's ru catalog, not the English Field.description.
+        assert info.description == "Суточный лимит ambient и «просто так» вместе"
+    finally:
+        await db.close()
+
+
+async def test_describe_falls_back_to_the_english_catalog_for_a_pack_without_locale(
+    tmp_path: Path,
+) -> None:
+    db = Database(tmp_path / "bot.db")
+    await db.connect()
+    pack = tmp_path / "pack"
+    shutil.copytree(LEGACY_PACK, pack)
+    shutil.rmtree(pack / "locale")
+    store = ConfigStore(load_persona(pack), db)
+    await store.load()
+    try:
+        info = store.describe("behaviour.daily_cap")
+
+        assert info is not None
+        assert info.description == "Daily limit of ambient and unprompted replies together"
+    finally:
+        await db.close()
+
+
+async def test_set_validator_error_is_an_owner_error_with_the_key(tmp_path: Path) -> None:
+    store, db = await _make_config_store(tmp_path)
+    try:
+        with pytest.raises(OwnerError) as caught:
+            await store.set("behaviour.quiet_window", '["25:00", "07:00"]', changed_by=1, now=1000)
+
+        assert caught.value.code == "validation.time"
+        assert caught.value.params["key"] == "behaviour.quiet_window"
+        assert caught.value.render(_legacy().catalog) == (
+            "behaviour.quiet_window: invalid time '25:00', expected HH:MM"
+        )
+        assert "behaviour.quiet_window" not in await db.get_overrides()
     finally:
         await db.close()
 

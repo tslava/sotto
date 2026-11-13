@@ -140,6 +140,10 @@ ITEMS: tuple[Item, ...] = (
     ),
     Item("placeholders.reply_to_none", _c("reactions", "_REPLY_TO_NONE")),
     Item("placeholders.reply_to_unavailable", _c("reactions", "_REPLY_TO_UNAVAILABLE")),
+    # /ex add fallback pair; read from the pre-PR-5a commands.py (the owner catalog took them over
+    # for one release and PR-5b moved them back to the pack: they end up in few-shot data).
+    Item("placeholders.ex_add_name", Inline("commands", "_cmd_ex_add", 0)),
+    Item("placeholders.ex_add_user", Inline("commands", "_cmd_ex_add", 1)),
     # situations
     Item("situations.ambient", _c("prompt", "SITUATION_AMBIENT")),
     Item("situations.late", _c("prompt", "SITUATION_LATE")),

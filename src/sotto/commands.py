@@ -406,7 +406,9 @@ async def _cmd_ex_add(message: Message, deps: _CommandsDeps, now: int) -> None:
     if trigger_msg is not None and trigger_msg.display_name and trigger_msg.text:
         name, user_text = trigger_msg.display_name, trigger_msg.text
     else:
-        name, user_text = _t(deps, "commands.ex_add_name"), _t(deps, "commands.ex_add_user")
+        # Chat-facing: the pair is stored as few-shot data the model sees, so the pack words it.
+        name = deps.frag.text("placeholders.ex_add_name")
+        user_text = deps.frag.text("placeholders.ex_add_user")
 
     await deps.prompt_store.add_example(name=name, user=user_text, text=bot_reply.text, now=now)
     logger.info("ex add: %r -> %r", user_text, bot_reply.text)

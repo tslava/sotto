@@ -28,7 +28,10 @@ from tests.packs import LEGACY_PACK, REPO_ROOT
 
 EN = read_locale_dir(ENGINE_LOCALES_DIR / "en")
 RU = read_locale_dir(LEGACY_PACK / "locale" / "ru")
-AREAS = {"help", "status", "commands", "alerts", "errors"}
+AREAS = {"help", "status", "commands", "alerts", "errors", "validation", "config_keys"}
+# Dead since the /ex add fallback names moved into the pack fragments; they leave the three
+# commands.yaml files together (the English one is owned by the demo-persona change).
+PENDING_REMOVAL = {"commands.ex_add_name", "commands.ex_add_user"}
 SRC = REPO_ROOT / "src" / "sotto"
 
 
@@ -46,12 +49,12 @@ def _texts(entries: dict) -> list[str]:  # type: ignore[type-arg]
 # -- the files ---------------------------------------------------------------------
 
 
-def test_english_catalog_has_the_five_owner_areas() -> None:
+def test_english_catalog_has_the_seven_owner_areas() -> None:
     assert {key.split(".")[0] for key in EN} == AREAS
     assert {path.stem for path in (ENGINE_LOCALES_DIR / "en").glob("*.yaml")} == AREAS
 
 
-def test_legacy_ru_catalog_has_the_same_five_files() -> None:
+def test_legacy_ru_catalog_has_the_same_seven_files() -> None:
     assert {path.stem for path in (LEGACY_PACK / "locale" / "ru").glob("*.yaml")} == AREAS
 
 
@@ -134,8 +137,8 @@ def _catalog_calls() -> tuple[list[tuple[str, set[str], str]], set[str]]:
     string constant (a call with a computed key still names its keys somewhere)."""
     calls: list[tuple[str, set[str], str]] = []
     mentioned: set[str] = set()
-    pattern = re.compile(r"^(help|status|commands|alerts|errors)\.[a-z_0-9]+$")
-    for name in ("commands.py", "alerts.py", "stores.py"):
+    pattern = re.compile(r"^(help|status|commands|alerts|errors|validation)\.[a-z_0-9]+$")
+    for name in ("commands.py", "alerts.py", "stores.py", "config_models.py"):
         tree = ast.parse((SRC / name).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if (
@@ -150,8 +153,12 @@ def _catalog_calls() -> tuple[list[tuple[str, set[str], str]], set[str]]:
             callee = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
             if callee == "OwnerError" and node.args and isinstance(node.args[0], ast.Constant):
                 code = str(node.args[0].value)
-                calls.append((f"errors.{code}", {k.arg for k in node.keywords if k.arg}, name))
-                mentioned.add(f"errors.{code}")
+                key = code if "." in code else f"errors.{code}"
+                params = {k.arg for k in node.keywords if k.arg}
+                if code.startswith("validation."):
+                    params.add("key")  # filled in from the error location by load_config
+                calls.append((key, params, name))
+                mentioned.add(key)
                 continue
             first = 1 if callee == "_t" else 0 if callee in {"t", "plural"} else None
             if first is None or len(node.args) <= first:
@@ -185,7 +192,9 @@ def test_every_english_key_is_used_by_the_engine() -> None:
     _, mentioned = _catalog_calls()
     # alerts.hint_<status> is built from the status code.
     mentioned |= {"alerts.hint_401", "alerts.hint_402"}
-    assert sorted(set(EN) - mentioned) == []
+    # config_keys.<key> is read by describe_key for every config key.
+    unused = {key for key in set(EN) - mentioned if not key.startswith("config_keys.")}
+    assert sorted(unused - PENDING_REMOVAL) == []
 
 
 # -- loading and fallback -----------------------------------------------------------

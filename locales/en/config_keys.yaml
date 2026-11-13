@@ -1,0 +1,182 @@
+config_keys:
+  persona.name: Character name
+  persona.display_name: Bot profile name in Telegram
+  persona.name_triggers: Words that address the character without @, matched on word boundaries
+  persona.birth_date: Date of birth; the age is computed on the fly
+  persona.arrived_wolsan: Year the character moved to the city
+  persona.district: Home district the character stands up for
+  persona.timezone: Character's timezone for days and time windows
+  behaviour.quiet_window: Window of full silence, direct addresses included
+  behaviour.morning_reply_window: Window of the morning reply to everyone who called at night; random moment
+  behaviour.live_talk.min_messages: Minimum messages in the window to count as a live conversation
+  behaviour.live_talk.min_people: Minimum distinct people in the window to count as a live conversation
+  behaviour.live_talk.window_min: Window in minutes over which a conversation is counted
+  behaviour.ambient_probability: Chance of an ambient reply inside a live conversation
+  behaviour.chat_cooldown_min: Minimum minutes between ambient replies
+  behaviour.daily_cap: Daily limit of ambient and unprompted replies together
+  behaviour.spontaneous.per_week: How many unprompted messages per week are allowed
+  behaviour.spontaneous.window: Time window HH:MM-HH:MM for unprompted messages
+  behaviour.spontaneous.min_quiet_hours: Hours of silence in a row before an unprompted message
+  behaviour.reactions.enabled: Enables emoji reactions instead of silence
+  behaviour.reactions.probability: Chance to react when a reaction is possible
+  behaviour.reactions.cooldown_min: At most one reaction per N minutes
+  behaviour.reactions.daily_cap: Reactions per day, separate from ambient/mention
+  behaviour.reactions.emoji: Emoji -> when it fits (the model sees it); only Telegram reaction emoji
+  behaviour.reactions.max_repeat: The same emoji at most N times in a row; 0 means no limit
+  behaviour.reactions.delay_sec: 'Pause before a reaction: read it and nodded, not instant, [min, max]'
+  behaviour.reactions.semantic: A cheap model picks the reaction; false means the old dice roll
+  behaviour.reactions.model: Reaction model; empty -> llm.judge_model
+  behaviour.reactions.max_tokens: Reaction model answer cap in tokens (the model may think first)
+  behaviour.reactions.semantic_daily_cap: Reaction model calls per day
+  behaviour.reactions.context_messages: How many recent chat messages to show the model
+  behaviour.stickers.enabled: Enables sending stickers instead of text
+  behaviour.stickers.min_replies_between: Text replies that must pass after a sticker before the next one
+  behaviour.stickers.daily_cap: Stickers per day
+  behaviour.stickers.recent_window: Do not repeat this many of the latest used stickers
+  behaviour.stickers.model: Sticker chooser model; empty -> llm.judge_model
+  behaviour.stickers.max_tokens: Token cap of the sticker chooser answer
+  behaviour.hot_window.enabled: Enables the hot window after /life and /say
+  behaviour.hot_window.minutes: Length of the hot window after /life and /say
+  behaviour.hot_window.mention_max_delay_sec: Cap on the reply delay to a direct address in the hot window
+  behaviour.hot_window.ambient_probability: Chance of an ambient reply in the hot window, replaces ambient_probability
+  behaviour.hot_window.ambient_cap: Cap on ambient replies per hot window
+  behaviour.hot_window.open_on_any_reply: Open the hot window after any reply, not only /life and /say
+  behaviour.followup.enabled: Enables the cheap "is this for me?" check in the hot window
+  behaviour.followup.model: Model for the "is this for me?" check; empty -> llm.judge_model
+  behaviour.followup.max_tokens: Token cap of the cheap check answer
+  behaviour.followup.daily_cap: Cap on cheap-check calls per day, its own counter
+  behaviour.followup.context_messages: How many chat messages to give the cheap check
+  behaviour.followup.recent_replies: How many of the latest bot replies to give the check
+  behaviour.followup.name_check: A cheap model confirms an address by name, not just the regex
+  behaviour.followup.name_check_max_tokens: Token cap of the name-address check answer
+  behaviour.checkin.enabled: Enables the periodic "come back and look" check
+  behaviour.checkin.after_min: Minutes after the hot window closes until the check, [min, max]
+  behaviour.checkin.topic_max_hours: Hours without bot replies after which the topic counts as dead
+  behaviour.checkin.max_messages: How many messages after the last reply to take
+  behaviour.checkin.poll_sec: Period of the background checkin_job loop, seconds
+  behaviour.checkin.quiet_min: Minutes of chat silence before the check; written later -> postpone
+  behaviour.checkin.prefilter: Cheap check of the message batch before the main model
+  behaviour.checkin.prefilter_max_tokens: Token cap of the cheap prefilter answer
+  behaviour.presence.enabled: Enables the daily presence cap of the bot
+  behaviour.presence.max_share: Share of bot replies to people's messages over the local day
+  behaviour.presence.free_replies: 'Replies per day on top of the share: for the morning of an empty chat'
+  behaviour.chat_memory.enabled: Enables recaps of past conversations
+  behaviour.chat_memory.period_days: Length of one recap period in days
+  behaviour.chat_memory.run_window: Local-time window HH:MM for the memory run
+  behaviour.chat_memory.in_prompt: How many of the latest recaps go into the prompt
+  behaviour.chat_memory.keep_days: How many days recaps are kept in the database
+  behaviour.chat_memory.max_messages: Cap on messages per recap, the latest are taken
+  behaviour.chat_memory.max_chars: Cap on the length of one recap in characters
+  behaviour.chat_memory.max_tokens: Token cap of the model answer for a recap
+  behaviour.chat_memory.model: Recap model; empty -> llm.main_model
+  behaviour.chat_memory.backfill_periods: How many past periods to catch up on the first run
+  behaviour.diary.enabled: 'Enables the day diary: facts about itself from its replies'
+  behaviour.diary.model: Fact extraction model; empty -> llm.judge_model
+  behaviour.diary.max_tokens: Token cap of the fact extraction answer
+  behaviour.diary.daily_cap: Extraction calls per day, counter diary_calls
+  behaviour.diary.week_days: How many past days to show in the "this week" line
+  behaviour.diary.keep_days: How many days facts are kept in the database
+  behaviour.jokes.enabled: Enables the memory of the chat's shared jokes
+  behaviour.jokes.per_period: How many jokes to pull from one weekly period
+  behaviour.jokes.in_prompt: How many jokes to put into the system prompt
+  behaviour.jokes.cooldown_days: Days during which an already used joke is not shown
+  behaviour.vocab.enabled: Enables vocabulary words from the /words dictionaries
+  behaviour.vocab.probability: Chance to offer words to the model in one reply
+  behaviour.vocab.daily_cap: How many words per day the character may use
+  behaviour.vocab.recent_window: Replies that must pass without a word before the next one
+  behaviour.vocab.offer_size: How many words to offer the model to choose from
+  behaviour.vocab.meaning_context: In how many recent messages to look for a word to give its meaning
+  behaviour.vocab.max_meanings: How many word meanings to put into the prompt at once
+  behaviour.vocab.request_markers: Request to use dictionary words (regexes); the dictionary name counts too
+  behaviour.vocab.request_size: How many words to show the model when it was asked for them
+  behaviour.vocab.explain_markers: 'Regexes for "what does that mean": after its word it is a question to it'
+  behaviour.vocab.explain_window_min: Minutes after its word during which "didn't get it" is a question to it
+  behaviour.vocab.explain_max_between: 'More messages than this after its word: "what does that mean" is not to it'
+  behaviour.callback.enabled: Enables the "so how did it go?" questions to people
+  behaviour.callback.min_days: At most one "so how did it go?" question per this many days
+  behaviour.callback.max_age_days: A story older than this many days is not asked about
+  behaviour.callback.author_active_days: The story's author must have written in the chat within this many days
+  behaviour.callback.window: Local-time window HH:MM for the question
+  behaviour.vision.enabled: Enables photo descriptions by a vision model
+  behaviour.vision.model: Vision model for photo descriptions; empty -> llm.main_model
+  behaviour.vision.max_tokens: Token cap of the vision model answer
+  behaviour.vision.daily_cap: Photo descriptions per day, its own counter
+  behaviour.vision.ambient_probability: Chance to describe a photo sent without a reason (no address, no window)
+  behaviour.vision.max_width: The largest photo size not wider than this, in pixels, is used
+  behaviour.vision.max_chars: Cap on the photo description length, characters
+  behaviour.weather.enabled: Enables weather in the system prompt (Open-Meteo, no key)
+  behaviour.weather.ttl_min: Minutes a weather answer counts as fresh
+  behaviour.weather.timeout_sec: Open-Meteo request timeout, seconds
+  behaviour.weather.place_lookup: Look up the weather for a place asked about in an address
+  behaviour.weather.lookup_model: Cheap model that extracts the place from a question; empty -> llm.judge_model
+  behaviour.weather.lookup_max_tokens: Token cap of the place-extraction model answer
+  behaviour.weather.lookup_daily_cap: Cap on such calls per day, counter weather_calls
+  behaviour.weather.geocode_ttl_days: Days the coordinates of a found place are remembered
+  behaviour.weather.geocode_language: Language code in which the geocoder returns place names
+  behaviour.weather.home_country_codes: Country codes (ISO) that are not appended to a place name
+  behaviour.weather.home_country_names: Home country names (case-insensitive) when the geocoder gives no code
+  behaviour.mention_cooldown_sec: Cooldown of a reply to a direct address, per person, seconds
+  behaviour.mention_chat_cooldown_sec: Cooldown of a reply to a direct address, per chat, seconds
+  behaviour.mention_daily_cap: Daily limit of replies to direct addresses
+  behaviour.reply_as_reply_after_sec: After how many seconds to answer as a reply, not just in the chat
+  behaviour.debounce_sec: 'Debounce range: collects the message queue before replying'
+  behaviour.reply_delay_buckets: Reply delay buckets for an address, weight and range in seconds
+  behaviour.urgent_max_delay_sec: Delay cap for urgent messages ("today", "now")
+  behaviour.late_reply_threshold_sec: After how many seconds a reply counts as late
+  behaviour.context_window: How many latest messages the model gets as context
+  behaviour.recent_replies_memory: How many latest bot replies are remembered for dedup
+  behaviour.topic_cooldown_min: Minutes of silence after the input stop list fires
+  behaviour.message_retention_days: How many days messages are kept before deletion
+  behaviour.min_gap_sec: Minimum seconds between any two bot messages in the chat
+  llm.provider: LLM provider, OpenAI-compatible API
+  llm.main_model: Main model id in OpenRouter
+  llm.judge_model: Small cheap judge model (output filter), another vendor
+  llm.timeout_sec: Model request timeout, seconds
+  llm.max_tokens: Token cap of the main model answer
+  llm.daily_calls_cap: Cap on model call attempts per day, the judge counts
+  llm.daily_budget_usd: Daily budget in dollars; beyond it the bot stays silent
+  llm.circuit_errors: Errors in a row that trip the circuit breaker
+  llm.circuit_pause_min: Minutes of pause after the circuit breaker trips
+  llm.alert_owner: Message the owner privately when the provider refuses (4xx)
+  llm.alert_interval_hours: At most once per this many hours for one status code
+  llm.price_in_usd_per_1m: Fallback price of input tokens per 1M if there is no usage.cost
+  llm.price_out_usd_per_1m: Fallback price of output tokens per 1M if there is no usage.cost
+  places.min_rating: Minimum venue rating for the whitelist
+  places.min_reviews: Minimum number of venue reviews for the whitelist
+  places.require_operational: Count only operating (not closed) venues
+  places.cache_ttl_days: How often, in days, to refresh the cache with the fill script
+  places.max_per_reply: Maximum venues mentioned in one reply
+  places.queries: Search queries for the offline venue cache fill (places_fill.py)
+  places.search_center: Latitude and longitude of the venue search centre (places_fill.py)
+  places.region_code: Google Places search region code (ISO 3166-1 alpha-2)
+  places.language_code: Language code of Google Places answers (names, reviews)
+  places.district_aliases: 'Districts: canonical name -> spellings (for picking places and district)'
+  places.default_district: Default district when no district is found in the address
+  places.quiet_keywords: Words in a request that select only quiet places
+  places.outskirts_keywords: Words in a request that select places outside the city
+  filters.shadow: true = filters log but do not cut the reply (gentle start)
+  filters.places_whitelist: Everyday brands that are not venues from the character card
+  filters.allowed_emoji: 'Emoji the character may use: a small set, rarely and to the point'
+  filters.emoji_max_per_reply: Maximum allowed emoji in one reply
+  filters.emoji_recent_window: Window of latest replies for the emoji frequency check
+  filters.known_places: Venues from the character card, whitelist of regex:venue/regex:latin
+  filters.polish_words: 'Character''s foreign-word list: whitelist and subject of dedup:polish_freq'
+  filters.districts: 'City districts: in Latin script they do not count as an invented venue'
+  filters.latin_extra_letters: Letters of a foreign alphabet beyond A-Za-z (diacritics), e.g. Polish
+  filters.topic_stop: Topic stop list (input and output), regexes on word boundaries
+  filters.injection_markers: Markers of bot control commands (input gate, step 5a)
+  filters.logistics: 'Logistics phrases: time, "who is going", "count me out": do not interfere'
+  filters.urgent: 'Urgency markers ("today", "now"): speed up the reply delay bucket'
+  filters.places_request: Markers of a venue request ("where to go", "recommend")
+  filters.weather_request: 'Markers of weather talk: a reason to look up the weather somewhere'
+  filters.model_talk: Markers of talk about the model/AI that the character does not know (output)
+  filters.assistant_markers: Assistant marker phrases, out of character (output filter)
+  filters.grumpy_markers: Dry or irritated wording, out of character (output filter)
+  filters.enforce_stages: 'Output filter stages that cut the reply even with shadow: true'
+  filters.motifs: Motif label -> regexes of props the character keeps coming back to
+  filters.motif_recent_window: 'Window of latest replies: a motif from it cuts the candidate (dedup:motif)'
+  filters.motif_avoid_window: Window of latest replies whose motifs go into the prompt slot {{avoid}}
+  filters.story_markers: 'Markers of a tale: "back in the day", "I remember" (tale quota)'
+  filters.story_window: Window of latest replies in which the tale quota is counted
+  filters.self_markers: 'Markers of "talks about itself" (I, my, we): a /status metric only'
+  filters.story_max: Tales allowed per story_window, beyond it style:story_quota cuts

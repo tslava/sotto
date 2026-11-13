@@ -17,7 +17,7 @@ from typing import Literal
 
 import yaml
 
-from sotto.config import KeyInfo, describe_key, flatten_config, load_config
+from sotto.config import ConfigError, KeyInfo, describe_key, flatten_config, load_config
 from sotto.config_models import Config
 from sotto.db import Database
 from sotto.errors import OwnerError
@@ -99,7 +99,9 @@ class ConfigStore:
         return self._patterns
 
     def describe(self, key: str) -> KeyInfo | None:
-        return describe_key(self.current, self._base, self._overrides, key)
+        return describe_key(
+            self.current, self._base, self._overrides, key, catalog=self._persona.catalog
+        )
 
     def set_bot_username(self, username: str) -> None:
         self._bot_username = username
@@ -118,6 +120,10 @@ class ConfigStore:
             candidate_overrides[key] = raw_value
             try:
                 load_config(self._persona.config_layers(), candidate_overrides)
+            except ConfigError as exc:
+                if exc.owner is not None:
+                    raise exc.owner from exc
+                raise ValueError(f"{key}: {_first_error_message(exc, key)}") from exc
             except ValueError as exc:
                 raise ValueError(f"{key}: {_first_error_message(exc, key)}") from exc
 

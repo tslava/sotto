@@ -152,6 +152,8 @@ def _tagged_fragments(pack: Path) -> dict[str, str]:
 # a branch that cannot happen (numbered rows are never blank).
 UNEXERCISED_LEAVES = (
     "placeholders.context_empty",
+    "placeholders.ex_add_name",
+    "placeholders.ex_add_user",
     "placeholders.messages_empty",
     "placeholders.no_caption",
     "render.places_block_header",

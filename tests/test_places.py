@@ -13,7 +13,7 @@ import pytest
 from sotto.config_models import PlacesConfig
 from sotto.db import PlaceRow
 from sotto.places import render_places_block, render_places_menu, select_places, validate_fact
-from tests.packs import LEGACY_FRAG, RU
+from tests.packs import LEGACY_FRAG, RU, legacy_config
 
 PLACES_NONE = LEGACY_FRAG.text("prompt.places_none")
 
@@ -46,7 +46,7 @@ def _row(
 
 
 def _cfg(**overrides: object) -> PlacesConfig:
-    return PlacesConfig(**overrides)  # type: ignore[arg-type]
+    return PlacesConfig(**{**legacy_config().places.model_dump(), **overrides})
 
 
 # --------------------------------------------------------------------------- #

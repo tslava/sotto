@@ -5,6 +5,7 @@ locale: ru
 ship:
   - pack.yaml
   - config.yaml
+  - fragments.yaml
   - few_shot.yaml
   - stickers.yaml
   - places_manual.yaml

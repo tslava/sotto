@@ -55,6 +55,41 @@ def test_legacy_pack_is_valid() -> None:
     assert check_pack(load_persona(LEGACY_PACK)) == []
 
 
+def _set_ship(pack: Path, ship: list[str]) -> Persona:
+    manifest = yaml.safe_load((pack / "pack.yaml").read_text(encoding="utf-8"))
+    manifest["ship"] = ship
+    (pack / "pack.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    return load_persona(pack)
+
+
+def test_ship_must_cover_every_file_the_loader_requires(pack: Path) -> None:
+    ship = [
+        "pack.yaml",
+        "config.yaml",
+        "few_shot.yaml",
+        "fragments.yaml",
+        "prompts/",
+    ]
+    assert check_pack(_set_ship(pack, ship)) == []
+    for left_out in ("pack.yaml", "config.yaml", "few_shot.yaml", "fragments.yaml", "prompts/"):
+        errors = check_pack(_set_ship(pack, [e for e in ship if e != left_out]))
+        if left_out == "prompts/":
+            assert len(errors) == 13
+            assert errors[0] == "pack.yaml: ship does not cover required file 'prompts/system.txt'"
+        else:
+            assert errors == [f"pack.yaml: ship does not cover required file {left_out!r}"]
+
+
+def test_ship_accepts_single_prompt_files_and_directories_without_slash(pack: Path) -> None:
+    from sotto.fragments import PROMPT_NAMES
+
+    ship = ["pack.yaml", "config.yaml", "few_shot.yaml", "fragments.yaml"]
+    ship += [f"prompts/{name}.txt" for name in PROMPT_NAMES]
+    assert check_pack(_set_ship(pack, ship)) == []
+    ship = ["pack.yaml", "config.yaml", "few_shot.yaml", "fragments.yaml", "prompts"]
+    assert check_pack(_set_ship(pack, ship)) == []
+
+
 def test_main_valid_pack_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([str(LEGACY_PACK)]) == EXIT_OK
 
@@ -144,8 +179,10 @@ def test_pack_without_fragments_reports_every_key(pack: Path) -> None:
 
     errors = check_pack(load_persona(pack))
 
-    assert len(errors) == len(ALL_FRAGMENT_KEYS)
-    assert all(error.startswith("fragments.yaml: missing key ") for error in errors)
+    # The manifest still ships the file that is gone, then every fragment key is missing.
+    assert errors[0] == "pack.yaml: ship entry 'fragments.yaml' does not exist"
+    assert len(errors) == len(ALL_FRAGMENT_KEYS) + 1
+    assert all(error.startswith("fragments.yaml: missing key ") for error in errors[1:])
 
 
 # -- boot ------------------------------------------------------------------------

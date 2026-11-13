@@ -1,6 +1,7 @@
 """Owner-UI catalog: ``Catalog.t`` / ``Catalog.plural`` over ``locale/<code>/*.yaml``.
 
-One YAML file per area (``help``, ``status``, ``commands``, ``alerts``, ``errors``); the top-level
+One YAML file per area (``help``, ``status``, ``commands``, ``alerts``, ``errors``,
+``validation``, ``config_keys``); the top-level
 key of each file equals the file stem, values are strings or plural mappings
 (``one``/``few``/``many``/``other``). Placeholders are ``{name}`` and are checked with
 ``string.Formatter`` at load. The engine ships the English catalog in ``locales/en``; a pack may
@@ -82,6 +83,10 @@ class Catalog:
     def entries(self) -> dict[str, str | dict[str, str]]:
         """A copy of the locale's own entries (without the fallback)."""
         return dict(self._entries)
+
+    def has(self, key: str) -> bool:
+        """The locale or its English fallback carries ``key`` (no warning, nothing recorded)."""
+        return key in self._entries or key in self._fallback
 
     def _lookup(self, key: str) -> str | dict[str, str] | None:
         if key in self._entries:

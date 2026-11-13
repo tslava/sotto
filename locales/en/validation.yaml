@@ -1,0 +1,13 @@
+validation:
+  time: '{key}: invalid time {value!r}, expected HH:MM'
+  range_sec: '{key}: invalid range_sec {value!r}: expected 0 <= min <= max <= 86400'
+  delay_sec: '{key}: invalid delay_sec {value!r}: expected 0 <= min <= max <= 3600'
+  after_min: '{key}: invalid after_min {value!r}: expected 0 <= min <= max'
+  debounce_sec: '{key}: invalid debounce_sec {value!r}: expected 0 <= min <= max <= 600'
+  search_center: '{key}: invalid search_center {value!r}: expected lat -90..90, lon -180..180'
+  model_id: "{key}: invalid model id {value!r}: expected empty string or 'provider/model'"
+  regex: '{key}: invalid regex pattern {pattern!r}: {error}'
+  motif_regex: '{key}: invalid regex pattern {pattern!r} for motif {label!r}: {error}'
+  bucket_weights: '{key}: reply_delay_buckets weights must sum to 1.0 (tolerance 0.01), got {total:.4f}'
+  emoji_empty: '{key}: must not be empty'
+  emoji_not_telegram: '{key}: {bad!r} is not in the Telegram reaction set (for example use 🤣 instead of 😂)'

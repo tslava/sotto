@@ -21,7 +21,7 @@ from sotto.vocab import (
     vocab_over_quota,
     vocab_requested,
 )
-from tests.packs import LEGACY_FRAG, RU, parse_ru_vocab, ru_vocab
+from tests.packs import LEGACY_FRAG, RU, legacy_config, parse_ru_vocab, ru_vocab
 
 SIBERIAN = """
 name: дворовые
@@ -316,11 +316,13 @@ async def test_vocab_store_skips_broken_body(
     ],
 )
 def test_vocab_requested(text: str, expected: bool) -> None:
-    assert vocab_requested(text, _vocab(), VocabConfig()) is expected
+    assert vocab_requested(text, _vocab(), legacy_config().behaviour.vocab) is expected
 
 
 def test_vocab_requested_needs_vocab() -> None:
-    assert vocab_requested("скажи по-дворовому", ru_vocab(), VocabConfig()) is False
+    assert (
+        vocab_requested("скажи по-дворовому", ru_vocab(), legacy_config().behaviour.vocab) is False
+    )
 
 
 def test_vocab_requested_by_custom_marker() -> None:
@@ -344,7 +346,7 @@ def test_vocab_requested_by_custom_marker() -> None:
     ],
 )
 def test_explain_requested(text: str, expected: bool) -> None:
-    assert explain_requested(text, VocabConfig()) is expected
+    assert explain_requested(text, legacy_config().behaviour.vocab) is expected
 
 
 def test_render_vocab_requested_header() -> None:

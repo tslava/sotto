@@ -32,7 +32,7 @@ from tests.packs import LEGACY_FRAG, LEGACY_PACK, frag_with
 def test_legacy_fragments_are_valid_and_complete() -> None:
     assert fragment_errors(LEGACY_FRAG.data) == []
     assert set(FRAGMENT_SPEC) | set(FRAGMENT_LISTS) | FRAGMENT_MAPS == ALL_FRAGMENT_KEYS
-    assert len(ALL_FRAGMENT_KEYS) == 70
+    assert len(ALL_FRAGMENT_KEYS) == 72
 
 
 def test_extractor_table_matches_the_schema_exactly() -> None:

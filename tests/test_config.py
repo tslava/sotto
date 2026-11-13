@@ -93,13 +93,11 @@ def test_describe_key_dict_of_lists() -> None:
     assert "жена" in info.value
 
 
-def test_load_real_config_places_queries_match_defaults() -> None:
-    # config.yaml дублирует дефолтные queries places_fill.py (CLAUDE.md, "Интерфейсы
-    # этапа 5") — эта проверка ловит расхождение, если один из файлов поправили без другого.
+def test_load_real_config_carries_the_places_queries() -> None:
+    # The engine default of places.queries is empty: the pack's config.yaml lists them.
     cfg = load_config(CONFIG_PATH)
-    default_places = PlacesConfig()
 
-    assert cfg.places.queries == default_places.queries
+    assert PlacesConfig().queries == []
     assert "restauracja Bórnik" in cfg.places.queries
     assert "Leszczykowo bar" in cfg.places.queries
 
@@ -107,7 +105,7 @@ def test_load_real_config_places_queries_match_defaults() -> None:
 def test_config_builds_with_defaults_without_yaml() -> None:
     cfg = Config()
 
-    assert cfg.persona.birth_date == date(1974, 4, 12)
+    assert cfg.persona.birth_date == date(1970, 1, 1)
     assert cfg.behaviour.ambient_probability == 0.25
 
 
@@ -411,7 +409,7 @@ def test_describe_key_all_leaf_keys_have_short_description() -> None:
 
 def test_reactions_emoji_laugh_not_in_telegram_set_rejected() -> None:
     """😂 есть в allowed_emoji, но не в наборе реакций Telegram (REACTION_INVALID)."""
-    with pytest.raises(ValidationError, match="набор"):
+    with pytest.raises(ValidationError, match=r"validation\.emoji_not_telegram"):
         Config.model_validate(
             {"behaviour": {"reactions": {"emoji": ["👍", "😂"]}}},
         )
@@ -571,3 +569,25 @@ def test_new_filter_keys_are_described_and_settable() -> None:
 
     assert card is not None and card.settable and card.type_name == "str" and card.description
     assert describe_key(cfg, cfg, {}, "filters.districts") is not None
+
+
+# --- the engine defaults are neutral ------------------------------------------------
+
+
+def test_engine_defaults_carry_no_persona_specific_values() -> None:
+    import json
+    import re
+
+    dumped = json.dumps(Config().model_dump(mode="json"), ensure_ascii=False)
+    assert not re.search("[А-Яа-яЁё]", dumped)
+    cfg = Config()
+    assert cfg.persona.district == ""
+    assert cfg.places.queries == []
+    assert cfg.places.district_aliases == {}
+    assert cfg.places.default_district == ""
+    assert cfg.places.region_code == ""
+    assert cfg.behaviour.vocab.request_markers == []
+    assert cfg.behaviour.vocab.explain_markers == []
+    assert cfg.behaviour.weather.home_country_codes == []
+    assert cfg.behaviour.weather.home_country_names == []
+    assert cfg.behaviour.weather.geocode_language == "en"

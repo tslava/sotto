@@ -30,6 +30,7 @@ NEW_MODULES: tuple[str, ...] = (
     "tools/check_language.py",
     "tools/extract_fragments.py",
     "tools/extract_filter_defaults.py",
+    "tools/extract_config_keys.py",
     "tools/extract_locale.py",
     "tools/split_changelog.py",
     "tools/inventory.py",

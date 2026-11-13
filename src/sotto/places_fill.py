@@ -337,7 +337,6 @@ async def search_places(
     body = {
         "textQuery": query,
         "languageCode": cfg.language_code,
-        "regionCode": cfg.region_code,
         "locationBias": {
             "circle": {
                 "center": {"latitude": latitude, "longitude": longitude},
@@ -345,6 +344,8 @@ async def search_places(
             }
         },
     }
+    if cfg.region_code:
+        body["regionCode"] = cfg.region_code
     headers = {"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": _FIELD_MASK}
     try:
         response = await http.post(_SEARCH_URL, json=body, headers=headers)

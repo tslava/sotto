@@ -680,4 +680,4 @@ def test_new_config_keys_validate() -> None:
         PlacesConfig(search_center=(91.0, 0.0))
     with pytest.raises(ValueError, match="search_center"):
         PlacesConfig(search_center=(0.0, -181.0))
-    assert WeatherConfig().geocode_language == "ru"
+    assert WeatherConfig().geocode_language == "en"

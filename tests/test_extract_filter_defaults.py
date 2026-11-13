@@ -163,11 +163,12 @@ def test_old_engine_dump_runs_the_old_sources_in_a_subprocess(fake_old_src: Path
     assert defaults["persona"]["name"] == "old-name"
     assert defaults["filters"]["districts"] == ["North", "South"]
     assert defaults["filters"]["latin_extra_letters"] == "Óó"
-    config = LEGACY_PACK / "config.yaml"
-    assert "filters" in tool.old_engine_dump(fake_old_src, "pack", str(config))
+    assert "filters" in tool.old_engine_dump(fake_old_src, "pack", str(LEGACY_PACK))
 
 
 def test_old_engine_dump_reports_a_failing_old_engine(tmp_path: Path) -> None:
+    (tmp_path / "sotto").mkdir()
+    (tmp_path / "sotto" / "__init__.py").write_text("", encoding="utf-8")  # no config module
     with pytest.raises(tool.ExtractError, match="old engine failed"):
         tool.old_engine_dump(tmp_path, "defaults")
 
@@ -238,3 +239,61 @@ def test_main_reports_errors_and_succeeds(
     assert "error:" in capsys.readouterr().err
     pack = _pack_without_new_keys(tmp_path)
     assert tool.main(["--pack", str(pack), "--old-src", str(fake_old_src), "--dry-run"]) == 0
+
+
+# -- nested sections (PR-5b) ----------------------------------------------------------
+
+NESTED_TEXT = """persona:
+  name: X
+behaviour:
+  vocab:
+    enabled: true   # keep
+    request_size: 5
+
+    # trailing comment
+  weather:
+    ttl_min: 30
+places:
+  queries: [a]
+"""
+
+
+def test_insert_keys_writes_into_a_nested_section_and_keeps_the_rest() -> None:
+    out = tool.insert_keys(
+        NESTED_TEXT,
+        {"behaviour.vocab": {"request_markers": ["m1", "m2"]}, "behaviour.weather": {"x": 1}},
+    )
+    data = yaml.safe_load(out)
+    assert data["behaviour"]["vocab"]["request_markers"] == ["m1", "m2"]
+    assert data["behaviour"]["weather"] == {"ttl_min": 30, "x": 1}
+    assert data["behaviour"]["vocab"]["enabled"] is True
+    assert "enabled: true   # keep" in out
+    # The key lands inside vocab, before the next sibling section.
+    lines = out.split("\n")
+    assert lines.index("    request_markers: [m1, m2]") < lines.index("  weather:")
+
+
+def test_missing_keys_finds_nested_keys_and_skips_what_the_old_engine_lacked() -> None:
+    config = yaml.safe_load(NESTED_TEXT)
+    defaults = {
+        "behaviour": {"vocab": {"request_markers": ["old"], "explain_markers": ["old2"]}},
+        "persona": {},
+    }
+    found = tool.missing_keys(config, defaults)
+    assert found["behaviour.vocab"] == {"request_markers": ["old"], "explain_markers": ["old2"]}
+    # Keys the old engine has no default for are not invented.
+    assert "places" not in found or "queries" not in found.get("places", {})
+
+
+def test_section_span_does_not_confuse_a_nested_name_with_a_top_level_one() -> None:
+    text = "behaviour:\n  places:\n    a: 1\nplaces:\n  b: 2\n"
+    lines = text.split("\n")
+    header, _end, indent = tool._section_span(lines, "places")
+    assert header == 3 and indent == "  "
+    out = tool.insert_keys(text, {"places": {"c": 3}})
+    assert yaml.safe_load(out) == {"behaviour": {"places": {"a": 1}}, "places": {"b": 2, "c": 3}}
+
+
+def test_a_missing_nested_section_is_an_error() -> None:
+    with pytest.raises(tool.ExtractError, match="not found"):
+        tool.insert_keys("persona:\n  name: X\n", {"behaviour.vocab": {"a": 1}})

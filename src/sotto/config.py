@@ -11,6 +11,17 @@ from pydantic import BaseModel, ValidationError
 from pydantic.fields import FieldInfo
 
 from sotto.config_models import Config
+from sotto.errors import OwnerError
+from sotto.i18n import Catalog
+
+
+class ConfigError(ValueError):
+    """``load_config`` found invalid values; ``owner`` is the first error a validator raised as
+    ``OwnerError`` (with the key filled in), for the owner UI to render through the catalog."""
+
+    def __init__(self, message: str, owner: OwnerError | None = None) -> None:
+        super().__init__(message)
+        self.owner = owner
 
 
 @dataclass(frozen=True)
@@ -105,6 +116,17 @@ def _read_layer(layer: Path | Mapping[str, Any]) -> Mapping[str, Any]:
     return loaded
 
 
+def _first_owner_error(errors: Sequence[Mapping[str, Any]]) -> OwnerError | None:
+    """The first validator error raised as ``OwnerError``, ``key`` set from the error location."""
+    for err in errors:
+        original = (err.get("ctx") or {}).get("error")
+        if isinstance(original, OwnerError):
+            params = dict(original.params)
+            params.setdefault("key", ".".join(str(part) for part in err["loc"]))
+            return OwnerError(original.code, **params)
+    return None
+
+
 def load_config(
     layers: Path | Mapping[str, Any] | Sequence[Path | Mapping[str, Any]],
     overrides: dict[str, str] | None = None,
@@ -133,8 +155,11 @@ def load_config(
     try:
         return Config.model_validate(data)
     except ValidationError as exc:
-        lines = [f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in exc.errors()]
-        raise ValueError("invalid config: " + "; ".join(lines)) from exc
+        errors = exc.errors()
+        lines = [f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in errors]
+        raise ConfigError(
+            "invalid config: " + "; ".join(lines), _first_owner_error(errors)
+        ) from exc
 
 
 def _format_value(value: object) -> str:
@@ -231,10 +256,24 @@ def _bounds_str(field_info: FieldInfo) -> str:
     return ""
 
 
+def _description(field_info: FieldInfo, key: str, catalog: Catalog | None) -> str:
+    catalog_key = f"config_keys.{key}"
+    if catalog is not None and catalog.has(catalog_key):
+        return catalog.t(catalog_key)
+    return field_info.description or ""
+
+
 def describe_key(
-    current: Config, base: Config, overrides: dict[str, str], key: str
+    current: Config,
+    base: Config,
+    overrides: dict[str, str],
+    key: str,
+    catalog: Catalog | None = None,
 ) -> KeyInfo | None:
     """Карточка одного ключа конфига: тип, границы, описание, текущее и дефолтное значение.
+
+    Описание берётся из каталога (``config_keys.<ключ>``, свой язык пака или английский
+    запасной), а при его отсутствии или без каталога — из ``Field.description`` модели.
 
     None, если такого ключа нет, либо key указывает на секцию (BaseModel), а не на лист
     (обход по model_fields, как в flatten_config).
@@ -273,6 +312,6 @@ def describe_key(
         overridden=key in overrides,
         type_name=_type_name(field_info.annotation),
         bounds=_bounds_str(field_info),
-        description=field_info.description or "",
+        description=_description(field_info, key, catalog),
         settable=not key.startswith("persona."),
     )
