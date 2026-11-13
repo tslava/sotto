@@ -26,36 +26,17 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
+from sotto.fragments import Fragments
 from sotto.gate_types import Trigger
 
-# "[стикер #3] Ну ты даёшь" в recent_bot_replies — картинка, а не текст персонажа
-# (см. докстринг модуля). Дублирует stickers.STICKER_TAG_RE намеренно.
-_STICKER_PLACEHOLDER_PREFIX = "[стикер #"
 
-# Метки мотивов склоняются в винительный падеж для фразы «ты уже поминал: жену,
-# теплицу, гараж». Метки, которых тут нет, идут как есть — конфиг открыт для
-# правки владельцем (/set filters.motifs), и незнакомая метка не должна ломать
-# промпт, максимум звучать чуть коряво.
-_ACCUSATIVE = {
-    "жена": "жену",
-    "теплица": "теплицу",
-    "машина": "машину",
-    "сын": "сына",
-    "зато": "«зато»",
-}
-
-_AVOID_TEMPLATE = (
-    "В последних репликах ты уже поминал: {items}. "
-    "Сейчас без них: другая деталь или вовсе без байки."
-)
-_AVOID_NO_STORY = "Байку сейчас не рассказывай: короткий ответ по делу, одна фраза."
+def _is_sticker_record(text: str, frag: Fragments) -> bool:
+    """«[стикер #3] Ну ты даёшь» в recent_bot_replies — картинка, а не текст персонажа
+    (см. докстринг модуля); префикс берётся из ``placeholders.sticker_tag`` пакета."""
+    return text.startswith(frag.prefix("placeholders.sticker_tag"))
 
 
-def _is_sticker_record(text: str) -> bool:
-    return text.startswith(_STICKER_PLACEHOLDER_PREFIX)
-
-
-def _tail(recent_replies: Sequence[str], window: int) -> list[str]:
+def _tail(recent_replies: Sequence[str], window: int, frag: Fragments) -> list[str]:
     """Последние ``window`` реплик без записей-стикеров.
 
     Окно отсчитывается по всем записям, а стикеры отбрасываются уже внутри него
@@ -65,7 +46,7 @@ def _tail(recent_replies: Sequence[str], window: int) -> list[str]:
     """
     if window <= 0:
         return []
-    return [reply for reply in recent_replies[-window:] if not _is_sticker_record(reply)]
+    return [reply for reply in recent_replies[-window:] if not _is_sticker_record(reply, frag)]
 
 
 def motifs_in(text: str, motifs: Mapping[str, Sequence[re.Pattern[str]]]) -> list[str]:
@@ -80,14 +61,18 @@ def motifs_in(text: str, motifs: Mapping[str, Sequence[re.Pattern[str]]]) -> lis
 
 
 def used_motifs(
-    recent_replies: Sequence[str], window: int, motifs: Mapping[str, Sequence[re.Pattern[str]]]
+    recent_replies: Sequence[str],
+    window: int,
+    motifs: Mapping[str, Sequence[re.Pattern[str]]],
+    *,
+    frag: Fragments,
 ) -> list[str]:
     """Метки мотивов из последних ``window`` реплик, без повторов, в порядке конфига.
 
     ``recent_replies`` — хронологически, свежие последними (как отдаёт
     ``db.recent_bot_replies``).
     """
-    tail = _tail(recent_replies, window)
+    tail = _tail(recent_replies, window, frag)
     if not tail:
         return []
     used: list[str] = []
@@ -98,18 +83,22 @@ def used_motifs(
 
 
 def story_count(
-    recent_replies: Sequence[str], window: int, markers: Sequence[re.Pattern[str]]
+    recent_replies: Sequence[str],
+    window: int,
+    markers: Sequence[re.Pattern[str]],
+    *,
+    frag: Fragments,
 ) -> int:
     """Сколько из последних ``window`` реплик выглядят байкой (есть маркер истории).
 
     Считаются реплики, а не срабатывания: две «девяностых» в одной фразе — одна
     байка, а не две.
     """
-    tail = _tail(recent_replies, window)
+    tail = _tail(recent_replies, window, frag)
     return sum(1 for reply in tail if any(marker.search(reply) for marker in markers))
 
 
-def render_avoid(used: Sequence[str], *, no_story: bool) -> str:
+def render_avoid(used: Sequence[str], *, no_story: bool, frag: Fragments) -> str:
     """Абзац для слота ``{avoid}`` системного промпта. Нечего сказать -> "".
 
     ``used`` — метки мотивов из ``used_motifs``; ``no_story`` — квота баек в окне
@@ -117,10 +106,12 @@ def render_avoid(used: Sequence[str], *, no_story: bool) -> str:
     """
     parts: list[str] = []
     if used:
-        items = ", ".join(_ACCUSATIVE.get(label, label) for label in used)
-        parts.append(_AVOID_TEMPLATE.replace("{items}", items))
+        accusative = frag.table("render.accusative")
+        items = ", ".join(accusative.get(label, label) for label in used)
+        template: str = frag.text("render.avoid_template")
+        parts.append(template.replace("{items}", items))
     if no_story:
-        parts.append(_AVOID_NO_STORY)
+        parts.append(frag.text("render.avoid_no_story"))
     return " ".join(parts)
 
 
@@ -150,20 +141,22 @@ class SelfShare:
     other: tuple[int, int] = (0, 0)
 
 
-def speaks_about_self(text: str, markers: Sequence[re.Pattern[str]]) -> bool:
+def speaks_about_self(text: str, markers: Sequence[re.Pattern[str]], *, frag: Fragments) -> bool:
     """Есть ли в реплике маркер «о себе» (первое лицо, его родня). Стикер — нет."""
-    if not text or _is_sticker_record(text):
+    if not text or _is_sticker_record(text, frag):
         return False
     return any(marker.search(text) for marker in markers)
 
 
-def self_share(replies: Iterable[tuple[str, str]], markers: Sequence[re.Pattern[str]]) -> SelfShare:
+def self_share(
+    replies: Iterable[tuple[str, str]], markers: Sequence[re.Pattern[str]], *, frag: Fragments
+) -> SelfShare:
     """``replies`` — пары (trigger, text) из ``bot_replies``. Группы: ambient,
     обращения (mention/reply/name/followup/places), прочее (morning, checkin,
     callback, spontaneous). say/life и стикеры пропускаются."""
     counts = {"ambient": [0, 0], "address": [0, 0], "other": [0, 0]}
     for trigger, text in replies:
-        if trigger in _SELF_SKIP_TRIGGERS or _is_sticker_record(text):
+        if trigger in _SELF_SKIP_TRIGGERS or _is_sticker_record(text, frag):
             continue
         if trigger == Trigger.AMBIENT.value:
             group = "ambient"
@@ -172,7 +165,7 @@ def self_share(replies: Iterable[tuple[str, str]], markers: Sequence[re.Pattern[
         else:
             group = "other"
         counts[group][1] += 1
-        if speaks_about_self(text, markers):
+        if speaks_about_self(text, markers, frag=frag):
             counts[group][0] += 1
     return SelfShare(
         ambient=(counts["ambient"][0], counts["ambient"][1]),
@@ -181,10 +174,15 @@ def self_share(replies: Iterable[tuple[str, str]], markers: Sequence[re.Pattern[
     )
 
 
-def render_self_share(share: SelfShare, days: int) -> str:
+def render_self_share(share: SelfShare, days: int, *, frag: Fragments) -> str:
     """Строка для /status: «о себе за 3 сут: ambient 6/6, обращения 2/2, прочее 1/1»."""
-    return (
-        f"о себе за {days} сут: ambient {share.ambient[0]}/{share.ambient[1]}, "
-        f"обращения {share.address[0]}/{share.address[1]}, "
-        f"прочее {share.other[0]}/{share.other[1]}"
+    return frag.render(
+        "render.self_share",
+        days=str(days),
+        ambient_hit=str(share.ambient[0]),
+        ambient_total=str(share.ambient[1]),
+        address_hit=str(share.address[0]),
+        address_total=str(share.address[1]),
+        other_hit=str(share.other[0]),
+        other_total=str(share.other[1]),
     )

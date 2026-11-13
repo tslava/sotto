@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo
 
 from sotto.config_models import Config
 from sotto.db import ChatMemoryRow, Database
+from sotto.fragments import Fragments
 from sotto.llm import LLMClient, LLMError
 from sotto.patterns import Patterns
 from sotto.sanitize import normalize_text
@@ -45,8 +46,6 @@ _JOB_INTERVAL_SEC = 3600
 # После упавшей итерации — короткая пауза вместо обычной, чтобы не крутить busy-loop
 # и при этом не ждать целый час (тот же приём, что в responder.checkin_job).
 _ERROR_RETRY_SEC = 60
-
-_HEADER = "Что было в чате раньше, по неделям (твои воспоминания; упоминай только к слову):"
 
 # Данные людей уходят внутри <<<CHAT ... >>>, поддельные разделители из них
 # вырезаются — тот же приём, что в prompt.py/judge.py/followup.py.
@@ -139,7 +138,7 @@ def format_period(period_start: int, period_end: int, tz: str) -> str:
     return f"{start_day.strftime('%d.%m')}–{end_day.strftime('%d.%m.%Y')}"
 
 
-def render_chat_memory(rows: Sequence[ChatMemoryRow], tz: str) -> str:
+def render_chat_memory(rows: Sequence[ChatMemoryRow], tz: str, *, frag: Fragments) -> str:
     """Блок долгой памяти для системного промпта. Пусто -> "" (весь абзац исчезает).
 
     Строки пересказа идут с отступом в два пробела и НИКОГДА не начинаются с
@@ -149,7 +148,7 @@ def render_chat_memory(rows: Sequence[ChatMemoryRow], tz: str) -> str:
     """
     if not rows:
         return ""
-    lines = [_HEADER]
+    lines = [frag.text("render.chat_memory_header")]
     for row in rows:
         lines.append(f"{format_period(row.period_start, row.period_end, tz)}:")
         for line in row.text.splitlines():

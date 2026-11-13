@@ -571,20 +571,25 @@ async def build_engine(
         clock=clock.now,
     )
 
-    judge = Judge(llm, config_store.get, persona.prompts["judge"])
+    judge = Judge(llm, config_store.get, persona.prompts["judge"], frag=persona.frag)
     followup = FollowupChecker(
         llm,
         config_store.get,
         persona.prompts["followup"],
         persona.prompts["checkin_prefilter"],
         persona.prompts["name_check"],
+        frag=persona.frag,
     )
-    vision = VisionDescriber(llm, config_store.get, persona.prompts["vision"])
-    reaction_chooser = ReactionChooser(llm, config_store.get, persona.prompts["reaction"])
+    vision = VisionDescriber(llm, config_store.get, persona.prompts["vision"], frag=persona.frag)
+    reaction_chooser = ReactionChooser(
+        llm, config_store.get, persona.prompts["reaction"], frag=persona.frag
+    )
     catalog = load_catalog(persona.stickers_path)
     enabled_stickers = sum(1 for sticker in catalog.stickers if sticker.enabled)
     sticker_chooser = (
-        StickerChooser(llm, config_store.get, catalog, persona.prompts["sticker"])
+        StickerChooser(
+            llm, config_store.get, catalog, persona.prompts["sticker"], frag=persona.frag
+        )
         if enabled_stickers
         else None
     )
@@ -621,6 +626,7 @@ async def build_engine(
         clock=clock.now,
         sleep=clock.sleep,
         persona=persona,
+        frag=persona.frag,
     )
     reaction_scheduler = ReactionScheduler(
         bot=bot,
@@ -640,6 +646,7 @@ async def build_engine(
         rng=rng,
         config_store=config_store,
         prompt_store=prompt_store,
+        frag=persona.frag,
         bot_username=BOT_USERNAME,
         persona=persona,
         bot=bot,
@@ -1026,11 +1033,19 @@ async def _act_aux(engine: Engine, args: dict[str, Any]) -> Any:
         return _jsonable(row)
     if which == "places_fact":
         return await engine_places_fill.compress_fact(
-            args["reviews"], llm=engine.llm, model=cfg.llm.main_model, now=now
+            args["reviews"],
+            llm=engine.llm,
+            model=cfg.llm.main_model,
+            now=now,
+            frag=engine.persona.frag,
         )
     if which == "stickers_ocr":
         return await engine_stickers_fill.recognize_sticker(
-            b"golden-sticker-bytes", llm=engine.llm, model=cfg.llm.main_model, now=now
+            b"golden-sticker-bytes",
+            llm=engine.llm,
+            model=cfg.llm.main_model,
+            now=now,
+            frag=engine.persona.frag,
         )
     raise ValueError(f"unknown aux {which!r}")
 
@@ -1055,7 +1070,10 @@ def _row(engine: Engine, spec: dict[str, Any], index: int) -> MessageRow:
 
 def _call_soften(engine: Engine, case: dict[str, Any]) -> Any:
     fixed = engine_postprocess.soften(
-        case["text"], recent_replies=case.get("recent", []), cfg=engine.cfg().filters
+        case["text"],
+        recent_replies=case.get("recent", []),
+        cfg=engine.cfg().filters,
+        frag=engine.persona.frag,
     )
     return {"text": fixed.text, "fixes": list(fixed.fixes)}
 
@@ -1075,6 +1093,7 @@ async def _call_check_output(engine: Engine, case: dict[str, Any]) -> Any:
         system_prompt=engine.prompt_store.system_prompt(),
         trigger_text=case.get("trigger", ""),
         now=engine.clock.now(),
+        frag=engine.persona.frag,
     )
     verdict = await engine_filters.check_output(case["text"], ctx)
     return {"ok": verdict.ok, "reason": verdict.reason, "reasons": list(verdict.reasons)}
@@ -1105,7 +1124,10 @@ def _call_patterns(engine: Engine, case: dict[str, Any]) -> Any:
 
 def _call_sanitize_name(engine: Engine, case: dict[str, Any]) -> Any:
     return engine_sanitize.sanitize_display_name(
-        case.get("raw"), int(case.get("user", 1)), engine.deps.reserved_names
+        case.get("raw"),
+        int(case.get("user", 1)),
+        engine.deps.reserved_names,
+        frag=engine.persona.frag,
     )
 
 
@@ -1114,7 +1136,7 @@ def _call_media_placeholder(engine: Engine, case: dict[str, Any]) -> Any:
     message = SimpleNamespace(
         **{name: (object() if name == case["kind"] else None) for name in fields}
     )
-    return engine_sanitize.media_placeholder(message)
+    return engine_sanitize.media_placeholder(message, frag=engine.persona.frag)
 
 
 def _call_normalize_text(engine: Engine, case: dict[str, Any]) -> Any:
@@ -1140,20 +1162,27 @@ def _call_vocab(engine: Engine, case: dict[str, Any]) -> Any:
 def _call_motifs(engine: Engine, case: dict[str, Any]) -> Any:
     patterns = engine.config_store.patterns()
     recent = list(case.get("recent", []))
-    used = engine_motifs.used_motifs(recent, int(case.get("window", 10)), patterns.motifs)
-    count = engine_motifs.story_count(recent, int(case.get("window", 10)), patterns.story_markers)
+    used = engine_motifs.used_motifs(
+        recent, int(case.get("window", 10)), patterns.motifs, frag=engine.persona.frag
+    )
+    count = engine_motifs.story_count(
+        recent, int(case.get("window", 10)), patterns.story_markers, frag=engine.persona.frag
+    )
     share = engine_motifs.self_share(
         [(item["trigger"], item["text"]) for item in case.get("replies", [])],
         patterns.self_markers,
+        frag=engine.persona.frag,
     )
     return {
         "motifs_in": engine_motifs.motifs_in(case.get("text", ""), patterns.motifs),
         "used": used,
         "story_count": count,
-        "avoid": engine_motifs.render_avoid(used, no_story=bool(case.get("no_story", False))),
-        "self_share": engine_motifs.render_self_share(share, 3),
+        "avoid": engine_motifs.render_avoid(
+            used, no_story=bool(case.get("no_story", False)), frag=engine.persona.frag
+        ),
+        "self_share": engine_motifs.render_self_share(share, 3, frag=engine.persona.frag),
         "speaks_about_self": engine_motifs.speaks_about_self(
-            case.get("text", ""), patterns.self_markers
+            case.get("text", ""), patterns.self_markers, frag=engine.persona.frag
         ),
     }
 
@@ -1164,11 +1193,12 @@ def _call_validate_fact(engine: Engine, case: dict[str, Any]) -> Any:
 
 async def _call_places_menu(engine: Engine, case: dict[str, Any]) -> Any:
     rows = await engine.db.places_all()
-    return engine_places.render_places_menu(rows)
+    return engine_places.render_places_menu(rows, frag=engine.persona.frag)
 
 
 def _call_weather(engine: Engine, case: dict[str, Any]) -> Any:
     tz = engine.cfg().persona.timezone
+    frag = engine.persona.frag
     w = engine_weather.Weather(
         temp_now=float(case["temp"]),
         code_now=int(case["code"]),
@@ -1182,10 +1212,14 @@ def _call_weather(engine: Engine, case: dict[str, Any]) -> Any:
     )
     now = engine.clock.now()
     return {
-        "home": engine_weather.render_weather(w, tz, now, case.get("home", "")),
-        "place": engine_weather.render_weather_place(case.get("place", "Гдеугодно"), w, tz, now),
-        "none": engine_weather.render_weather(None, tz, now),
-        "describe": engine_weather.describe(int(case["code"])),
+        "home": engine_weather.render_weather(
+            w, tz, now, home_name=case.get("home", ""), frag=frag
+        ),
+        "place": engine_weather.render_weather_place(
+            case.get("place", "Гдеугодно"), w, tz, now, frag=frag
+        ),
+        "none": engine_weather.render_weather(None, tz, now, frag=frag),
+        "describe": engine_weather.describe(int(case["code"]), frag=frag),
     }
 
 
@@ -1196,12 +1230,13 @@ def _call_parse_reply(engine: Engine, case: dict[str, Any]) -> Any:
 def _call_situations(engine: Engine, case: dict[str, Any]) -> Any:
     items = [(name, text) for name, text in case.get("items", [])]
     rows = [_row(engine, spec, i) for i, spec in enumerate(case.get("rows", []))]
+    frag = engine.persona.frag
     return {
-        "addressed": engine_prompt.situation_addressed(items) if items else "",
-        "followup": engine_prompt.situation_followup(items) if items else "",
-        "checkin": engine_prompt.situation_checkin(rows) if rows else "",
-        "life": engine_prompt.situation_life(case.get("life", "")),
-        "callback": engine_prompt.situation_callback("Имя", case.get("life", "")),
+        "addressed": engine_prompt.situation_addressed(items, frag=frag) if items else "",
+        "followup": engine_prompt.situation_followup(items, frag=frag) if items else "",
+        "checkin": engine_prompt.situation_checkin(rows, frag=frag) if rows else "",
+        "life": engine_prompt.situation_life(case.get("life", ""), frag=frag),
+        "callback": engine_prompt.situation_callback("Имя", case.get("life", ""), frag=frag),
     }
 
 
@@ -1249,11 +1284,35 @@ async def _act_call(engine: Engine, args: dict[str, Any]) -> Any:
 # --- group D: config ---
 
 
+# Config keys PR-3 added when it moved code constants into the pack (geocoder language and home
+# country, Places search anchor, district aliases and request keywords). The baselines predate
+# them, so the dumps leave them out and compare keeps covering every earlier key;
+# tests/test_fragments_extraction.py checks that the legacy pack carries them with the old values.
+POST_BASELINE_CONFIG_KEYS = frozenset(
+    {
+        "behaviour.weather.geocode_language",
+        "behaviour.weather.home_country_codes",
+        "behaviour.weather.home_country_names",
+        "places.search_center",
+        "places.region_code",
+        "places.language_code",
+        "places.district_aliases",
+        "places.default_district",
+        "places.quiet_keywords",
+        "places.outskirts_keywords",
+    }
+)
+
+
+def _baseline_flat(cfg: Config) -> dict[str, str]:
+    return {k: v for k, v in flatten_config(cfg).items() if k not in POST_BASELINE_CONFIG_KEYS}
+
+
 async def _act_config_dump(engine: Engine, args: dict[str, Any]) -> Any:
     base = load_config(engine.persona.config_layers())
     return {
-        "flat": flatten_config(engine.cfg()),
-        "flat_yaml_only": flatten_config(base),
+        "flat": _baseline_flat(engine.cfg()),
+        "flat_yaml_only": _baseline_flat(base),
         "overrides": await engine.db.get_overrides(),
     }
 

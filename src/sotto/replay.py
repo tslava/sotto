@@ -70,6 +70,7 @@ from sotto.db import MessageRow
 from sotto.export_parser import ExportMessage, parse_export
 from sotto.few_shot import load_few_shot, render_few_shot
 from sotto.filters import FilterContext, check_output
+from sotto.fragments import Fragments
 from sotto.gate_types import (
     GateMessage,
     GateState,
@@ -82,7 +83,7 @@ from sotto.judge import Judge
 from sotto.llm import LLMClient, LLMError
 from sotto.patterns import Patterns
 from sotto.persona import Persona, load_persona, persona_from_env
-from sotto.prompt import SITUATION_AMBIENT, build_messages, parse_reply, render_context
+from sotto.prompt import build_messages, parse_reply, render_context
 from sotto.sanitize import sanitize_display_name
 from sotto.settings import Settings
 from sotto.timeutil import day_key, local_date, local_dt
@@ -268,6 +269,7 @@ class _GenerateContext:
     prompt_template: str
     few_shot_text: str
     store: InMemoryStateStore
+    frag: Fragments
 
 
 def _unique_participant_names(context_rows: list[MessageRow]) -> list[str]:
@@ -310,7 +312,7 @@ def _build_generate_context(cfg: Config, use_judge: bool, persona: Persona) -> _
 
     judge: Judge | None = None
     if use_judge:
-        judge = Judge(llm, lambda: cfg, persona.prompts["judge"])
+        judge = Judge(llm, lambda: cfg, persona.prompts["judge"], frag=persona.frag)
 
     return _GenerateContext(
         llm=llm,
@@ -318,17 +320,18 @@ def _build_generate_context(cfg: Config, use_judge: bool, persona: Persona) -> _
         prompt_template=prompt_template,
         few_shot_text=few_shot_text,
         store=store,
+        frag=persona.frag,
     )
 
 
-def situation_for(trigger: Trigger) -> str:
+def situation_for(trigger: Trigger, *, frag: Fragments) -> str:
     """Ситуация для генерации в реплее — как у Responder для того же триггера.
 
-    Ambient получает ``SITUATION_AMBIENT`` (CLAUDE.md, "про себя через раз"), иначе
+    Ambient получает ``situations.ambient`` (CLAUDE.md, "про себя через раз"), иначе
     реплей проверял бы старую форму промпта. Обращения в реплее по-прежнему без
     ``situation_addressed`` — известное упрощение реплея.
     """
-    return SITUATION_AMBIENT if trigger is Trigger.AMBIENT else ""
+    return frag.text("situations.ambient") if trigger is Trigger.AMBIENT else ""
 
 
 async def _generate_one(
@@ -366,7 +369,8 @@ async def _generate_one(
         context=render_context(context_rows),
         recent_replies="\n".join(recent_for_prompt),
         places="",
-        situation=situation_for(trigger),
+        situation=situation_for(trigger, frag=ctx.frag),
+        frag=ctx.frag,
     )
 
     def _line(reply_text: str, verdict_str: str) -> str:
@@ -410,6 +414,7 @@ async def _generate_one(
         system_prompt=ctx.prompt_template,
         trigger_text=trigger_text,
         now=exported.created_at,
+        frag=ctx.frag,
     )
     verdict = await check_output(reply.text, filter_ctx, ctx.judge)
 
@@ -530,7 +535,9 @@ def _filter_by_date_range(
     return messages
 
 
-def _load_messages(args: argparse.Namespace, cfg: Config) -> tuple[list[ExportMessage], int]:
+def _load_messages(
+    args: argparse.Namespace, cfg: Config, frag: Fragments
+) -> tuple[list[ExportMessage], int]:
     """Сообщения источника (``result.json`` либо база бота) + эффективный bot_user_id.
 
     Для базы бота ``--bot-user-id``, если не задан (0), берётся автоматически из строк
@@ -546,7 +553,7 @@ def _load_messages(args: argparse.Namespace, cfg: Config) -> tuple[list[ExportMe
         if bot_user_id == 0:
             bot_user_id = detected_bot_user_id
     else:
-        messages = parse_export(source, cfg.persona.timezone)
+        messages = parse_export(source, cfg.persona.timezone, frag=frag)
 
     since = getattr(args, "since", None)
     until = getattr(args, "until", None)
@@ -658,24 +665,19 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
     use_judge = bool(getattr(args, "judge", False))
     max_calls = int(getattr(args, "max_calls", 20))
 
-    persona: Persona | None = None
     persona_arg = getattr(args, "persona", None)
     config_arg = getattr(args, "config", None)
-    # Пакет нужен, если не задан явный конфиг, либо для промптов генерации.
-    if persona_arg is not None:
-        persona = load_persona(Path(persona_arg))
-    elif config_arg is None or generate:
-        persona = persona_from_env()
+    # Пакет нужен всегда: плейсхолдеры медиа и имя-заглушка берутся из его фрагментов.
+    persona = load_persona(Path(persona_arg)) if persona_arg is not None else persona_from_env()
     if config_arg is not None:
         cfg = load_config(Path(config_arg))
     else:
-        assert persona is not None  # без --config пакет загружен выше
         cfg = load_config(persona.config_layers())
     patterns = Patterns(
         cfg.filters,
         cfg.persona.name_triggers,
         args.bot_username,
-        persona.lang if persona is not None else None,
+        persona.lang,
     )
     reserved = {
         cfg.persona.name,
@@ -684,7 +686,7 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
         args.bot_username,
     }
 
-    export_messages, effective_bot_user_id = _load_messages(args, cfg)
+    export_messages, effective_bot_user_id = _load_messages(args, cfg, persona.frag)
 
     rng = random.Random(args.seed)
     state = ReplayState(cfg.persona.timezone, cfg.behaviour.live_talk.window_min)
@@ -697,7 +699,6 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
 
     gen_ctx: _GenerateContext | None = None
     if generate:
-        assert persona is not None  # generate -> пакет загружен выше
         gen_ctx = _build_generate_context(cfg, use_judge, persona)
 
     context_buffer: deque[MessageRow] = deque(maxlen=cfg.behaviour.context_window)
@@ -710,7 +711,9 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
                 exported.reply_to_tg_message_id is not None
                 and exported.reply_to_tg_message_id in bot_message_ids
             )
-            display_name = sanitize_display_name(exported.display_name, exported.user_id, reserved)
+            display_name = sanitize_display_name(
+                exported.display_name, exported.user_id, reserved, frag=persona.frag
+            )
 
             msg = GateMessage(
                 chat_id=0,

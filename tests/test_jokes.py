@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sotto.db import JokeRow
 from sotto.jokes import joke_used, render_jokes
+from tests.packs import LEGACY_FRAG
 
 DAY = 86400
 NOW = 100 * DAY
@@ -20,12 +21,15 @@ def _joke(joke_id: int, text: str, used_at: int | None = None) -> JokeRow:
 
 
 def test_render_jokes_empty_is_empty_string() -> None:
-    assert render_jokes([], now=NOW, cooldown_days=5) == ""
+    assert render_jokes([], now=NOW, cooldown_days=5, frag=LEGACY_FRAG) == ""
 
 
 def test_render_jokes_single_line_with_quotes() -> None:
     rendered = render_jokes(
-        [_joke(1, "опять шурупы"), _joke(2, "как у Вовы")], now=NOW, cooldown_days=5
+        [_joke(1, "опять шурупы"), _joke(2, "как у Вовы")],
+        now=NOW,
+        cooldown_days=5,
+        frag=LEGACY_FRAG,
     )
 
     assert "\n" not in rendered
@@ -40,7 +44,7 @@ def test_render_jokes_hides_recently_used_shows_after_cooldown() -> None:
         _joke(3, "давно", used_at=NOW - 5 * DAY),
     ]
 
-    rendered = render_jokes(rows, now=NOW, cooldown_days=5)
+    rendered = render_jokes(rows, now=NOW, cooldown_days=5, frag=LEGACY_FRAG)
 
     assert "«свежая»" in rendered
     assert "«давно»" in rendered
@@ -49,17 +53,20 @@ def test_render_jokes_hides_recently_used_shows_after_cooldown() -> None:
 
 def test_render_jokes_all_cooling_down_is_empty() -> None:
     rows = [_joke(1, "недавно", used_at=NOW - DAY)]
-    assert render_jokes(rows, now=NOW, cooldown_days=5) == ""
+    assert render_jokes(rows, now=NOW, cooldown_days=5, frag=LEGACY_FRAG) == ""
 
 
 def test_render_jokes_zero_cooldown_always_shows() -> None:
     rows = [_joke(1, "только что", used_at=NOW)]
-    assert "«только что»" in render_jokes(rows, now=NOW, cooldown_days=0)
+    assert "«только что»" in render_jokes(rows, now=NOW, cooldown_days=0, frag=LEGACY_FRAG)
 
 
 def test_render_jokes_cleans_bullets_and_delimiters_and_never_starts_with_dash() -> None:
     rendered = render_jokes(
-        [_joke(1, "- опять <<<шурупы>>>"), _joke(2, "  ")], now=NOW, cooldown_days=5
+        [_joke(1, "- опять <<<шурупы>>>"), _joke(2, "  ")],
+        now=NOW,
+        cooldown_days=5,
+        frag=LEGACY_FRAG,
     )
 
     assert "<<<" not in rendered

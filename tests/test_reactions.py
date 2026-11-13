@@ -36,7 +36,7 @@ from sotto.reactions import (
     react,
 )
 from sotto.timeutil import day_key
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 TZ = "Europe/Warsaw"
@@ -482,7 +482,7 @@ def _full_config(*, reaction_model: str = "openrouter/small", judge_model: str =
 def _chooser(handler: Handler, cfg: Config, db: Database) -> tuple[ReactionChooser, LLMClient]:
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     llm = LLMClient(api_key="sk-test", cfg_getter=lambda: cfg, db=db, http=http)
-    return ReactionChooser(llm, lambda: cfg, REACTION_PROMPT), llm
+    return ReactionChooser(llm, lambda: cfg, REACTION_PROMPT, frag=LEGACY_FRAG), llm
 
 
 def _row(display_name: str, text: str, *, msg_id: int = 1) -> MessageRow:

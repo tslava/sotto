@@ -778,6 +778,19 @@ class WeatherConfig(BaseModel):
     geocode_ttl_days: int = Field(
         default=30, ge=1, le=3650, description="Сколько дней помнятся координаты найденного места"
     )
+    # Язык и «домашняя страна» геокодера (раньше были зашиты в weather.py): язык названий
+    # места и страны, которые не дописываются к названию.
+    geocode_language: str = Field(
+        default="ru", description="Код языка, на котором геокодер отдаёт названия мест"
+    )
+    home_country_codes: list[str] = Field(
+        default_factory=lambda: ["PL"],
+        description="Коды стран (ISO), которые не дописываются к названию места",
+    )
+    home_country_names: list[str] = Field(
+        default_factory=lambda: ["польша", "poland", "polska"],
+        description="Названия домашней страны (без регистра), если геокодер не дал код",
+    )
 
     @field_validator("lookup_model")
     @classmethod
@@ -1053,6 +1066,53 @@ class PlacesConfig(BaseModel):
         ],
         description="Поисковые запросы для офлайн-наполнения кэша заведений (places_fill.py)",
     )
+    # Привязка поиска Google Places (раньше была зашита в places_fill.py): центр, язык, регион.
+    search_center: tuple[float, float] = Field(
+        default=(51.5, 18.0),
+        description="Широта и долгота центра поиска заведений (places_fill.py)",
+    )
+    region_code: str = Field(
+        default="PL", description="Код региона поиска Google Places (ISO 3166-1 alpha-2)"
+    )
+    language_code: str = Field(
+        default="pl", description="Код языка ответов Google Places (названия, отзывы)"
+    )
+    district_aliases: dict[str, list[str]] = Field(
+        default_factory=lambda: {
+            "Dolna": ["dolna", "долна"],
+            "Rożyce": ["rożyce", "rozyce", "рожице", "рожицы"],
+            "Dawne Miasto": ["dawne miasto", "старый город", "давне място", "центр", "centrum"],
+            "Granwald": ["granwald", "гранвальд"],
+            "Łanowo": ["łanowo", "lanowo", "ланов"],
+            "Kępice": ["kępice", "кепице"],
+            "Ogrody": ["ogrody", "огроды"],
+            "Bórnik": ["bórnik", "bornik", "борник", "бёрник"],
+            "Leszczykowo": ["leszczykowo", "лещиково"],
+            "Strzechyn": ["strzechyn", "стшехин", "стржехин"],
+        },
+        description="Районы: каноническое имя -> варианты написания (для выбора мест и district)",
+    )
+    default_district: str = Field(
+        default="Wolsań", description="Район по умолчанию, если в адресе района не нашлось"
+    )
+    quiet_keywords: list[str] = Field(
+        default_factory=lambda: ["тихо", "спокойно", "поговорить", "посидеть", "не орать"],
+        description="Слова в просьбе, после которых выбираются только тихие места",
+    )
+    outskirts_keywords: list[str] = Field(
+        default_factory=lambda: ["за город", "съездить", "природа", "озеро", "лес"],
+        description="Слова в просьбе, после которых выбираются места за городом",
+    )
+
+    @field_validator("search_center")
+    @classmethod
+    def _validate_search_center(cls, value: tuple[float, float]) -> tuple[float, float]:
+        lat, lon = value
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            raise ValueError(
+                f"invalid search_center {value!r}: expected lat -90..90, lon -180..180"
+            )
+        return value
 
 
 _TOPIC_STOP_DEFAULT = [

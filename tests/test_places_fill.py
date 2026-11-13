@@ -19,6 +19,7 @@ import httpx
 import pytest
 import yaml
 
+from sotto.config_models import PlacesConfig
 from sotto.db import Database
 from sotto.llm import LLMResult
 from sotto.persona import load_persona
@@ -368,7 +369,7 @@ async def test_manual_only_without_key_writes_all_manual_rows(tmp_path: Path) ->
 
 def test_build_manual_only_rows_marks_rating_and_reviews_as_manual() -> None:
     manual = [ManualEntry(name="Bórnik", quiet=True, category="outskirts", district="Bórnik")]
-    rows = build_manual_only_rows(manual, now=1_000)
+    rows = build_manual_only_rows(manual, now=1_000, cfg=PlacesConfig())
 
     assert rows == [
         FetchedPlace(
@@ -501,12 +502,13 @@ async def test_dry_run_does_not_mark_places_not_seen(tmp_path: Path) -> None:
 
 
 def test_pick_district_from_address_and_manual_override() -> None:
-    assert pick_district(address="Leśna 38, Dolna, Wolsań", manual=None) == "Dolna"
-    assert pick_district(address="Leszczykowo, ul. Główna 1", manual=None) == "Leszczykowo"
-    assert pick_district(address="Nowhere specific", manual=None) == "Wolsań"
+    cfg = PlacesConfig()
+    assert pick_district(address="Leśna 38, Dolna, Wolsań", manual=None, cfg=cfg) == "Dolna"
+    assert pick_district(address="Leszczykowo, ul. Główna 1", manual=None, cfg=cfg) == "Leszczykowo"
+    assert pick_district(address="Nowhere specific", manual=None, cfg=cfg) == "Wolsań"
 
     manual = ManualEntry(name="X", quiet=False, category=None, district="Rożyce")
-    assert pick_district(address="Leśna 38, Dolna, Wolsań", manual=manual) == "Rożyce"
+    assert pick_district(address="Leśna 38, Dolna, Wolsań", manual=manual, cfg=cfg) == "Rożyce"
 
 
 def test_pick_category_priority_manual_then_cheap_then_outskirts_then_type() -> None:

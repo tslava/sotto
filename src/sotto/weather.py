@@ -34,7 +34,8 @@ from typing import Any
 
 import httpx
 
-from sotto.config_models import Config
+from sotto.config_models import Config, WeatherConfig
+from sotto.fragments import Fragments
 from sotto.llm import LLMClient, LLMError
 from sotto.timeutil import local_date
 
@@ -51,48 +52,10 @@ _COUNTER_KEY = "weather_calls"
 # задачу, геокодер такое всё равно не найдёт.
 _PLACE_MAX_LEN = 60
 
-# Страна не добавляется к названию, если место дома, в Польше: «Bórnik» звучит
-# как место, куда персонаж ездит, а «Bórnik, Польша» — как справка из интернета.
-# language=ru геокодера отдаёт страну по-русски, поэтому вариантов несколько.
-_HOME_COUNTRIES = frozenset({"польша", "poland", "polska"})
-
 _SLOT_RE = re.compile(r"\{(text)\}")
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```$", re.DOTALL | re.IGNORECASE)
-
-# Коды WMO Open-Meteo -> короткое описание по-русски. Ровно те коды, которые
-# API действительно возвращает; всё остальное -> "" (строка без описания).
-WMO: dict[int, str] = {
-    0: "ясно",
-    1: "переменная облачность",
-    2: "переменная облачность",
-    3: "пасмурно",
-    45: "туман",
-    48: "туман",
-    51: "морось",
-    53: "морось",
-    55: "морось",
-    56: "морось",
-    57: "морось",
-    61: "дождь",
-    63: "дождь",
-    65: "дождь",
-    66: "ледяной дождь",
-    67: "ледяной дождь",
-    71: "снег",
-    73: "снег",
-    75: "снег",
-    77: "снег",
-    80: "ливни",
-    81: "ливни",
-    82: "ливни",
-    85: "снегопад",
-    86: "снегопад",
-    95: "гроза",
-    96: "гроза",
-    99: "гроза",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,9 +82,12 @@ class Place:
     longitude: float
 
 
-def describe(code: int) -> str:
-    """Код WMO -> описание по-русски; неизвестный код -> "" (строка без описания)."""
-    return WMO.get(code, "")
+def describe(code: int, *, frag: Fragments) -> str:
+    """Код WMO -> описание из ``weather.wmo`` пакета; неизвестный код -> "" (строка без описания).
+
+    Таблица кодов — ровно те, которые Open-Meteo действительно возвращает; ключи в YAML —
+    целые числа."""
+    return str(frag.table("weather.wmo").get(code, ""))
 
 
 def format_temp(value: float) -> str:
@@ -146,14 +112,16 @@ def _same_local_day(fetched_at: int, tz: str, now: int) -> bool:
     return local_date(fetched_at, tz) == local_date(now, tz)
 
 
-def _with_desc(prefix: str, code: int, *, joiner: str) -> str:
-    text = describe(code)
+def _with_desc(prefix: str, code: int, *, joiner: str, frag: Fragments) -> str:
+    text = describe(code, frag=frag)
     if not text:
         return prefix
     return f"{prefix}{joiner}{text}"
 
 
-def render_weather(w: Weather | None, tz: str, now: int, home_name: str = "") -> str:
+def render_weather(
+    w: Weather | None, tz: str, now: int, *, home_name: str = "", frag: Fragments
+) -> str:
     """Блок домашней погоды для системного промпта. ``None`` -> "" (абзац исчезает).
 
     Название домашней точки в текст НЕ подставляется: русские названия пришлось бы
@@ -166,32 +134,53 @@ def render_weather(w: Weather | None, tz: str, now: int, home_name: str = "") ->
     """
     if w is None or not _same_local_day(w.fetched_at, tz, now):
         return ""
-    now_part = _with_desc(f"сейчас {format_temp(w.temp_now)}", w.code_now, joiner=" и ")
+    now_part = _with_desc(
+        f"{frag.get('weather.now_word')}{format_temp(w.temp_now)}",
+        w.code_now,
+        joiner=frag.text("weather.and_word"),
+        frag=frag,
+    )
+    range_to = frag.text("weather.range_to")
     first = (
-        "Погода за окном (это фон, упоминай только если к слову): "
-        f"{now_part}, днём от {format_temp(w.today_min)} до {format_temp(w.today_max)}."
+        f"{frag.get('weather.home_prefix')}"
+        f"{now_part}{frag.get('weather.today_from')}{format_temp(w.today_min)}"
+        f"{range_to}{format_temp(w.today_max)}."
     )
     second = _with_desc(
-        f"Завтра от {format_temp(w.tomorrow_min)} до {format_temp(w.tomorrow_max)}",
+        f"{frag.get('weather.tomorrow_from')}{format_temp(w.tomorrow_min)}"
+        f"{range_to}{format_temp(w.tomorrow_max)}",
         w.tomorrow_code,
         joiner=", ",
+        frag=frag,
     )
     return f"{first}\n{second}."
 
 
-def render_weather_place(place_name: str, w: Weather | None, tz: str, now: int) -> str:
+def render_weather_place(
+    place_name: str, w: Weather | None, tz: str, now: int, *, frag: Fragments
+) -> str:
     """Вторая строка блока — погода в месте, про которое спросили. ``None`` -> ""."""
     if w is None or not _same_local_day(w.fetched_at, tz, now):
         return ""
-    now_part = _with_desc(f"сейчас {format_temp(w.temp_now)}", w.code_now, joiner=" и ")
+    now_part = _with_desc(
+        f"{frag.get('weather.now_word')}{format_temp(w.temp_now)}",
+        w.code_now,
+        joiner=frag.text("weather.and_word"),
+        frag=frag,
+    )
+    range_to = frag.text("weather.range_to")
     tomorrow_part = _with_desc(
-        f"завтра от {format_temp(w.tomorrow_min)} до {format_temp(w.tomorrow_max)}",
+        f"{frag.get('weather.tomorrow_from_lower')}{format_temp(w.tomorrow_min)}"
+        f"{range_to}{format_temp(w.tomorrow_max)}",
         w.tomorrow_code,
         joiner=", ",
+        frag=frag,
     )
     # Название в именительном падеже: «Спрашивают про Варшава» было бы ошибкой, а
     # склонять названия из геокодера нечем — поэтому двоеточие после «место».
-    return f"Спрашивают про место: {place_name}. {now_part.capitalize()}, {tomorrow_part}."
+    return (
+        f"{frag.get('weather.place_prefix')}{place_name}. {now_part.capitalize()}, {tomorrow_part}."
+    )
 
 
 def _strip_fake_delimiters(text: str) -> str:
@@ -226,19 +215,22 @@ def _parse_weather(data: Any, now: int) -> Weather:
     )
 
 
-def _parse_place(data: Any) -> Place:
-    """Ответ геокодера -> Place. Страна дописывается к названию, если это не
-    Польша: «Варшава» и так понятно, а «Кёльн, Германия» — уже другая история."""
+def _parse_place(data: Any, cfg: WeatherConfig) -> Place:
+    """Ответ геокодера -> Place. Страна дописывается к названию, если это не домашняя
+    (``home_country_codes``/``home_country_names``): своё место и так понятно, а
+    «Кёльн, Германия» — уже другая история."""
     results = data["results"]
     first = results[0]
     name = str(first["name"]).strip()
     country = str(first.get("country") or "").strip()
     country_code = str(first.get("country_code") or "").strip()
+    home_codes = {code.upper() for code in cfg.home_country_codes}
+    home_names = {item.casefold() for item in cfg.home_country_names}
     if (
         name
         and country
-        and country_code.upper() != "PL"
-        and country.casefold() not in _HOME_COUNTRIES
+        and country_code.upper() not in home_codes
+        and country.casefold() not in home_names
     ):
         name = f"{name}, {country}"
     return Place(name=name, latitude=float(first["latitude"]), longitude=float(first["longitude"]))
@@ -385,19 +377,21 @@ class WeatherClient:
             if entry is not None and now - entry.fetched_at < ttl_sec:
                 return entry.place
 
-            place = await self._geocode_request(query.strip(), weather_cfg.timeout_sec)
+            place = await self._geocode_request(query.strip(), weather_cfg)
             self._geocode_cache[key] = _GeocodeEntry(place=place, fetched_at=now)
             return place
 
-    async def _geocode_request(self, query: str, timeout_sec: int) -> Place | None:
+    async def _geocode_request(self, query: str, weather_cfg: WeatherConfig) -> Place | None:
         params: dict[str, str | int] = {
             "name": query,
             "count": 1,
-            "language": "ru",
+            "language": weather_cfg.geocode_language,
             "format": "json",
         }
         try:
-            response = await self._http.get(_GEOCODE_URL, params=params, timeout=timeout_sec)
+            response = await self._http.get(
+                _GEOCODE_URL, params=params, timeout=weather_cfg.timeout_sec
+            )
         except httpx.HTTPError as exc:
             logger.warning("geocode request failed: error=%s", type(exc).__name__)
             return None
@@ -407,7 +401,7 @@ class WeatherClient:
             return None
 
         try:
-            return _parse_place(response.json())
+            return _parse_place(response.json(), weather_cfg)
         except (KeyError, IndexError, TypeError, ValueError):
             # Ничего не нашлось — в ответе просто нет ключа "results". Это
             # обычное дело («под Кórnik-ом»), не ошибка сервиса.

@@ -138,6 +138,7 @@ async def main() -> None:
             rng=rng,
             config_store=config_store,
             prompt_store=prompt_store,
+            frag=persona.frag,
             bot_username=me.username or "",
             persona=persona,
             bot=bot,

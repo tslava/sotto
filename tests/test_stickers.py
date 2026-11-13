@@ -26,7 +26,7 @@ from sotto.stickers import (
     render_sticker_menu,
     sticker_allowed,
 )
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 STICKER_PROMPT_PATH = LEGACY_PACK / "prompts/sticker.txt"
 NOW = 1_768_003_200
@@ -89,7 +89,7 @@ def _chooser(
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     llm = LLMClient(api_key="sk-test", cfg_getter=lambda: cfg, db=FakeStore(), http=http)
     prompt = STICKER_PROMPT_PATH.read_text(encoding="utf-8")
-    return StickerChooser(llm, lambda: cfg, catalog, prompt), llm
+    return StickerChooser(llm, lambda: cfg, catalog, prompt, frag=LEGACY_FRAG), llm
 
 
 def _cfg(judge_model: str = "openrouter/small") -> Config:
@@ -195,18 +195,18 @@ def test_load_catalog_invalid_schema_raises_value_error(tmp_path: Path) -> None:
 
 def test_render_sticker_menu_skips_disabled_and_formats_with_when() -> None:
     catalog = _catalog(count=2, disabled={2})
-    menu = render_sticker_menu(catalog.stickers)
+    menu = render_sticker_menu(catalog.stickers, frag=LEGACY_FRAG)
     assert menu == "1: «Текст 1» — когда уместно"
 
 
 def test_render_sticker_menu_without_when_omits_dash() -> None:
     sticker = Sticker(id=5, file_id="F", text="Просто текст", when="", enabled=True)
-    menu = render_sticker_menu([sticker])
+    menu = render_sticker_menu([sticker], frag=LEGACY_FRAG)
     assert menu == "5: «Просто текст»"
 
 
 def test_render_sticker_menu_empty_list_is_empty_string() -> None:
-    assert render_sticker_menu([]) == ""
+    assert render_sticker_menu([], frag=LEGACY_FRAG) == ""
 
 
 # --- parse_choice -------------------------------------------------------------
@@ -257,15 +257,15 @@ def test_recent_sticker_ids_extracts_tagged_texts_within_window() -> None:
         "[стикер #2] два",
         "[стикер #3] три",
     ]
-    assert recent_sticker_ids(texts, 2) == {2, 3}
+    assert recent_sticker_ids(texts, 2, frag=LEGACY_FRAG) == {2, 3}
 
 
 def test_recent_sticker_ids_ignores_non_tagged() -> None:
-    assert recent_sticker_ids(["привет", "как дела"], 5) == set()
+    assert recent_sticker_ids(["привет", "как дела"], 5, frag=LEGACY_FRAG) == set()
 
 
 def test_recent_sticker_ids_empty_texts() -> None:
-    assert recent_sticker_ids([], 5) == set()
+    assert recent_sticker_ids([], 5, frag=LEGACY_FRAG) == set()
 
 
 # --- sticker_allowed -----------------------------------------------------------

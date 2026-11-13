@@ -31,16 +31,10 @@ import yaml
 from pydantic import BaseModel, Field
 
 from sotto.config_models import Config, StickersConfig
+from sotto.fragments import Fragments
 from sotto.llm import LLMClient, LLMError
 
 logger = logging.getLogger(__name__)
-
-_NO_TRIGGER = "(без обращения, реплика по собственной инициативе)"
-
-# Регулярка, которой responder.py вытаскивает id стикера из текста, записанного
-# insert_bot_reply (см. render_sticker_menu/StickerChooser.choose ниже и модульный
-# докстринг responder.py про "recent_ids"): "[стикер #3] Ну ты даёшь" -> 3.
-STICKER_TAG_RE = re.compile(r"^\[стикер #(\d+)\]")
 
 # Дублирует вырезание разделителей из sanitize.normalize_text/prompt.py/judge.py —
 # на всякий случай ещё раз чистим то, что уходит в промпт чузера.
@@ -107,16 +101,28 @@ def load_catalog(path: Path) -> StickerCatalog:
     return StickerCatalog.model_validate(raw)
 
 
-def render_sticker_menu(stickers: list[Sticker]) -> str:
+def sticker_tag_re(frag: Fragments) -> re.Pattern[str]:
+    """Регулярка, которой responder.py вытаскивает id стикера из текста, записанного
+    insert_bot_reply (см. render_sticker_menu/StickerChooser.choose ниже и модульный
+    докстринг responder.py про "recent_ids"): "[стикер #3] Ну ты даёшь" -> 3.
+    Строится из ``placeholders.sticker_tag`` пакета: текст до ``{id}`` и после него экранируется,
+    вместо ``{id}`` стоит ``(\\d+)``."""
+    template: str = frag.text("placeholders.sticker_tag")
+    head, _, tail = template.partition("{id}")
+    return re.compile(f"^{re.escape(head)}(\\d+){re.escape(tail)}")
+
+
+def render_sticker_menu(stickers: list[Sticker], *, frag: Fragments) -> str:
     """ "1: «Ну ты даёшь» — удивление, восхищение\\n2: ..." — только enabled."""
+    quote_open, quote_close = frag.text("render.quote_open"), frag.text("render.quote_close")
     lines = []
     for sticker in stickers:
         if not sticker.enabled:
             continue
         if sticker.when:
-            lines.append(f"{sticker.id}: «{sticker.text}» — {sticker.when}")
+            lines.append(f"{sticker.id}: {quote_open}{sticker.text}{quote_close} — {sticker.when}")
         else:
-            lines.append(f"{sticker.id}: «{sticker.text}»")
+            lines.append(f"{sticker.id}: {quote_open}{sticker.text}{quote_close}")
     return "\n".join(lines)
 
 
@@ -149,14 +155,15 @@ def parse_choice(raw: str, valid_ids: set[int]) -> int | None:
         return None
 
 
-def recent_sticker_ids(texts: Sequence[str], window: int) -> set[int]:
+def recent_sticker_ids(texts: Sequence[str], window: int, *, frag: Fragments) -> set[int]:
     """id стикеров, использованных в последних ``window`` репликах бота, отмеченных
-    тегом ``STICKER_TAG_RE`` — не по всем текстам, а по последним ``window`` именно
+    тегом ``sticker_tag_re`` — не по всем текстам, а по последним ``window`` именно
     стикерным. ``texts`` — в хронологическом порядке (как отдаёт
     ``Database.recent_bot_replies``), самые свежие последними."""
+    tag_re = sticker_tag_re(frag)
     ids: list[int] = []
     for text in reversed(texts):
-        match = STICKER_TAG_RE.match(text)
+        match = tag_re.match(text)
         if match is not None:
             ids.append(int(match.group(1)))
             if len(ids) >= window:
@@ -186,11 +193,14 @@ class StickerChooser:
         cfg_getter: Callable[[], Config],
         catalog: StickerCatalog,
         prompt_template: str,
+        *,
+        frag: Fragments,
     ) -> None:
         self._llm = llm
         self._cfg_getter = cfg_getter
         self._catalog = catalog
         self._prompt_template = prompt_template
+        self._frag = frag
 
     async def choose(
         self,
@@ -213,8 +223,10 @@ class StickerChooser:
         if not model:
             return None
 
-        menu = render_sticker_menu(candidates)
-        trigger_clean = _strip_fake_delimiters(trigger_text).strip() or _NO_TRIGGER
+        menu = render_sticker_menu(candidates, frag=self._frag)
+        trigger_clean = _strip_fake_delimiters(trigger_text).strip() or self._frag.text(
+            "prompt.no_target"
+        )
         reply_clean = _strip_fake_delimiters(reply_text).strip()
 
         slot_values = {"menu": menu, "trigger": trigger_clean, "reply": reply_clean}

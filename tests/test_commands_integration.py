@@ -31,7 +31,7 @@ from sotto.persona import load_persona
 from sotto.settings import Settings
 from sotto.stores import ConfigStore, PromptStore
 from sotto.timeutil import local_dt
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 OWN_CHAT_ID = -1001234567890
 ADMIN_ID = 555
@@ -131,6 +131,7 @@ async def wired(
         prompt_store=prompt_store,
         bot_username=BOT_USERNAME,
         persona=persona,
+        frag=LEGACY_FRAG,
     )
     try:
         yield deps, db, config_store, prompt_store

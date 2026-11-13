@@ -22,6 +22,7 @@ from sotto.chat_memory import ChatMemorizer
 from sotto.config_models import Config
 from sotto.db import Database, MessageRow
 from sotto.followup import FollowupChecker
+from sotto.fragments import Fragments
 from sotto.gate import should_consider
 from sotto.gate_state import load_gate_state
 from sotto.gate_types import GateMessage, Trigger, Verdict
@@ -103,6 +104,7 @@ class Deps:
     rng: random.Random
     config_store: ConfigStore
     prompt_store: PromptStore
+    frag: Fragments
     bot_username: str = ""
     # Пакет персоны: /changelog читает из него; None — тесты хендлера без пакета.
     persona: Persona | None = None
@@ -198,7 +200,7 @@ async def _describe_photo(
             shadow=False,
             created_at=now,
         )
-        return photo_text(None, caption)
+        return photo_text(None, caption, frag=deps.frag)
 
     description: str | None = None
     size = pick_photo_size(sizes, vision_cfg.max_width)
@@ -230,7 +232,7 @@ async def _describe_photo(
             shadow=False,
             created_at=now,
         )
-        return photo_text(None, caption)
+        return photo_text(None, caption, frag=deps.frag)
 
     # Счётчик /status (статистика описаний). Потолок вызовов держит LLMClient по
     # своему счётчику vision_calls — неудачная попытка тратит его, но не эту
@@ -246,7 +248,7 @@ async def _describe_photo(
         created_at=now,
     )
     logger.info("vision: %s", description)
-    return photo_text(description, caption)
+    return photo_text(description, caption, frag=deps.frag)
 
 
 async def _vocab_explain_asked(
@@ -377,15 +379,22 @@ def build_router(deps: Deps) -> Router:
         if user is None:
             # Анонимный админ или сообщение от имени канала.
             user_id = 0
-            display_name = sanitize_display_name(None, 0, deps.reserved_names)
+            display_name = sanitize_display_name(None, 0, deps.reserved_names, frag=deps.frag)
             is_bot = False
         else:
             user_id = user.id
-            display_name = sanitize_display_name(user.full_name, user.id, deps.reserved_names)
+            display_name = sanitize_display_name(
+                user.full_name, user.id, deps.reserved_names, frag=deps.frag
+            )
             # Имя из невидимых символов или одних эмодзи даёт «Участник N»; если есть
             # юзернейм — он понятнее и людям в контексте, и модели.
-            if display_name.startswith("Участник ") and user.username:
-                display_name = sanitize_display_name(user.username, user.id, deps.reserved_names)
+            if (
+                display_name.startswith(deps.frag.prefix("placeholders.participant"))
+                and user.username
+            ):
+                display_name = sanitize_display_name(
+                    user.username, user.id, deps.reserved_names, frag=deps.frag
+                )
             is_bot = user.is_bot
 
         if deps.patterns_getter().injection(display_name) is not None:
@@ -402,7 +411,7 @@ def build_router(deps: Deps) -> Router:
                     user_id,
                     display_name,
                 )
-            display_name = f"Участник {stable_n(user_id)}"
+            display_name = deps.frag.render("placeholders.participant", n=str(stable_n(user_id)))
 
         reply_to_tg_message_id = (
             message.reply_to_message.message_id if message.reply_to_message is not None else None
@@ -436,7 +445,7 @@ def build_router(deps: Deps) -> Router:
                 now=created_at,
             )
         if not text:
-            text = media_placeholder(message) or ""
+            text = media_placeholder(message, frag=deps.frag) or ""
         if not text:
             # Сервисное сообщение без текста и без медиа (вошёл/вышел и т.п.) — не пишем.
             return

@@ -58,6 +58,7 @@ from sotto.delays import debounce_seconds, fast_delay, pick_delay
 from sotto.diary import DiaryExtractor, render_diary
 from sotto.filters import FilterContext
 from sotto.followup import FollowupChecker
+from sotto.fragments import Fragments
 from sotto.gate import PRESENCE_EXEMPT
 from sotto.gate_state import load_gate_state
 from sotto.gate_types import GateMessage, Trigger
@@ -70,11 +71,6 @@ from sotto.persona import Persona
 from sotto.places import render_places_menu
 from sotto.postprocess import soften
 from sotto.prompt import (
-    JSON_REMINDER_CHECKIN,
-    SITUATION_AMBIENT,
-    SITUATION_LATE,
-    SITUATION_MORNING,
-    SITUATION_SPONTANEOUS,
     build_messages,
     parse_reply,
     render_context,
@@ -398,6 +394,7 @@ class Responder:
         clock: Callable[[], int] = lambda: int(time.time()),
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         persona: Persona | None = None,
+        frag: Fragments,
     ) -> None:
         self.bot = bot
         self.db = db
@@ -425,9 +422,9 @@ class Responder:
         self.vocab_getter = vocab_getter
         self.patterns_getter = patterns_getter
         self.prompt_store = prompt_store
-        # Пакет персоны (пока не используется: тексты переедут в него позже). Параметр уже
-        # часть конструктора, чтобы дальше сигнатуру не менять.
+        # Пакет персоны; тексты ситуаций и блоков, плейсхолдеры приходят из его фрагментов.
         self.persona = persona
+        self.frag = frag
         self.rng = rng
         self.chat_id = chat_id
         self.bot_user_id = bot_user_id
@@ -521,7 +518,7 @@ class Responder:
                 trigger=Trigger.AMBIENT,
                 trigger_msg_id=msg.tg_message_id,
                 user_id=msg.user_id,
-                situation=SITUATION_AMBIENT,
+                situation=self.frag.text("situations.ambient"),
                 delay_sec=0,
                 trigger_text="",
             )
@@ -689,7 +686,7 @@ class Responder:
             if items:
                 display_name, text = items[-1]
             else:
-                display_name, text = "Участник", ""
+                display_name, text = self.frag.prefix("placeholders.participant").strip(), ""
             if not text:
                 logger.warning(
                     "night queue: pending %s restored without original text (restart), "
@@ -1156,7 +1153,9 @@ class Responder:
         if home_name and place.name.casefold() == home_name.casefold():
             return block
 
-        line = render_weather_place(place.name, await self.weather.get(place), tz, now)
+        line = render_weather_place(
+            place.name, await self.weather.get(place), tz, now, frag=self.frag
+        )
         if not line:
             await self._weather_log(
                 record, trigger_msg_id, "weather:not_found", place.name, now, cut=True
@@ -1225,11 +1224,22 @@ class Responder:
         # потом отработают dedup:motif и style:story_quota: предупредить дешевле,
         # чем срезать готовый ответ и промолчать.
         avoid_block = render_avoid(
-            used_motifs(filter_recent_replies, cfg.filters.motif_avoid_window, patterns.motifs),
+            used_motifs(
+                filter_recent_replies,
+                cfg.filters.motif_avoid_window,
+                patterns.motifs,
+                frag=self.frag,
+            ),
             no_story=(
-                story_count(filter_recent_replies, cfg.filters.story_window, patterns.story_markers)
+                story_count(
+                    filter_recent_replies,
+                    cfg.filters.story_window,
+                    patterns.story_markers,
+                    frag=self.frag,
+                )
                 >= cfg.filters.story_max
             ),
+            frag=self.frag,
         )
         # Читаем промпт/few-shot из prompt_store заново на каждом _respond, а не
         # кэшируем в конструкторе: /rollback и /ex add должны подхватываться
@@ -1254,23 +1264,26 @@ class Responder:
             # промолчать. Поздний ответ по-прежнему добавляется отдельной строкой.
             if addressed_items:
                 situation = (
-                    situation_followup(addressed_items)
+                    situation_followup(addressed_items, frag=self.frag)
                     if trigger_value == Trigger.FOLLOWUP.value
-                    else situation_addressed(addressed_items)
+                    else situation_addressed(addressed_items, frag=self.frag)
                 )
             else:
                 situation = ""
             if delay_sec > cfg.behaviour.late_reply_threshold_sec:
-                situation = f"{situation}\n{SITUATION_LATE}" if situation else SITUATION_LATE
+                late = self.frag.text("situations.late")
+                situation = f"{situation}\n{late}" if situation else late
         # Прямое обращение -> весь кэш заведений в промпт, всегда, независимо от
         # текста; regex ниже влияет только на записываемый trigger (статистика).
-        places_block = render_places_menu(await self.db.places_all()) if is_address else ""
+        places_block = (
+            render_places_menu(await self.db.places_all(), frag=self.frag) if is_address else ""
+        )
         places_requested = is_address and patterns.places_request(trigger_text)
         record_trigger = _PLACES_TRIGGER if places_requested else trigger_value
 
         # Слот {life} заполняется всегда, для любого триггера (CLAUDE.md, "события
         # жизни") — это память персонажа, а не данные, ограниченные обращением.
-        life_block = render_life(await self.db.life_events(), tz)
+        life_block = render_life(await self.db.life_events(), tz, frag=self.frag)
 
         # Слот {diary} (CLAUDE.md, "дневник дня") — тоже всегда и для любого
         # триггера: факты, которые персонаж сегодня уже сообщил о своих делах.
@@ -1286,13 +1299,13 @@ class Responder:
             if week_days > 0
             else []
         )
-        diary_block = render_diary(today_facts, week_facts, tz)
+        diary_block = render_diary(today_facts, week_facts, tz, frag=self.frag)
 
         # Слот {chat_memory} (CLAUDE.md, "долгая память чата") — тоже всегда и для
         # любого триггера: пересказы прошедших недель живут дольше самих сообщений
         # и заменяют персонажу то, что уже вычистил ретеншн.
         chat_memory_block = render_chat_memory(
-            await self.db.chat_memories(cfg.behaviour.chat_memory.in_prompt), tz
+            await self.db.chat_memories(cfg.behaviour.chat_memory.in_prompt), tz, frag=self.frag
         )
 
         # Слот {jokes} (CLAUDE.md, "шутки чата и истории людей") — тоже всегда и для
@@ -1304,7 +1317,9 @@ class Responder:
             if jokes_cfg.enabled and jokes_cfg.in_prompt > 0
             else []
         )
-        jokes_block = render_jokes(joke_rows, now=now, cooldown_days=jokes_cfg.cooldown_days)
+        jokes_block = render_jokes(
+            joke_rows, now=now, cooldown_days=jokes_cfg.cooldown_days, frag=self.frag
+        )
 
         # Слот {vocab} (CLAUDE.md, "словечки из словаря"): значения мелькнувших в
         # разговоре словечек и изредка — предложение употребить одно.
@@ -1328,7 +1343,11 @@ class Responder:
         weather_block = ""
         if self.weather is not None:
             weather_block = render_weather(
-                await self.weather.get(), tz, now, self.weather.home_name
+                await self.weather.get(),
+                tz,
+                now,
+                home_name=self.weather.home_name,
+                frag=self.frag,
             )
             weather_block = await self._append_place_weather(
                 weather_block,
@@ -1348,7 +1367,7 @@ class Responder:
         # (дефолт build_messages).
         build_messages_kwargs: dict[str, str] = {}
         if trigger_value == _CHECKIN_TRIGGER:
-            build_messages_kwargs["json_reminder"] = JSON_REMINDER_CHECKIN
+            build_messages_kwargs["json_reminder"] = self.frag.text("prompt.json_reminder_checkin")
         messages = build_messages(
             system_prompt,
             age=age,
@@ -1365,6 +1384,7 @@ class Responder:
             weather=weather_block,
             vocab=vocab_plan.block,
             **build_messages_kwargs,
+            frag=self.frag,
         )
         return _BuiltPrompt(
             messages=messages,
@@ -1404,6 +1424,7 @@ class Responder:
             vocab=prompt.vocab,
             vocab_over_quota=prompt.vocab_over,
             vocab_allowed=prompt.vocab_allowed,
+            frag=self.frag,
         )
 
     async def preview(self, text: str, display_name: str, user_id: int = 0) -> PreviewOutcome:
@@ -1458,7 +1479,12 @@ class Responder:
             return PreviewOutcome(sent=False, text=result.text, reason="llm:invalid_json")
         if not reply.speak:
             return PreviewOutcome(sent=False, text="", reason="llm:silent")
-        fixed = soften(reply.text, recent_replies=prompt.filter_recent_replies, cfg=cfg.filters)
+        fixed = soften(
+            reply.text,
+            recent_replies=prompt.filter_recent_replies,
+            cfg=cfg.filters,
+            frag=self.frag,
+        )
         if not fixed.text:
             return PreviewOutcome(
                 sent=False, text=reply.text, reason="fix:empty", fixes=fixed.fixes
@@ -1679,7 +1705,12 @@ class Responder:
         # Мягкая правка ДО выходного фильтра: тире и слишком частые/лишние эмодзи —
         # косметика, не нарушение характера, поэтому правится руками, а не срезается
         # (CLAUDE.md, "Интерфейсы: пост-обработка").
-        fixed = soften(reply.text, recent_replies=filter_recent_replies, cfg=cfg.filters)
+        fixed = soften(
+            reply.text,
+            recent_replies=filter_recent_replies,
+            cfg=cfg.filters,
+            frag=self.frag,
+        )
         if fixed.fixes:
             for fix_reason in fixed.fixes:
                 await self.db.insert_filter_log(
@@ -1765,7 +1796,9 @@ class Responder:
             # Номер стикера в тексте (CLAUDE.md) — так он попадает в recent_replies/
             # контекст модели, в /last, и по нему recent_sticker_ids восстанавливает
             # "недавно использованные" при следующем выборе.
-            sent_text = f"[стикер #{sticker.id}] {sticker.text}"
+            sent_text = (
+                f"{self.frag.render('placeholders.sticker_tag', id=str(sticker.id))} {sticker.text}"
+            )
             send_reason = "send:sticker"
         else:
             await self._run_typing(text)
@@ -1869,7 +1902,11 @@ class Responder:
         count_raw = await self.db.get_state(day_key(_VOCAB_COUNT_KEY, now, tz))
         count_today = int(count_raw) if count_raw is not None else 0
         over_quota = vocab_over_quota(
-            vocab, cfg=vocab_cfg, recent_replies=recent_replies, count_today=count_today
+            vocab,
+            cfg=vocab_cfg,
+            recent_replies=recent_replies,
+            count_today=count_today,
+            frag=self.frag,
         )
         # Просьба («скажи по-дворовому») и «не понял» — только в обращении: в ambient
         # их никто ему не адресовал.
@@ -1902,6 +1939,7 @@ class Responder:
                 rng=self.rng,
                 exclude=meanings,
                 fill=True,
+                frag=self.frag,
             )
             logger.info("vocab requested: %s", ", ".join(entry.word for entry in offer))
         elif offer_allowed(
@@ -1910,6 +1948,7 @@ class Responder:
             recent_replies=recent_replies,
             count_today=count_today,
             rng=self.rng,
+            frag=self.frag,
         ):
             offer = pick_offer(
                 vocab,
@@ -1917,6 +1956,7 @@ class Responder:
                 size=vocab_cfg.offer_size,
                 rng=self.rng,
                 exclude=meanings,
+                frag=self.frag,
             )
             if offer:
                 logger.info("vocab offer: %s", ", ".join(entry.word for entry in offer))
@@ -1924,7 +1964,7 @@ class Responder:
         # недавние словечки, когда их просят объяснить.
         allowed = frozenset([*(offer if requested else ()), *(own_words if explain else ())])
         return _VocabPlan(
-            block=render_vocab(offer, meanings, requested=requested),
+            block=render_vocab(offer, meanings, requested=requested, frag=self.frag),
             over_quota=over_quota,
             allowed=allowed,
         )
@@ -2045,7 +2085,7 @@ class Responder:
                     trigger_value="life",
                     trigger_msg_id=None,
                     user_id=None,
-                    situation=situation_life(event.text),
+                    situation=situation_life(event.text, frag=self.frag),
                     delay_sec=0,
                     now=now,
                     # Текст события — как trigger_text: латинские слова из заметки
@@ -2165,7 +2205,7 @@ class Responder:
             return None
 
         recent_texts = await self.db.recent_bot_replies(stickers_cfg.recent_window * 3)
-        exclude_ids = recent_sticker_ids(recent_texts, stickers_cfg.recent_window)
+        exclude_ids = recent_sticker_ids(recent_texts, stickers_cfg.recent_window, frag=self.frag)
         return await self.sticker_chooser.choose(
             reply_text=reply_text, trigger_text=trigger_text, exclude_ids=exclude_ids, now=now
         )
@@ -2251,7 +2291,7 @@ class Responder:
             trigger="morning",
             trigger_msg_id=None,
             user_id=None,
-            situation=SITUATION_MORNING,
+            situation=self.frag.text("situations.morning"),
             delay_sec=0,
         )
         await self.db.mark_night_answered([row.id for row in rows], self._clock())
@@ -2312,7 +2352,7 @@ class Responder:
             trigger="spontaneous",
             trigger_msg_id=None,
             user_id=None,
-            situation=SITUATION_SPONTANEOUS,
+            situation=self.frag.text("situations.spontaneous"),
             delay_sec=0,
         )
 
@@ -2493,7 +2533,7 @@ class Responder:
                     trigger=_CHECKIN_TRIGGER,
                     trigger_msg_id=None,
                     user_id=None,
-                    situation=situation_checkin(rows),
+                    situation=situation_checkin(rows, frag=self.frag),
                     delay_sec=0,
                     checkin_rows=rows,
                 )
@@ -2593,7 +2633,7 @@ class Responder:
             trigger=_CALLBACK_TRIGGER,
             trigger_msg_id=None,
             user_id=chosen.user_id,
-            situation=situation_callback(chosen.display_name, chosen.text),
+            situation=situation_callback(chosen.display_name, chosen.text, frag=self.frag),
             delay_sec=0,
         )
 

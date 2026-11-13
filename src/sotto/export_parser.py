@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sotto.fragments import Fragments
 from sotto.sanitize import normalize_text, sanitize_display_name
 
 logger = logging.getLogger(__name__)
@@ -64,21 +65,21 @@ def _extract_text(raw_text: object) -> str:
     return ""
 
 
-def _media_placeholder(raw: dict[str, Any]) -> str | None:
+def _media_placeholder(raw: dict[str, Any], frag: Fragments) -> str | None:
     """Плейсхолдер для медиа без подписи, иначе None. Порядок — как в CLAUDE.md."""
     if isinstance(raw.get("photo"), str):
-        return "[фото]"
+        return frag.text("placeholders.photo")
     media_type = raw.get("media_type")
     if media_type == "sticker":
-        return "[стикер]"
+        return frag.text("placeholders.sticker")
     if media_type == "voice_message":
-        return "[голосовое]"
+        return frag.text("placeholders.voice")
     if media_type in ("video_message", "video_file", "animation"):
-        return "[видео]"
+        return frag.text("placeholders.video")
     if media_type == "audio_file":
-        return "[голосовое]"
+        return frag.text("placeholders.voice")
     if raw.get("file") is not None:
-        return "[файл]"
+        return frag.text("placeholders.file")
     return None
 
 
@@ -106,7 +107,7 @@ def _parse_created_at(raw: dict[str, Any], tz: str, tg_message_id: int) -> int |
     return int(naive.replace(tzinfo=ZoneInfo(tz)).timestamp())
 
 
-def _parse_message(raw: dict[str, Any], tz: str) -> ExportMessage | None:
+def _parse_message(raw: dict[str, Any], tz: str, frag: Fragments) -> ExportMessage | None:
     raw_id = raw.get("id")
     if not isinstance(raw_id, int):
         logger.warning("export_parser: skipping message without a valid id: %r", raw)
@@ -123,14 +124,14 @@ def _parse_message(raw: dict[str, Any], tz: str) -> ExportMessage | None:
 
     text = normalize_text(_extract_text(raw.get("text")))
     if not text:
-        placeholder = _media_placeholder(raw)
+        placeholder = _media_placeholder(raw, frag)
         if placeholder is None:
             return None
         text = placeholder
 
     user_id = _extract_user_id(raw.get("from_id"))
     # reserved пустой: парсер не знает имя бота, вызывающий код (replay.py) пере-санитизирует.
-    display_name = sanitize_display_name(raw.get("from"), user_id, reserved=set())
+    display_name = sanitize_display_name(raw.get("from"), user_id, reserved=set(), frag=frag)
 
     reply_to_raw = raw.get("reply_to_message_id")
     reply_to = reply_to_raw if isinstance(reply_to_raw, int) else None
@@ -145,7 +146,7 @@ def _parse_message(raw: dict[str, Any], tz: str) -> ExportMessage | None:
     )
 
 
-def parse_export(path: Path, tz: str) -> list[ExportMessage]:
+def parse_export(path: Path, tz: str, *, frag: Fragments) -> list[ExportMessage]:
     """Читает result.json Telegram Desktop и возвращает сообщения, отсортированные
     по (created_at, id). Служебные сообщения и битые записи пропускаются."""
     data: Any = json.loads(path.read_text(encoding="utf-8"))
@@ -163,7 +164,7 @@ def parse_export(path: Path, tz: str) -> list[ExportMessage]:
             continue
         if raw.get("type") != "message":
             continue  # "service" и прочее — служебные, пропускаются молча
-        parsed = _parse_message(raw, tz)
+        parsed = _parse_message(raw, tz, frag)
         if parsed is not None:
             result.append(parsed)
 

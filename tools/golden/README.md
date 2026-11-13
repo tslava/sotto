@@ -53,6 +53,10 @@ Run in separate processes with different `PYTHONHASHSEED` the output is byte-ide
 
 Large prompt bodies in `prompt_versions` / `few_shot_versions` are stored as sha256 + length.
 
+## Config keys added after the baseline
+
+PR-3 moved code constants into the pack's `config.yaml` (`POST_BASELINE_CONFIG_KEYS` in `adapter.py`: geocoder language and home country, Places search anchor, district aliases, request keywords). The baselines predate those keys, so the config dumps leave them out; everything else in the dump is still compared. `tests/test_fragments_extraction.py` checks that the pack carries them.
+
 ## Known limits (scenarios not driven, and why)
 
 - `app.main()` is not run (it starts aiogram polling); the adapter mirrors its wiring. PR-2's

@@ -12,7 +12,7 @@ from sotto.db import MessageRow
 from sotto.followup import FollowupChecker
 from sotto.llm import LLMClient
 from sotto.timeutil import day_key
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 NOW = 1_768_003_200  # см. tests/test_llm.py
 FOLLOWUP_PROMPT_PATH = LEGACY_PACK / "prompts/followup.txt"
@@ -129,6 +129,7 @@ def _checker(
         prompt_template=prompt_template,
         batch_prompt_template=batch_prompt_template,
         name_prompt_template=name_prompt_template,
+        frag=LEGACY_FRAG,
     )
     return checker, llm
 

@@ -29,12 +29,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from sotto.config_models import Config
+from sotto.fragments import Fragments
 from sotto.llm import LLMClient, LLMError
 
 logger = logging.getLogger(__name__)
 
 _MAX_TOKENS = 150
-_NO_TRIGGER = "(без обращения, реплика по собственной инициативе)"
 
 # Дублирует вырезание разделителей из sanitize.normalize_text/prompt.py — на всякий
 # случай ещё раз чистим то, что уходит в промпт судьи.
@@ -110,10 +110,13 @@ class Judge:
         llm: LLMClient,
         cfg_getter: Callable[[], Config],
         prompt_template: str,
+        *,
+        frag: Fragments,
     ) -> None:
         self._llm = llm
         self._cfg_getter = cfg_getter
         self._prompt_template = prompt_template
+        self._frag = frag
 
     async def check(self, *, candidate: str, trigger_text: str, now: int) -> list[str]:
         cfg = self._cfg_getter()
@@ -121,7 +124,9 @@ class Judge:
         if not model:
             return []
 
-        trigger_clean = _strip_fake_delimiters(trigger_text).strip() or _NO_TRIGGER
+        trigger_clean = _strip_fake_delimiters(trigger_text).strip() or self._frag.text(
+            "prompt.no_target"
+        )
         candidate_clean = _strip_fake_delimiters(candidate)
 
         slot_values = {"trigger": trigger_clean, "candidate": candidate_clean}

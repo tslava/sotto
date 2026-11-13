@@ -7,6 +7,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sotto.export_parser import ExportMessage, parse_export
+from tests.packs import LEGACY_FRAG
 
 TZ = "Europe/Warsaw"
 
@@ -126,7 +127,7 @@ _RAW_MESSAGES = [
 
 def test_parse_export_full(tmp_path: Path) -> None:
     path = _write_export(tmp_path, _RAW_MESSAGES)
-    result = parse_export(path, TZ)
+    result = parse_export(path, TZ, frag=LEGACY_FRAG)
 
     # service (id=3) и битое без даты (id=9) отброшены -> 8 сообщений из 10 записей.
     # id=10 использует date_unixtime=1700000000 (2023 год) — оно раньше остальных
@@ -181,14 +182,14 @@ def test_parse_export_full(tmp_path: Path) -> None:
 
 def test_service_messages_are_skipped(tmp_path: Path) -> None:
     path = _write_export(tmp_path, _RAW_MESSAGES)
-    result = parse_export(path, TZ)
+    result = parse_export(path, TZ, frag=LEGACY_FRAG)
     assert 3 not in [m.tg_message_id for m in result]
 
 
 def test_broken_record_without_date_is_skipped_with_warning(tmp_path: Path, caplog) -> None:
     path = _write_export(tmp_path, _RAW_MESSAGES)
     with caplog.at_level(logging.WARNING, logger="sotto.export_parser"):
-        result = parse_export(path, TZ)
+        result = parse_export(path, TZ, frag=LEGACY_FRAG)
 
     assert 9 not in [m.tg_message_id for m in result]
     assert any("date" in record.message for record in caplog.records)
@@ -214,7 +215,7 @@ def test_broken_record_without_id_is_skipped_with_warning(tmp_path: Path, caplog
     ]
     path = _write_export(tmp_path, messages)
     with caplog.at_level(logging.WARNING, logger="sotto.export_parser"):
-        result = parse_export(path, TZ)
+        result = parse_export(path, TZ, frag=LEGACY_FRAG)
 
     assert [m.tg_message_id for m in result] == [1]
     assert any("id" in record.message for record in caplog.records)
@@ -233,5 +234,5 @@ def test_media_and_empty_text_without_placeholder_is_dropped(tmp_path: Path) -> 
         }
     ]
     path = _write_export(tmp_path, messages)
-    result = parse_export(path, TZ)
+    result = parse_export(path, TZ, frag=LEGACY_FRAG)
     assert result == []

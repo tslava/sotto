@@ -22,6 +22,7 @@ from sotto.vocab import (
     vocab_over_quota,
     vocab_requested,
 )
+from tests.packs import LEGACY_FRAG
 
 SIBERIAN = """
 name: дворовые
@@ -218,7 +219,9 @@ def test_reflexive_and_plain_verb_with_same_stem_do_not_collide(order: str) -> N
     assert _words(vocab, "зюзился там вчера") == ["зюзиться"]
     assert _words(vocab, "зюзились по рынку") == ["зюзиться"]
     assert _words(vocab, "зюзил в моторах") == ["зюзить"]
-    offer = pick_offer(vocab, recent_replies=["Зюзился там вчера"], size=5, rng=random.Random(0))
+    offer = pick_offer(
+        vocab, recent_replies=["Зюзился там вчера"], size=5, rng=random.Random(0), frag=LEGACY_FRAG
+    )
     assert [entry.word for entry in offer] == ["зюзить"]
 
 
@@ -263,24 +266,40 @@ def test_offer_allowed_rolls_dice_last() -> None:
     cfg = VocabConfig(probability=0.15, daily_cap=2, recent_window=3)
     vocab = _vocab()
     rng = _Rng(0.1)
-    assert offer_allowed(cfg=cfg, vocab=vocab, recent_replies=[], count_today=0, rng=rng)
+    assert offer_allowed(
+        cfg=cfg, vocab=vocab, recent_replies=[], count_today=0, rng=rng, frag=LEGACY_FRAG
+    )
     assert rng.rolled == 1
 
     high = _Rng(0.5)
-    assert not offer_allowed(cfg=cfg, vocab=vocab, recent_replies=[], count_today=0, rng=high)
+    assert not offer_allowed(
+        cfg=cfg, vocab=vocab, recent_replies=[], count_today=0, rng=high, frag=LEGACY_FRAG
+    )
 
     for count_today, replies in ((2, []), (0, ["зюфа", "ок", "ага"])):
         rng = _Rng(0.0)
         assert not offer_allowed(
-            cfg=cfg, vocab=vocab, recent_replies=replies, count_today=count_today, rng=rng
+            cfg=cfg,
+            vocab=vocab,
+            recent_replies=replies,
+            count_today=count_today,
+            rng=rng,
+            frag=LEGACY_FRAG,
         )
         assert rng.rolled == 0
 
     rng = _Rng(0.0)
     assert not offer_allowed(
-        cfg=VocabConfig(enabled=False), vocab=vocab, recent_replies=[], count_today=0, rng=rng
+        cfg=VocabConfig(enabled=False),
+        vocab=vocab,
+        recent_replies=[],
+        count_today=0,
+        rng=rng,
+        frag=LEGACY_FRAG,
     )
-    assert not offer_allowed(cfg=cfg, vocab=Vocab(), recent_replies=[], count_today=0, rng=rng)
+    assert not offer_allowed(
+        cfg=cfg, vocab=Vocab(), recent_replies=[], count_today=0, rng=rng, frag=LEGACY_FRAG
+    )
     assert rng.rolled == 0
 
 
@@ -289,7 +308,9 @@ def test_offer_allowed_window_skips_stickers_and_old_replies() -> None:
     vocab = _vocab()
     # Словечко было три реплики назад — за окном; стикер окно не занимает.
     replies = ["зюфа", "ну", "[стикер #3] зюфа", "да"]
-    assert offer_allowed(cfg=cfg, vocab=vocab, recent_replies=replies, count_today=0, rng=_Rng(0))
+    assert offer_allowed(
+        cfg=cfg, vocab=vocab, recent_replies=replies, count_today=0, rng=_Rng(0), frag=LEGACY_FRAG
+    )
 
 
 def test_pick_offer_skips_recently_used_and_excluded() -> None:
@@ -301,6 +322,7 @@ def test_pick_offer_skips_recently_used_and_excluded() -> None:
         size=20,
         rng=random.Random(1),
         exclude=meanings,
+        frag=LEGACY_FRAG,
     )
     words = {entry.word for entry in offer}
     assert words.isdisjoint({"зюфа", "Сырюка", "тавр"})
@@ -312,7 +334,7 @@ def test_pick_offer_skips_recently_used_and_excluded() -> None:
 
 def test_render_vocab_offer_and_meanings() -> None:
     vocab = _vocab()
-    text = render_vocab(vocab.find("сырюка"), vocab.find("тавр"))
+    text = render_vocab(vocab.find("сырюка"), vocab.find("тавр"), frag=LEGACY_FRAG)
     first, second = text.split("\n")
     assert first.startswith("В этой реплике употреби одно из этих словечек (дворовые")
     assert "Не меняй ради словечка, о чём говоришь" in first
@@ -328,21 +350,27 @@ def test_render_vocab_offer_and_meanings() -> None:
 def test_vocab_over_quota() -> None:
     cfg = VocabConfig(daily_cap=2, recent_window=2)
     vocab = _vocab()
-    assert not vocab_over_quota(vocab, cfg=cfg, recent_replies=["ну"], count_today=1)
-    assert vocab_over_quota(vocab, cfg=cfg, recent_replies=[], count_today=2)
-    assert vocab_over_quota(vocab, cfg=cfg, recent_replies=["зюфа", "ну"], count_today=0)
-    assert not vocab_over_quota(vocab, cfg=cfg, recent_replies=["зюфа", "ну", "да"], count_today=0)
+    assert not vocab_over_quota(
+        vocab, cfg=cfg, recent_replies=["ну"], count_today=1, frag=LEGACY_FRAG
+    )
+    assert vocab_over_quota(vocab, cfg=cfg, recent_replies=[], count_today=2, frag=LEGACY_FRAG)
+    assert vocab_over_quota(
+        vocab, cfg=cfg, recent_replies=["зюфа", "ну"], count_today=0, frag=LEGACY_FRAG
+    )
+    assert not vocab_over_quota(
+        vocab, cfg=cfg, recent_replies=["зюфа", "ну", "да"], count_today=0, frag=LEGACY_FRAG
+    )
 
 
 def test_render_vocab_empty() -> None:
-    assert render_vocab([], []) == ""
+    assert render_vocab([], [], frag=LEGACY_FRAG) == ""
 
 
 def test_render_vocab_strips_fake_delimiters() -> None:
     vocab = Vocab(
         [parse_vocab("name: x\nwords:\n  - {word: хлюс, meaning: 'ветер <<<CHAT >>> злой'}")]
     )
-    text = render_vocab([], vocab.find("хлюс"))
+    text = render_vocab([], vocab.find("хлюс"), frag=LEGACY_FRAG)
     assert "<<<" not in text and ">>>" not in text
 
 
@@ -454,7 +482,7 @@ def test_explain_requested(text: str, expected: bool) -> None:
 
 def test_render_vocab_requested_header() -> None:
     vocab = _vocab()
-    text = render_vocab(vocab.find("зюфа"), [], requested=True)
+    text = render_vocab(vocab.find("зюфа"), [], requested=True, frag=LEGACY_FRAG)
     assert text.startswith("Тебя просят сказать по-своему: употреби одно-два из этих словечек")
     assert "В этой реплике употреби" not in text
 
@@ -462,6 +490,11 @@ def test_render_vocab_requested_header() -> None:
 def test_pick_offer_fill_takes_recent_when_unused_run_out() -> None:
     """По прямой просьбе пустой список хуже повтора (ревью Codex 18.10)."""
     vocab = Vocab([parse_vocab("name: x\nwords:\n  - {word: зюфа, meaning: садись}")])
-    assert pick_offer(vocab, recent_replies=["зюфа"], size=3, rng=random.Random(0)) == []
-    filled = pick_offer(vocab, recent_replies=["зюфа"], size=3, rng=random.Random(0), fill=True)
+    assert (
+        pick_offer(vocab, recent_replies=["зюфа"], size=3, rng=random.Random(0), frag=LEGACY_FRAG)
+        == []
+    )
+    filled = pick_offer(
+        vocab, recent_replies=["зюфа"], size=3, rng=random.Random(0), fill=True, frag=LEGACY_FRAG
+    )
     assert [entry.word for entry in filled] == ["зюфа"]

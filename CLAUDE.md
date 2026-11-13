@@ -2384,6 +2384,7 @@ class PackError(ValueError)
     catalog: Catalog, revision: str                 # revision из <root>/.revision, иначе "dev"
     def config_layers(self) -> list[Path]           # слои конфига снизу вверх; пока один config.yaml
     def prompt_errors(self) -> list[str]            # слоты промптов против fragments.PROMPT_SLOTS
+    def fragment_errors(self) -> list[str]          # fragments.yaml против fragments.FRAGMENT_SPEC
 def load_persona(path: Path) -> Persona             # структура пакета: pack.yaml (format: 1), config.yaml, few_shot.yaml,
                                                     # prompts/<13 имён>.txt; PackError на любой изъян
 def resolve_persona_dir(persona_dir: Path | None, allow_demo: bool) -> Path   # нет PERSONA_DIR и нет ALLOW_DEMO_PERSONA -> PackError
@@ -2405,9 +2406,39 @@ def persona_from_env() -> Persona                   # для CLI без BOT_TOKE
 версию промпта или few-shot. Коды выхода: 0 ок, 1 пакет неверен, 2 использование/БД, 3 сид. Печатает
 имена файлов и числа, не тексты пакета.
 
-Пока `Fragments` и `Catalog` — заглушки с итоговым API (пустые без `fragments.yaml` и `locale/`): тексты
-движка по-прежнему в коде, переезд в пакет — отдельный шаг. Временный пакет тестов — `personas/_legacy_ru`
-(`tests/packs.py`, фикстуры `tests/conftest.py`).
+`Catalog` пока заглушка с итоговым API (пустой без `locale/`). `Fragments` настоящий: `fragments.yaml` в
+пакете держит тексты, которые движок кладёт в промпты моделей или пишет в БД (группы `placeholders`,
+`situations`, `prompt`, `render`, `weather`, `vocab`, `tools`; 70 листьев). Схема — `fragments.FRAGMENT_SPEC`
+(какие `{плейсхолдеры}` обязаны быть в каждом листе, `LITERAL_BRACES` — листья с JSON-скобками),
+`FRAGMENT_LISTS`, `FRAGMENT_MAPS`; проверяется в `packcheck` и при старте (`Persona.fragment_errors()`).
+
+```python
+# fragments.py
+class Fragments: get(key) | text(key) -> str | items(key) -> list[str] | table(key) -> Mapping
+                 | prefix(key) -> str   # часть до первого {плейсхолдера}: префиксы записей в БД
+                 | render(key, **params) # один проход, не str.format
+# Движок берёт тексты ТОЛЬКО отсюда: frag: Fragments — последний keyword-аргумент (обязательный) у
+# prompt.situation_*/render_life/build_messages, weather.render_weather*/describe, places.render_places_*,
+# vocab.render_vocab/offer_allowed/pick_offer/vocab_over_quota, diary.render_diary, jokes.render_jokes,
+# chat_memory.render_chat_memory, motifs.render_avoid/render_self_share/used_motifs/story_count/
+# speaks_about_self/self_share, sanitize.sanitize_display_name/media_placeholder,
+# vision.photo_text, postprocess.soften, stickers.recent_sticker_ids/render_sticker_menu/sticker_tag_re,
+# export_parser.parse_export, places_fill.compress_fact, stickers_fill.recognize_sticker, а также
+# kwarg-ом конструкторов Judge, FollowupChecker, ReactionChooser, StickerChooser, VisionDescriber,
+# Responder, Deps и поле FilterContext.frag.
+# Плейсхолдеры, которые ПИШУТСЯ в БД (placeholders.photo*/sticker*/voice/video/file/participant/sticker_tag),
+# — данные пакета: регулярки и проверки префиксов (`[стикер #N]`, «Участник N») строятся из них.
+```
+
+`tools/extract_fragments.py --src ДЕРЕВО --package ИМЯ --out fragments.yaml` — одноразовый AST-экстрактор:
+читает константы и литералы из исходников ДО PR-3 (после него их в коде нет) и пишет `fragments.yaml`
+дословно; несколько источников одного ключа сверяются. Из кода в `config.yaml` пакета переехали
+`behaviour.weather.{geocode_language,home_country_codes,home_country_names}` и
+`places.{search_center,region_code,language_code,default_district,district_aliases,quiet_keywords,outskirts_keywords}`
+(в `config_models` дефолты прежние, пакет их дублирует; обезличивание дефолтов — PR-4). Golden-дампы конфига
+не показывают эти ключи (`POST_BASELINE_CONFIG_KEYS` в `tools/golden/adapter.py`), чтобы baseline оставался
+нетронутым. Временный пакет тестов — `personas/_legacy_ru` (`tests/packs.py`: `LEGACY_PACK`, `LEGACY_FRAG`,
+`frag_with(группа__лист=значение)`; фикстуры `tests/conftest.py`).
 
 ## Конвенции
 

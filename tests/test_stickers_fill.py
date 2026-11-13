@@ -24,7 +24,7 @@ from sotto.stickers_fill import (
 from sotto.stickers_fill import (
     run as run_fill,
 )
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 NOW = 1_768_003_200
 
@@ -111,7 +111,13 @@ async def test_new_sticker_gets_next_id_and_recognized_text() -> None:
     existing = StickerCatalog()
 
     catalog = await build_catalog(
-        bot=bot, set_name="myset", existing=existing, llm=llm, model="vision/x", now=NOW
+        bot=bot,
+        set_name="myset",
+        existing=existing,
+        llm=llm,
+        model="vision/x",
+        now=NOW,
+        frag=LEGACY_FRAG,
     )
 
     assert len(catalog.stickers) == 1
@@ -143,7 +149,13 @@ async def test_existing_sticker_preserves_owner_edits() -> None:
     )
 
     catalog = await build_catalog(
-        bot=bot, set_name="myset", existing=existing, llm=llm, model="vision/x", now=NOW
+        bot=bot,
+        set_name="myset",
+        existing=existing,
+        llm=llm,
+        model="vision/x",
+        now=NOW,
+        frag=LEGACY_FRAG,
     )
 
     assert len(catalog.stickers) == 1
@@ -170,7 +182,13 @@ async def test_missing_sticker_is_disabled_not_removed(caplog: pytest.LogCapture
 
     with caplog.at_level(logging.WARNING):
         catalog = await build_catalog(
-            bot=bot, set_name="myset", existing=existing, llm=llm, model="vision/x", now=NOW
+            bot=bot,
+            set_name="myset",
+            existing=existing,
+            llm=llm,
+            model="vision/x",
+            now=NOW,
+            frag=LEGACY_FRAG,
         )
 
     assert len(catalog.stickers) == 1
@@ -190,7 +208,13 @@ async def test_new_ids_continue_after_max_existing_id() -> None:
     )
 
     catalog = await build_catalog(
-        bot=bot, set_name="myset", existing=existing, llm=llm, model="vision/x", now=NOW
+        bot=bot,
+        set_name="myset",
+        existing=existing,
+        llm=llm,
+        model="vision/x",
+        now=NOW,
+        frag=LEGACY_FRAG,
     )
 
     new_sticker = next(s for s in catalog.stickers if s.file_id == "NEW")
@@ -215,7 +239,13 @@ async def test_animated_and_video_stickers_are_skipped(caplog: pytest.LogCapture
 
     with caplog.at_level(logging.WARNING):
         catalog = await build_catalog(
-            bot=bot, set_name="myset", existing=existing, llm=llm, model="vision/x", now=NOW
+            bot=bot,
+            set_name="myset",
+            existing=existing,
+            llm=llm,
+            model="vision/x",
+            now=NOW,
+            frag=LEGACY_FRAG,
         )
 
     file_ids = {s.file_id for s in catalog.stickers}
@@ -230,7 +260,7 @@ async def test_animated_and_video_stickers_are_skipped(caplog: pytest.LogCapture
 
 
 async def test_recognize_sticker_without_llm_is_empty() -> None:
-    text, when = await recognize_sticker(b"bytes", llm=None, model="x", now=NOW)
+    text, when = await recognize_sticker(b"bytes", llm=None, model="x", now=NOW, frag=LEGACY_FRAG)
     assert (text, when) == ("", "")
 
 
@@ -239,7 +269,7 @@ async def test_no_llm_leaves_new_stickers_blank() -> None:
     existing = StickerCatalog()
 
     catalog = await build_catalog(
-        bot=bot, set_name="myset", existing=existing, llm=None, model="", now=NOW
+        bot=bot, set_name="myset", existing=existing, llm=None, model="", now=NOW, frag=LEGACY_FRAG
     )
 
     assert catalog.stickers[0].text == ""

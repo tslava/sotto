@@ -10,7 +10,7 @@ import pytest
 from sotto.config_models import Config
 from sotto.judge import Judge
 from sotto.llm import LLMClient
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 NOW = 1_768_003_200  # см. tests/test_llm.py
 JUDGE_PROMPT_PATH = LEGACY_PACK / "prompts/judge.txt"
@@ -92,7 +92,9 @@ def _judge(
 ) -> tuple[Judge, LLMClient]:
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     llm = LLMClient(api_key="sk-test", cfg_getter=lambda: cfg, db=store, http=http)
-    return Judge(llm=llm, cfg_getter=lambda: cfg, prompt_template=prompt_template), llm
+    return Judge(
+        llm=llm, cfg_getter=lambda: cfg, prompt_template=prompt_template, frag=LEGACY_FRAG
+    ), llm
 
 
 def _cfg(judge_model: str = "openrouter/small") -> Config:

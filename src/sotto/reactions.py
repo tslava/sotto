@@ -45,6 +45,7 @@ from aiogram.types import ReactionTypeEmoji, ReactionTypeUnion
 
 from sotto.config_models import Config, ReactionsConfig
 from sotto.db import Database, MessageRow
+from sotto.fragments import Fragments
 from sotto.llm import LLMClient, LLMError
 from sotto.prompt import render_context
 from sotto.timeutil import day_key
@@ -61,12 +62,8 @@ _CANDIDATE_TEXT_MAX_LEN = 200
 # Обрезка обоснования модели в логе: оно может пересказывать сообщение участника.
 _REASON_LOG_MAX_LEN = 100
 
-_CONTEXT_EMPTY = "(пока не было)"
-
 # Слот {reply_to}: сообщение, на которое ответил автор. Без него модель читает
 # «А я на подработке 🌚» вне смысла и ставит 🤣 (живой промах 12.10).
-_REPLY_TO_NONE = "(это не ответ на другое сообщение)"
-_REPLY_TO_UNAVAILABLE = "(ответ на сообщение, которого не видно)"
 _REPLY_TO_MAX_LEN = 300
 
 
@@ -120,11 +117,11 @@ def _strip_fake_delimiters(text: str) -> str:
     return _GT_RUN_RE.sub(" ", _LT_RUN_RE.sub(" ", text))
 
 
-def _render_reply_to(row: ReplyTarget) -> str:
+def _render_reply_to(row: ReplyTarget, frag: Fragments) -> str:
     if row is None:
-        return _REPLY_TO_NONE
+        return str(frag.text("placeholders.reply_to_none"))
     if row is REPLY_UNAVAILABLE or not row.text:
-        return _REPLY_TO_UNAVAILABLE
+        return str(frag.text("placeholders.reply_to_unavailable"))
     text = row.text
     if len(text) > _REPLY_TO_MAX_LEN:
         text = text[:_REPLY_TO_MAX_LEN].rstrip() + "…"
@@ -353,10 +350,13 @@ class ReactionChooser:
         llm: LLMClient,
         cfg_getter: Callable[[], Config],
         prompt_template: str,
+        *,
+        frag: Fragments,
     ) -> None:
         self._llm = llm
         self._cfg_getter = cfg_getter
         self._prompt_template = prompt_template
+        self._frag = frag
 
     async def choose(
         self,
@@ -381,11 +381,11 @@ class ReactionChooser:
 
         context = _strip_fake_delimiters(render_context(list(context_rows))).strip()
         slot_values = {
-            "context": context or _CONTEXT_EMPTY,
+            "context": context or self._frag.text("placeholders.context_empty"),
             "name": _strip_fake_delimiters(display_name).strip(),
             "text": _strip_fake_delimiters(text).strip(),
             "emoji": _render_palette(allowed),
-            "reply_to": _render_reply_to(reply_to),
+            "reply_to": _render_reply_to(reply_to, self._frag),
         }
         system = _SLOT_RE.sub(lambda m: slot_values[m.group(1)], self._prompt_template)
         messages = [{"role": "system", "content": system}]

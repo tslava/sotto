@@ -30,6 +30,7 @@ from sotto.db import (
     SelfFactRow,
 )
 from sotto.few_shot import FewShot
+from sotto.fragments import Fragments
 from sotto.patterns import Patterns
 from sotto.persona import Persona, load_persona
 from sotto.responder import PreviewOutcome, SendOutcome
@@ -37,7 +38,7 @@ from sotto.settings import Settings
 from sotto.timeutil import day_key, local_dt
 from sotto.vocab import VocabStore
 from sotto.weather import Place, Weather
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
@@ -375,6 +376,7 @@ class FakeDeps:
     vocab_store: VocabStore | None = None
     bot: FakeDownloader | None = None
     persona: Persona | None = None
+    frag: Fragments = LEGACY_FRAG
 
 
 class FakeDownloader:

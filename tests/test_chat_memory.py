@@ -23,7 +23,7 @@ from sotto.config_models import Config
 from sotto.db import ChatMemoryRow, Database
 from sotto.llm import LLMClient
 from sotto.patterns import Patterns
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 CHAT_ID = -100123
@@ -114,7 +114,7 @@ def _prompt_of(request: httpx.Request) -> str:
 
 
 def test_render_chat_memory_empty_is_empty_string() -> None:
-    assert render_chat_memory([], "Europe/Warsaw") == ""
+    assert render_chat_memory([], "Europe/Warsaw", frag=LEGACY_FRAG) == ""
 
 
 def test_render_chat_memory_has_header_period_and_indented_lines() -> None:
@@ -126,7 +126,7 @@ def test_render_chat_memory_has_header_period_and_indented_lines() -> None:
         created_at=_ts(2026, 9, 15),
     )
 
-    rendered = render_chat_memory([row], "Europe/Warsaw")
+    rendered = render_chat_memory([row], "Europe/Warsaw", frag=LEGACY_FRAG)
 
     lines = rendered.splitlines()
     assert lines[0].startswith("Что было в чате раньше")
@@ -146,7 +146,7 @@ def test_render_chat_memory_lines_never_start_with_bullet() -> None:
         created_at=_ts(2026, 9, 15),
     )
 
-    rendered = render_chat_memory([row], "Europe/Warsaw")
+    rendered = render_chat_memory([row], "Europe/Warsaw", frag=LEGACY_FRAG)
 
     assert all(not line.lstrip().startswith("- ") for line in rendered.splitlines())
 

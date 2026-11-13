@@ -42,12 +42,17 @@ from sotto.gate_types import GateMessage, Trigger
 from sotto.judge import Judge
 from sotto.llm import LLMClient
 from sotto.patterns import Patterns
-from sotto.prompt import PLACES_NONE, SITUATION_AMBIENT, SITUATION_LATE, SITUATION_MORNING
 from sotto.responder import Responder
 from sotto.stickers import Sticker
 from sotto.timeutil import day_key, in_window
 from sotto.vocab import Vocab, parse_vocab
 from sotto.weather import Place, Weather
+from tests.packs import LEGACY_FRAG
+
+PLACES_NONE = LEGACY_FRAG.text("prompt.places_none")
+SITUATION_AMBIENT = LEGACY_FRAG.text("situations.ambient")
+SITUATION_LATE = LEGACY_FRAG.text("situations.late")
+SITUATION_MORNING = LEGACY_FRAG.text("situations.morning")
 
 CHAT_ID = -100123456
 BOT_USER_ID = 999
@@ -570,6 +575,7 @@ def _make_responder(
         bot_user_id=BOT_USER_ID,
         clock=clock.now,
         sleep=clock.sleep,
+        frag=LEGACY_FRAG,
     )
 
 
@@ -2067,6 +2073,7 @@ async def test_shutdown_waits_for_inflight_generation_before_cancelling(db: Data
         bot_user_id=BOT_USER_ID,
         clock=lambda: DAY_NOW,
         sleep=instant_sleep,
+        frag=LEGACY_FRAG,
     )
     try:
         msg = _gate_message(tg_message_id=990, user_id=5, text="привет всем", created_at=DAY_NOW)
@@ -2576,6 +2583,7 @@ async def test_ambient_generation_is_serialized_and_recheck_blocks_second(
         bot_user_id=BOT_USER_ID,
         clock=lambda: DAY_NOW,
         sleep=instant_sleep,
+        frag=LEGACY_FRAG,
     )
     try:
         msg1 = _gate_message(tg_message_id=940, user_id=5, text="привет всем", created_at=DAY_NOW)

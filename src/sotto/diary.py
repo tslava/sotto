@@ -19,6 +19,7 @@ from collections.abc import Callable, Sequence
 
 from sotto.config_models import Config
 from sotto.db import SelfFactRow
+from sotto.fragments import Fragments
 from sotto.llm import LLMClient, LLMError
 from sotto.sanitize import normalize_text
 from sotto.timeutil import local_dt
@@ -32,14 +33,6 @@ _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```$", re.DOTALL | re.IGNORECASE)
 _SLOT_RE = re.compile(r"\{(reply)\}")
-
-# Нейтральный заголовок (CLAUDE.md, "про себя через раз"): прежний «Что ты сегодня уже
-# говорил о себе» сам подталкивал модель снова говорить о себе.
-_TODAY_HEADER = (
-    "Твои дела сегодня (это только чтобы не противоречить себе, сам об этом не заговаривай): "
-)
-_WEEK_HEADER = "На этой неделе: "
-_WEEKDAYS = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
 
 
 def _strip_fake_delimiters(text: str) -> str:
@@ -125,7 +118,9 @@ def _clean(text: str) -> str:
     return _strip_fake_delimiters(text).strip().rstrip(".;")
 
 
-def render_diary(today: Sequence[SelfFactRow], week: Sequence[SelfFactRow], tz: str) -> str:
+def render_diary(
+    today: Sequence[SelfFactRow], week: Sequence[SelfFactRow], tz: str, *, frag: Fragments
+) -> str:
     """Блок слота ``{diary}``. Пусто -> "" (абзац со слотом в system.txt пропадает).
 
     Сегодня — «10:46 пошёл в баню; 12:39 возится с лодкой.», неделя — «пн чинил
@@ -134,11 +129,11 @@ def render_diary(today: Sequence[SelfFactRow], week: Sequence[SelfFactRow], tz: 
     lines: list[str] = []
     if today:
         parts = [f"{local_dt(row.created_at, tz):%H:%M} {_clean(row.text)}" for row in today]
-        lines.append(_TODAY_HEADER + "; ".join(parts) + ".")
+        lines.append(frag.text("render.diary_today_header") + "; ".join(parts) + ".")
     if week:
+        weekdays = frag.items("render.weekdays")
         parts = [
-            f"{_WEEKDAYS[local_dt(row.created_at, tz).weekday()]} {_clean(row.text)}"
-            for row in week
+            f"{weekdays[local_dt(row.created_at, tz).weekday()]} {_clean(row.text)}" for row in week
         ]
-        lines.append(_WEEK_HEADER + "; ".join(parts) + ".")
+        lines.append(frag.text("render.diary_week_header") + "; ".join(parts) + ".")
     return "\n".join(lines)

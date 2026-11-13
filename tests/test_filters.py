@@ -25,7 +25,7 @@ from sotto.db import MessageRow
 from sotto.few_shot import load_few_shot
 from sotto.filters import FilterContext, FilterVerdict, check_output
 from sotto.vocab import Vocab, parse_vocab
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 SYSTEM_PROMPT = (LEGACY_PACK / "prompts" / "system.txt").read_text(encoding="utf-8")
 
@@ -72,6 +72,7 @@ def _ctx(
         system_prompt=system_prompt,
         trigger_text=trigger_text,
         now=now,
+        frag=LEGACY_FRAG,
     )
 
 
@@ -510,7 +511,9 @@ async def test_judge_called_and_reasons_added_when_dirty_and_shadow_true() -> No
 
 
 async def test_filter_context_accepts_legacy_four_field_call() -> None:
-    ctx = FilterContext(cfg=Config(), recent_replies=[], context_rows=[], places_names=[])
+    ctx = FilterContext(
+        cfg=Config(), recent_replies=[], context_rows=[], places_names=[], frag=LEGACY_FRAG
+    )
     verdict = await check_output("Кофе хороший, я не спорю.", ctx)
     assert verdict.ok is True
     assert ctx.participant_names == []

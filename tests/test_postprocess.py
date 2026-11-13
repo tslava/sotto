@@ -13,6 +13,7 @@ from sotto.postprocess import (
     soften,
     strip_emoji,
 )
+from tests.packs import LEGACY_FRAG
 
 # --------------------------------------------------------------------------- #
 # normalize_dashes
@@ -122,18 +123,20 @@ _CFG = FiltersConfig()  # allowed_emoji по умолчанию, emoji_max_per_r
 
 
 def test_soften_dash_only() -> None:
-    fixed = soften("Раньше было проще — теперь не так.", recent_replies=[], cfg=_CFG)
+    fixed = soften(
+        "Раньше было проще — теперь не так.", recent_replies=[], cfg=_CFG, frag=LEGACY_FRAG
+    )
     assert fixed == Fixed(text="Раньше было проще - теперь не так.", fixes=("fix:dash",))
 
 
 def test_soften_no_fixes_needed() -> None:
-    fixed = soften("Бывает, с кем не случается.", recent_replies=[], cfg=_CFG)
+    fixed = soften("Бывает, с кем не случается.", recent_replies=[], cfg=_CFG, frag=LEGACY_FRAG)
     assert fixed == Fixed(text="Бывает, с кем не случается.", fixes=())
 
 
 def test_soften_emoji_freq_strips_when_recent_has_emoji() -> None:
     recent = ["Все по домам.", "Бывает.", "Ладно.", "Зря 😂"]
-    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=_CFG)
+    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=_CFG, frag=LEGACY_FRAG)
     assert fixed.fixes == ("fix:emoji_freq",)
     assert fixed.text == "Бывает"
 
@@ -146,20 +149,20 @@ def test_soften_emoji_freq_outside_window_pass() -> None:
         "Купил торф для рассады.",
         "Спокойной ночи всем.",
     ]
-    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=_CFG)
+    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=_CFG, frag=LEGACY_FRAG)
     assert fixed.fixes == ()
     assert fixed.text == "Бывает 🙂"
 
 
 def test_soften_emoji_count_keeps_first() -> None:
-    fixed = soften("Бывает 🙂🙂", recent_replies=[], cfg=_CFG)
+    fixed = soften("Бывает 🙂🙂", recent_replies=[], cfg=_CFG, frag=LEGACY_FRAG)
     assert fixed.fixes == ("fix:emoji_count",)
     assert fixed.text == "Бывает 🙂"
 
 
 def test_soften_order_dash_then_emoji_freq() -> None:
     recent = ["Зря 😂"]
-    fixed = soften("Раньше было — теперь 🙂", recent_replies=recent, cfg=_CFG)
+    fixed = soften("Раньше было — теперь 🙂", recent_replies=recent, cfg=_CFG, frag=LEGACY_FRAG)
     assert fixed.fixes == ("fix:dash", "fix:emoji_freq")
     assert fixed.text == "Раньше было - теперь"
 
@@ -168,14 +171,14 @@ def test_soften_emoji_freq_and_count_only_freq_applies() -> None:
     # emoji_freq проверяется первым: если сработал, до emoji_count дело не доходит,
     # даже если в кандидате несколько разрешённых эмодзи.
     recent = ["Зря 😂"]
-    fixed = soften("Бывает 🙂🙂", recent_replies=recent, cfg=_CFG)
+    fixed = soften("Бывает 🙂🙂", recent_replies=recent, cfg=_CFG, frag=LEGACY_FRAG)
     assert fixed.fixes == ("fix:emoji_freq",)
     assert fixed.text == "Бывает"
 
 
 def test_soften_sticker_placeholder_not_counted_as_emoji() -> None:
     recent = ["[стикер #3] Ну началось"]
-    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=_CFG)
+    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=_CFG, frag=LEGACY_FRAG)
     assert fixed.fixes == ()
     assert fixed.text == "Бывает 🙂"
 
@@ -184,11 +187,11 @@ def test_soften_window_respects_emoji_recent_window() -> None:
     cfg = FiltersConfig(emoji_recent_window=1)
     # эмодзи было 2 реплики назад, окно = 1 -> не считается.
     recent = ["Зря 😂", "Ладно."]
-    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=cfg)
+    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=cfg, frag=LEGACY_FRAG)
     assert fixed.fixes == ()
     assert fixed.text == "Бывает 🙂"
 
 
 def test_soften_no_emoji_no_dash_unchanged() -> None:
-    fixed = soften("Ключи в гараже были.", recent_replies=["Зря 😂"], cfg=_CFG)
+    fixed = soften("Ключи в гараже были.", recent_replies=["Зря 😂"], cfg=_CFG, frag=LEGACY_FRAG)
     assert fixed == Fixed(text="Ключи в гараже были.", fixes=())

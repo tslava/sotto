@@ -32,7 +32,7 @@ from sotto.settings import Settings
 from sotto.stores import ConfigStore, PromptStore
 from sotto.timeutil import day_key
 from sotto.vocab import VocabStore
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
@@ -131,7 +131,8 @@ def _deps(
         responder=responder,  # type: ignore[arg-type]
         followup=followup,  # type: ignore[arg-type]
         vision=vision,  # type: ignore[arg-type]
-        reaction_scheduler=reaction_scheduler,  # type: ignore[arg-type]
+        reaction_scheduler=reaction_scheduler,
+        frag=LEGACY_FRAG,  # type: ignore[arg-type]
     )
 
 

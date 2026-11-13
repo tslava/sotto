@@ -34,16 +34,13 @@ from dataclasses import dataclass
 
 from sotto.config_models import Config
 from sotto.db import MessageRow
+from sotto.fragments import Fragments
 from sotto.llm import LLMClient, LLMError
 from sotto.prompt import render_context, render_numbered_messages
 
 logger = logging.getLogger(__name__)
 
 _COUNTER_KEY = "followup_calls"
-
-_CONTEXT_EMPTY = "(пока не было)"
-_RECENT_REPLIES_EMPTY = "(пока не было)"
-_MESSAGES_EMPTY = "(пока не было)"
 
 # Дублирует вырезание разделителей из sanitize.normalize_text/prompt.py/judge.py —
 # на всякий случай ещё раз чистим то, что уходит в промпт проверки.
@@ -144,7 +141,10 @@ class FollowupChecker:
         prompt_template: str,
         batch_prompt_template: str = "",
         name_prompt_template: str = "",
+        *,
+        frag: Fragments,
     ) -> None:
+        self._frag = frag
         self._llm = llm
         self._cfg_getter = cfg_getter
         self._prompt_template = prompt_template
@@ -165,8 +165,8 @@ class FollowupChecker:
         context = _strip_fake_delimiters(render_context(list(context_rows))).strip()
         recent = _strip_fake_delimiters("\n".join(recent_replies)).strip()
         slot_values = {
-            "context": context or _CONTEXT_EMPTY,
-            "recent_replies": recent or _RECENT_REPLIES_EMPTY,
+            "context": context or self._frag.text("placeholders.context_empty"),
+            "recent_replies": recent or self._frag.text("placeholders.recent_replies_empty"),
             "name": _strip_fake_delimiters(display_name).strip(),
             "text": _strip_fake_delimiters(text).strip(),
         }
@@ -313,8 +313,8 @@ class FollowupChecker:
         persona = cfg.persona
         names = list(dict.fromkeys([persona.name, persona.display_name, *persona.name_triggers]))
         slot_values = {
-            "messages": messages_block or _MESSAGES_EMPTY,
-            "recent_replies": recent or _RECENT_REPLIES_EMPTY,
+            "messages": messages_block or self._frag.text("placeholders.messages_empty"),
+            "recent_replies": recent or self._frag.text("placeholders.recent_replies_empty"),
             "names": ", ".join(name for name in names if name),
         }
         system = _BATCH_SLOT_RE.sub(lambda m: slot_values[m.group(1)], self._batch_prompt_template)

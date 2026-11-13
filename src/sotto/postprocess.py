@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 from sotto.config_models import FiltersConfig
 from sotto.filters import _has_emoji, _is_emoji_char, _is_emoji_modifier
+from sotto.fragments import Fragments
 
 # «—» U+2014, «–» U+2013, «‒» U+2012, «―» U+2015 -> дефис-минус «-». Пробелы вокруг
 # не в классе символов, поэтому не трогаются; дефис в словах («по-русски») уже «-»
@@ -31,10 +32,6 @@ _DASH_RE = re.compile(f"[{_DASH_CHARS}]")
 
 _MULTI_SPACE_RE = re.compile(r" {2,}")
 _SPACE_BEFORE_PUNCT_RE = re.compile(r" +([.,!?…:;])")
-
-# Записи стикеров в recent_bot_replies ("[стикер #N] текст надписи") эмодзи не
-# содержат, но на будущее — пропускаем их явно при подсчёте (CLAUDE.md).
-_STICKER_PLACEHOLDER_PREFIX = "[стикер #"
 
 
 @dataclass(frozen=True)
@@ -105,13 +102,14 @@ def keep_first_emoji(text: str) -> str:
     return _cleanup(_remove_spans(text, spans[1:]))
 
 
-def _recent_has_emoji(recent_replies: Sequence[str], window: int) -> bool:
+def _recent_has_emoji(recent_replies: Sequence[str], window: int, frag: Fragments) -> bool:
     if window <= 0:
         return False
+    # Записи стикеров в recent_bot_replies («[стикер #N] текст надписи») эмодзи не
+    # содержат, но на будущее пропускаются явно (CLAUDE.md); префикс — из пакета.
+    sticker_prefix = frag.prefix("placeholders.sticker_tag")
     candidates = [
-        reply
-        for reply in recent_replies[-window:]
-        if not reply.startswith(_STICKER_PLACEHOLDER_PREFIX)
+        reply for reply in recent_replies[-window:] if not reply.startswith(sticker_prefix)
     ]
     return any(_has_emoji(reply) for reply in candidates)
 
@@ -121,7 +119,9 @@ def _count_allowed_emoji(text: str, allowed_emoji: Sequence[str]) -> int:
     return sum(1 for start, _end in _emoji_spans(text) if text[start] in allowed)
 
 
-def soften(text: str, *, recent_replies: Sequence[str], cfg: FiltersConfig) -> Fixed:
+def soften(
+    text: str, *, recent_replies: Sequence[str], cfg: FiltersConfig, frag: Fragments
+) -> Fixed:
     """Порядок правок: normalize_dashes -> emoji_freq -> emoji_count (см. CLAUDE.md).
 
     ``recent_replies`` — хронологически, последние записи свежие (как
@@ -134,7 +134,7 @@ def soften(text: str, *, recent_replies: Sequence[str], cfg: FiltersConfig) -> F
         fixes.append("fix:dash")
     text = dashed
 
-    if _has_emoji(text) and _recent_has_emoji(recent_replies, cfg.emoji_recent_window):
+    if _has_emoji(text) and _recent_has_emoji(recent_replies, cfg.emoji_recent_window, frag):
         text = strip_emoji(text)
         fixes.append("fix:emoji_freq")
     elif _count_allowed_emoji(text, cfg.allowed_emoji) > cfg.emoji_max_per_reply:

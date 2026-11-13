@@ -26,27 +26,8 @@ import re
 
 from sotto.config_models import PlacesConfig
 from sotto.db import PlaceRow
-from sotto.prompt import PLACES_NONE
+from sotto.fragments import Fragments
 
-# Районы (CHARACTER.md, раздел 7) — канонические имена и их русские/польские
-# варианты написания. Сравнение всегда без учёта регистра и ё/е (_normalize).
-_DISTRICT_VARIANTS: dict[str, list[str]] = {
-    "Dolna": ["dolna", "долна"],
-    "Rożyce": ["rożyce", "rozyce", "рожице", "рожицы"],
-    "Dawne Miasto": ["dawne miasto", "старый город", "давне място", "центр", "centrum"],
-    "Granwald": ["granwald", "гранвальд"],
-    "Łanowo": ["łanowo", "lanowo", "ланов"],
-    "Kępice": ["kępice", "кепице"],
-    "Ogrody": ["ogrody", "огроды"],
-    "Bórnik": ["bórnik", "bornik", "борник", "бёрник"],
-    "Leszczykowo": ["leszczykowo", "лещиково"],
-    "Strzechyn": ["strzechyn", "стшехин", "стржехин"],
-}
-
-# «Тихо/спокойно/поговорить/посидеть/не орать» -> quiet=1 (CLAUDE.md, "Интерфейсы этапа 5").
-_QUIET_KEYWORDS = ["тихо", "спокойно", "поговорить", "посидеть", "не орать"]
-# «За город/съездить/природа/озеро/лес» -> category outskirts.
-_OUTSKIRTS_KEYWORDS = ["за город", "съездить", "природа", "озеро", "лес"]
 _OUTSKIRTS_CATEGORY = "outskirts"
 
 _FACT_MAX_LEN = 40
@@ -58,27 +39,25 @@ def _normalize(text: str) -> str:
     return text.strip().casefold().replace("ё", "е")
 
 
-def _build_district_lookup() -> dict[str, str]:
+def _district_lookup(cfg: PlacesConfig) -> dict[str, str]:
+    """Вариант написания (без регистра, ё/е) -> каноническое имя района из ``district_aliases``."""
     lookup: dict[str, str] = {}
-    for canonical, variants in _DISTRICT_VARIANTS.items():
+    for canonical, variants in cfg.district_aliases.items():
         lookup[_normalize(canonical)] = canonical
         for variant in variants:
             lookup[_normalize(variant)] = canonical
     return lookup
 
 
-_DISTRICT_LOOKUP = _build_district_lookup()
-
-
-def _district_group(name: str) -> str | None:
+def _district_group(name: str, lookup: dict[str, str]) -> str | None:
     """Канонический район для произвольного написания (PlaceRow.district), либо None."""
-    return _DISTRICT_LOOKUP.get(_normalize(name))
+    return lookup.get(_normalize(name))
 
 
-def _detect_district(request_text: str) -> str | None:
+def _detect_district(request_text: str, lookup: dict[str, str]) -> str | None:
     """Первый упомянутый в тексте район (любой вариант написания), либо None."""
     normalized = _normalize(request_text)
-    for variant, canonical in _DISTRICT_LOOKUP.items():
+    for variant, canonical in lookup.items():
         if variant and variant in normalized:
             return canonical
     return None
@@ -117,17 +96,20 @@ def select_places(
     if not candidates:
         return []
 
-    if _mentions_any(request_text, _QUIET_KEYWORDS):
+    if _mentions_any(request_text, cfg.quiet_keywords):
         candidates = [row for row in candidates if row.quiet]
         if not candidates:
             return []
 
-    district = _detect_district(request_text)
+    lookup = _district_lookup(cfg)
+    district = _detect_district(request_text, lookup)
     if district is not None:
-        district_matches = [row for row in candidates if _district_group(row.district) == district]
+        district_matches = [
+            row for row in candidates if _district_group(row.district, lookup) == district
+        ]
         if district_matches:
             candidates = district_matches
-    elif _mentions_any(request_text, _OUTSKIRTS_KEYWORDS):
+    elif _mentions_any(request_text, cfg.outskirts_keywords):
         candidates = [row for row in candidates if row.category == _OUTSKIRTS_CATEGORY]
         if not candidates:
             return []
@@ -141,15 +123,15 @@ def select_places(
     return rng.sample(candidates, k)
 
 
-def render_places_block(rows: list[PlaceRow]) -> str:
+def render_places_block(rows: list[PlaceRow], *, frag: Fragments) -> str:
     """Блок ``{places}``: название, район, категория, факт. Пусто -> prompt.PLACES_NONE.
 
     Часы работы не выводятся никогда (их нет в PlaceRow), источник (Google) не
     упоминается — "был, ничего особенного", а не "по отзывам в Гугле".
     """
     if not rows:
-        return PLACES_NONE
-    lines = ["Заведения, о которых ты можешь сказать (ты там бывал, других не называешь):"]
+        return str(frag.text("prompt.places_none"))
+    lines = [str(frag.text("render.places_block_header"))]
     for row in rows:
         parts = [row.name, row.district, row.category]
         if row.fact:
@@ -158,14 +140,7 @@ def render_places_block(rows: list[PlaceRow]) -> str:
     return "\n".join(lines)
 
 
-_MENU_HEADER = (
-    "Заведения, где ты бывал (только они, других не называешь). Если про место "
-    "НЕ спрашивали — не упоминай ни одно. Если спросили — назови одно, максимум "
-    "два подходящих по тишине и району, без часов работы и без цен:"
-)
-
-
-def render_places_menu(rows: list[PlaceRow]) -> str:
+def render_places_menu(rows: list[PlaceRow], *, frag: Fragments) -> str:
     """Весь кэш заведений для промпта при прямом обращении (mention/reply/name).
 
     Решение владельца после живого теста (CLAUDE.md, "Интерфейсы этапа 5"): детект
@@ -175,15 +150,16 @@ def render_places_menu(rows: list[PlaceRow]) -> str:
     принимает модель по инструкции в этом же блоке — не ``select_places``.
     Регулярки (``patterns.places_request``) остаются для статистики и ambient.
 
-    Пусто -> ``prompt.PLACES_NONE``. Иначе строки по ``name``, ``тихо``/``шумно``
+    Пусто -> фрагмент ``prompt.places_none``. Иначе строки по ``name``, ``тихо``/``шумно``
     по ``quiet``, ``fact`` — только если непустой. Никаких рейтингов, цен, часов
     работы, слова Google (источник не палится, как и в ``render_places_block``).
     """
     if not rows:
-        return PLACES_NONE
-    lines = [_MENU_HEADER]
+        return str(frag.text("prompt.places_none"))
+    lines = [str(frag.text("render.places_menu_header"))]
+    quiet, noisy = frag.text("render.places_quiet"), frag.text("render.places_noisy")
     for row in sorted(rows, key=lambda r: r.name):
-        parts = [row.name, row.district, row.category, "тихо" if row.quiet else "шумно"]
+        parts = [row.name, row.district, row.category, quiet if row.quiet else noisy]
         if row.fact:
             parts.append(row.fact)
         lines.append("- " + ", ".join(parts))

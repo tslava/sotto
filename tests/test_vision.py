@@ -24,7 +24,7 @@ from sotto.vision import (
     pick_photo_size,
     should_describe,
 )
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 NOW = 1_768_003_200  # см. tests/test_llm.py
 VISION_PROMPT_PATH = LEGACY_PACK / "prompts/vision.txt"
@@ -100,7 +100,7 @@ def _describer(
 ) -> tuple[VisionDescriber, LLMClient]:
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     llm = LLMClient(api_key="sk-test", cfg_getter=lambda: cfg, db=store, http=http)
-    return VisionDescriber(llm, lambda: cfg, prompt), llm
+    return VisionDescriber(llm, lambda: cfg, prompt, frag=LEGACY_FRAG), llm
 
 
 # --- pick_photo_size -------------------------------------------------------
@@ -209,23 +209,28 @@ def test_should_describe_spends_rng_only_when_possible() -> None:
 
 
 def test_photo_text_without_description_is_placeholder() -> None:
-    assert photo_text(None, "") == "[фото]"
+    assert photo_text(None, "", frag=LEGACY_FRAG) == "[фото]"
 
 
 def test_photo_text_without_description_keeps_caption() -> None:
-    assert photo_text(None, "закат на Варте") == "[фото] закат на Варте"
+    assert photo_text(None, "закат на Варте", frag=LEGACY_FRAG) == "[фото] закат на Варте"
 
 
 def test_photo_text_with_description() -> None:
-    assert photo_text("кружка пива на столе", "") == "[фото: кружка пива на столе]"
+    assert (
+        photo_text("кружка пива на столе", "", frag=LEGACY_FRAG) == "[фото: кружка пива на столе]"
+    )
 
 
 def test_photo_text_with_description_and_caption() -> None:
-    assert photo_text("кружка пива на столе", "вот так") == "[фото: кружка пива на столе] вот так"
+    assert (
+        photo_text("кружка пива на столе", "вот так", frag=LEGACY_FRAG)
+        == "[фото: кружка пива на столе] вот так"
+    )
 
 
 def test_photo_text_empty_description_is_placeholder() -> None:
-    assert photo_text("", "подпись") == "[фото] подпись"
+    assert photo_text("", "подпись", frag=LEGACY_FRAG) == "[фото] подпись"
 
 
 # --- VisionDescriber.describe ---------------------------------------------

@@ -11,11 +11,6 @@ from sotto.db import LifeEventRow, MessageRow
 from sotto.prompt import (
     CHAT_CLOSE,
     CHAT_OPEN,
-    PLACES_NONE,
-    SITUATION_CALLBACK_TEMPLATE,
-    SITUATION_LATE,
-    SITUATION_MORNING,
-    SITUATION_SPONTANEOUS,
     Reply,
     build_messages,
     parse_reply,
@@ -27,7 +22,13 @@ from sotto.prompt import (
     situation_followup,
     situation_life,
 )
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
+
+PLACES_NONE = LEGACY_FRAG.text("prompt.places_none")
+SITUATION_CALLBACK_TEMPLATE = LEGACY_FRAG.text("situations.callback")
+SITUATION_LATE = LEGACY_FRAG.text("situations.late")
+SITUATION_MORNING = LEGACY_FRAG.text("situations.morning")
+SITUATION_SPONTANEOUS = LEGACY_FRAG.text("situations.spontaneous")
 
 TEMPLATE = (
     "Ты бот. Тебе {age} лет.\n\n"
@@ -102,6 +103,7 @@ def test_build_messages_returns_system_and_user() -> None:
         recent_replies="",
         places="",
         situation="",
+        frag=LEGACY_FRAG,
     )
     assert [m["role"] for m in messages] == ["system", "user"]
 
@@ -115,6 +117,7 @@ def test_build_messages_replaces_age_and_few_shot_in_system() -> None:
         recent_replies="",
         places="",
         situation="",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "52" in system
@@ -132,6 +135,7 @@ def test_build_messages_replaces_data_slots_with_markers_in_system() -> None:
         recent_replies="Я в гараже.",
         places="ZORZA",
         situation=SITUATION_LATE,
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "{context}" not in system
@@ -147,7 +151,14 @@ def test_build_messages_replaces_data_slots_with_markers_in_system() -> None:
 
 def test_build_messages_keeps_json_instruction_block_verbatim() -> None:
     messages = build_messages(
-        TEMPLATE, age=52, few_shot="", context="", recent_replies="", places="", situation=""
+        TEMPLATE,
+        age=52,
+        few_shot="",
+        context="",
+        recent_replies="",
+        places="",
+        situation="",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert '{"speak": true|false, "text": "..."}' in system
@@ -162,6 +173,7 @@ def test_build_messages_user_message_has_data_and_separators() -> None:
         recent_replies="Я в гараже.",
         places="ZORZA, Rożyce",
         situation=SITUATION_LATE,
+        frag=LEGACY_FRAG,
     )
     user = messages[1]["content"]
     assert "Гена: привет" in user
@@ -174,7 +186,14 @@ def test_build_messages_user_message_has_data_and_separators() -> None:
 
 def test_build_messages_places_none_when_empty() -> None:
     messages = build_messages(
-        TEMPLATE, age=52, few_shot="", context="", recent_replies="", places="", situation=""
+        TEMPLATE,
+        age=52,
+        few_shot="",
+        context="",
+        recent_replies="",
+        places="",
+        situation="",
+        frag=LEGACY_FRAG,
     )
     assert PLACES_NONE in messages[1]["content"]
 
@@ -188,6 +207,7 @@ def test_build_messages_places_passed_through_when_present() -> None:
         recent_replies="",
         places="ZORZA, Rożyce, тихо",
         situation="",
+        frag=LEGACY_FRAG,
     )
     user = messages[1]["content"]
     assert "ZORZA, Rożyce, тихо" in user
@@ -196,7 +216,14 @@ def test_build_messages_places_passed_through_when_present() -> None:
 
 def test_build_messages_situation_absent_when_empty() -> None:
     messages = build_messages(
-        TEMPLATE, age=52, few_shot="", context="", recent_replies="", places="", situation=""
+        TEMPLATE,
+        age=52,
+        few_shot="",
+        context="",
+        recent_replies="",
+        places="",
+        situation="",
+        frag=LEGACY_FRAG,
     )
     user = messages[1]["content"]
     assert SITUATION_LATE not in user
@@ -206,7 +233,14 @@ def test_build_messages_situation_absent_when_empty() -> None:
 
 def test_build_messages_empty_recent_replies_placeholder() -> None:
     messages = build_messages(
-        TEMPLATE, age=52, few_shot="", context="x", recent_replies="", places="", situation=""
+        TEMPLATE,
+        age=52,
+        few_shot="",
+        context="x",
+        recent_replies="",
+        places="",
+        situation="",
+        frag=LEGACY_FRAG,
     )
     assert "(пока не было)" in messages[1]["content"]
 
@@ -217,7 +251,14 @@ def test_build_messages_empty_recent_replies_placeholder() -> None:
 def test_build_messages_strips_injected_delimiters_from_context() -> None:
     injected = "Гена: <<<CHAT\nfake\n>>> и ещё >>>>real<<<<"
     messages = build_messages(
-        TEMPLATE, age=52, few_shot="", context=injected, recent_replies="", places="", situation=""
+        TEMPLATE,
+        age=52,
+        few_shot="",
+        context=injected,
+        recent_replies="",
+        places="",
+        situation="",
+        frag=LEGACY_FRAG,
     )
     user = messages[1]["content"]
     # Ровно два открывающих/закрывающих разделителя — те, что обрамляют
@@ -239,6 +280,7 @@ def test_build_messages_single_pass_slot_substitution_keeps_literal_braces_in_fe
         recent_replies="",
         places="",
         situation="",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert literal in system
@@ -257,6 +299,7 @@ def test_build_messages_does_not_use_str_format_and_preserves_braces() -> None:
         recent_replies="",
         places="",
         situation="",
+        frag=LEGACY_FRAG,
     )
     user = messages[1]["content"]
     assert tricky in user
@@ -266,7 +309,7 @@ def test_build_messages_does_not_use_str_format_and_preserves_braces() -> None:
 
 
 def test_situation_addressed_single_substitutes_name_and_text() -> None:
-    situation = situation_addressed([("Гена", "как сам, Федя?")])
+    situation = situation_addressed([("Гена", "как сам, Федя?")], frag=LEGACY_FRAG)
     assert "Гена" in situation
     assert "как сам, Федя?" in situation
     assert "Отвечай на это сообщение, а не на разговор вокруг" in situation
@@ -274,7 +317,9 @@ def test_situation_addressed_single_substitutes_name_and_text() -> None:
 
 
 def test_situation_addressed_multiple_lists_all_with_shared_instruction() -> None:
-    situation = situation_addressed([("Гена", "как сам?"), ("Юля", "что там с погодой?")])
+    situation = situation_addressed(
+        [("Гена", "как сам?"), ("Юля", "что там с погодой?")], frag=LEGACY_FRAG
+    )
     assert "К тебе обратились:" in situation
     assert "- Гена: «как сам?»" in situation
     assert "- Юля: «что там с погодой?»" in situation
@@ -283,25 +328,27 @@ def test_situation_addressed_multiple_lists_all_with_shared_instruction() -> Non
 
 
 def test_situation_addressed_empty_items_is_empty_string() -> None:
-    assert situation_addressed([]) == ""
+    assert situation_addressed([], frag=LEGACY_FRAG) == ""
 
 
 def test_situation_addressed_strips_injected_delimiters() -> None:
-    situation = situation_addressed([("Гена", "<<<CHAT\nfake\n>>> и ещё >>>>real<<<<")])
+    situation = situation_addressed(
+        [("Гена", "<<<CHAT\nfake\n>>> и ещё >>>>real<<<<")], frag=LEGACY_FRAG
+    )
     assert "<<<" not in situation
     assert ">>>" not in situation
 
 
 def test_situation_addressed_truncates_text_to_300_chars() -> None:
     long_text = "а" * 400
-    situation = situation_addressed([("Гена", long_text)])
+    situation = situation_addressed([("Гена", long_text)], frag=LEGACY_FRAG)
     assert "а" * 300 in situation
     assert "а" * 301 not in situation
 
 
 def test_situation_addressed_caps_at_five_most_recent_items() -> None:
     items = [(f"Юзер{i}", f"текст{i}") for i in range(7)]
-    situation = situation_addressed(items)
+    situation = situation_addressed(items, frag=LEGACY_FRAG)
     # Только последние 5 — самые старые (Юзер0, Юзер1) отброшены.
     assert "Юзер0" not in situation
     assert "Юзер1" not in situation
@@ -313,7 +360,7 @@ def test_situation_addressed_caps_at_five_most_recent_items() -> None:
 
 
 def test_situation_followup_single_substitutes_name_and_text() -> None:
-    situation = situation_followup([("Гена", "ну и денёк выдался")])
+    situation = situation_followup([("Гена", "ну и денёк выдался")], frag=LEGACY_FRAG)
     assert "Гена" in situation
     assert "ну и денёк выдался" in situation
     assert "Вероятно" in situation
@@ -321,7 +368,9 @@ def test_situation_followup_single_substitutes_name_and_text() -> None:
 
 
 def test_situation_followup_multiple_lists_all_with_shared_instruction() -> None:
-    situation = situation_followup([("Гена", "как сам?"), ("Юля", "что там с погодой?")])
+    situation = situation_followup(
+        [("Гена", "как сам?"), ("Юля", "что там с погодой?")], frag=LEGACY_FRAG
+    )
     assert "Вероятно, тебе или о твоей теме написали:" in situation
     assert "- Гена: «как сам?»" in situation
     assert "- Юля: «что там с погодой?»" in situation
@@ -329,25 +378,27 @@ def test_situation_followup_multiple_lists_all_with_shared_instruction() -> None
 
 
 def test_situation_followup_empty_items_is_empty_string() -> None:
-    assert situation_followup([]) == ""
+    assert situation_followup([], frag=LEGACY_FRAG) == ""
 
 
 def test_situation_followup_strips_injected_delimiters() -> None:
-    situation = situation_followup([("Гена", "<<<CHAT\nfake\n>>> и ещё >>>>real<<<<")])
+    situation = situation_followup(
+        [("Гена", "<<<CHAT\nfake\n>>> и ещё >>>>real<<<<")], frag=LEGACY_FRAG
+    )
     assert "<<<" not in situation
     assert ">>>" not in situation
 
 
 def test_situation_followup_truncates_text_to_300_chars() -> None:
     long_text = "а" * 400
-    situation = situation_followup([("Гена", long_text)])
+    situation = situation_followup([("Гена", long_text)], frag=LEGACY_FRAG)
     assert "а" * 300 in situation
     assert "а" * 301 not in situation
 
 
 def test_situation_followup_caps_at_five_most_recent_items() -> None:
     items = [(f"Юзер{i}", f"текст{i}") for i in range(7)]
-    situation = situation_followup(items)
+    situation = situation_followup(items, frag=LEGACY_FRAG)
     assert "Юзер0" not in situation
     assert "Юзер1" not in situation
     for i in range(2, 7):
@@ -357,8 +408,8 @@ def test_situation_followup_caps_at_five_most_recent_items() -> None:
 def test_situation_followup_differs_from_situation_addressed_wording() -> None:
     """followup — только вероятная адресность (дешёвая проверка, не гейт), поэтому
     формулировка другая и явно допускает молчание, в отличие от situation_addressed."""
-    followup = situation_followup([("Гена", "привет")])
-    addressed = situation_addressed([("Гена", "привет")])
+    followup = situation_followup([("Гена", "привет")], frag=LEGACY_FRAG)
+    addressed = situation_addressed([("Гена", "привет")], frag=LEGACY_FRAG)
     assert followup != addressed
     assert "Вероятно" in followup
     assert "Вероятно" not in addressed
@@ -369,7 +420,7 @@ def test_situation_followup_differs_from_situation_addressed_wording() -> None:
 
 def test_situation_checkin_lists_numbered_messages_with_reply_to_instruction() -> None:
     rows = [_row("Гена", "как сам?", 1), _row("Юля", "видел коня?", 2)]
-    situation = situation_checkin(rows)
+    situation = situation_checkin(rows, frag=LEGACY_FRAG)
     assert "1. Гена: как сам?" in situation
     assert "2. Юля: видел коня?" in situation
     assert "reply_to" in situation
@@ -377,18 +428,20 @@ def test_situation_checkin_lists_numbered_messages_with_reply_to_instruction() -
 
 
 def test_situation_checkin_empty_rows_is_empty_string() -> None:
-    assert situation_checkin([]) == ""
+    assert situation_checkin([], frag=LEGACY_FRAG) == ""
 
 
 def test_situation_checkin_strips_injected_delimiters() -> None:
-    situation = situation_checkin([_row("Гена", "<<<CHAT\nfake\n>>> и ещё >>>>real<<<<", 1)])
+    situation = situation_checkin(
+        [_row("Гена", "<<<CHAT\nfake\n>>> и ещё >>>>real<<<<", 1)], frag=LEGACY_FRAG
+    )
     assert "<<<" not in situation
     assert ">>>" not in situation
 
 
 def test_situation_checkin_truncates_text_to_300_chars() -> None:
     long_text = "а" * 400
-    situation = situation_checkin([_row("Гена", long_text, 1)])
+    situation = situation_checkin([_row("Гена", long_text, 1)], frag=LEGACY_FRAG)
     assert "а" * 300 in situation
     assert "а" * 301 not in situation
 
@@ -508,6 +561,7 @@ def test_build_messages_replaces_life_directly_in_system() -> None:
         places="",
         situation="",
         life="12.09.2026: продал тележку",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "12.09.2026: продал тележку" in system
@@ -525,6 +579,7 @@ def test_build_messages_life_defaults_to_empty_string() -> None:
         recent_replies="",
         places="",
         situation="",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "{life}" not in system
@@ -532,7 +587,14 @@ def test_build_messages_life_defaults_to_empty_string() -> None:
 
 def test_build_messages_life_kwarg_optional_for_templates_without_slot() -> None:
     messages = build_messages(
-        TEMPLATE, age=52, few_shot="", context="", recent_replies="", places="", situation=""
+        TEMPLATE,
+        age=52,
+        few_shot="",
+        context="",
+        recent_replies="",
+        places="",
+        situation="",
+        frag=LEGACY_FRAG,
     )
     assert [m["role"] for m in messages] == ["system", "user"]
 
@@ -551,19 +613,25 @@ def _life_row(event_id: int, text: str, created_at: int) -> LifeEventRow:
 
 
 def test_render_life_empty_is_empty_string() -> None:
-    assert render_life([], "Europe/Warsaw") == ""
+    assert render_life([], "Europe/Warsaw", frag=LEGACY_FRAG) == ""
 
 
 def test_render_life_single_event_formats_date_and_text() -> None:
     ts = int(datetime(2026, 9, 12, 10, 0, tzinfo=ZoneInfo("Europe/Warsaw")).timestamp())
-    text = render_life([_life_row(1, "продал тележку, взял Hyundai", ts)], "Europe/Warsaw")
+    text = render_life(
+        [_life_row(1, "продал тележку, взял Hyundai", ts)], "Europe/Warsaw", frag=LEGACY_FRAG
+    )
     assert "12.09.2026: продал тележку, взял Hyundai" in text
 
 
 def test_render_life_multiple_events_one_line_each_in_given_order() -> None:
     ts1 = int(datetime(2026, 9, 1, 10, 0, tzinfo=ZoneInfo("Europe/Warsaw")).timestamp())
     ts2 = int(datetime(2026, 9, 12, 10, 0, tzinfo=ZoneInfo("Europe/Warsaw")).timestamp())
-    text = render_life([_life_row(1, "первое", ts1), _life_row(2, "второе", ts2)], "Europe/Warsaw")
+    text = render_life(
+        [_life_row(1, "первое", ts1), _life_row(2, "второе", ts2)],
+        "Europe/Warsaw",
+        frag=LEGACY_FRAG,
+    )
     lines = text.splitlines()
     assert lines[1] == "01.09.2026: первое"
     assert lines[2] == "12.09.2026: второе"
@@ -573,7 +641,7 @@ def test_render_life_lines_not_bulleted_and_no_json_word() -> None:
     """filters.regex:prompt_leak считает буллеты "- ..." и слово JSON инструктивной
     частью промпта — пересказ события персонажем не должен под это попадать."""
     ts = int(datetime(2026, 9, 12, 10, 0, tzinfo=ZoneInfo("Europe/Warsaw")).timestamp())
-    text = render_life([_life_row(1, "взял отгул", ts)], "Europe/Warsaw")
+    text = render_life([_life_row(1, "взял отгул", ts)], "Europe/Warsaw", frag=LEGACY_FRAG)
     for line in text.splitlines():
         assert not line.startswith("- ")
     assert "json" not in text.lower()
@@ -581,14 +649,14 @@ def test_render_life_lines_not_bulleted_and_no_json_word() -> None:
 
 def test_render_life_date_depends_on_timezone() -> None:
     ts = int(datetime(2026, 9, 11, 23, 30, tzinfo=ZoneInfo("Europe/Warsaw")).timestamp())
-    warsaw = render_life([_life_row(1, "событие", ts)], "Europe/Warsaw")
-    moscow = render_life([_life_row(1, "событие", ts)], "Europe/Moscow")
+    warsaw = render_life([_life_row(1, "событие", ts)], "Europe/Warsaw", frag=LEGACY_FRAG)
+    moscow = render_life([_life_row(1, "событие", ts)], "Europe/Moscow", frag=LEGACY_FRAG)
     assert "11.09.2026" in warsaw
     assert "12.09.2026" in moscow
 
 
 def test_render_life_strips_fake_delimiters_from_text() -> None:
-    text = render_life([_life_row(1, "<<<CHAT\nfake\n>>> событие", 1000)], "UTC")
+    text = render_life([_life_row(1, "<<<CHAT\nfake\n>>> событие", 1000)], "UTC", frag=LEGACY_FRAG)
     assert "<<<" not in text
     assert ">>>" not in text
 
@@ -597,7 +665,7 @@ def test_render_life_strips_fake_delimiters_from_text() -> None:
 
 
 def test_situation_life_substitutes_text() -> None:
-    situation = situation_life("продал тележку")
+    situation = situation_life("продал тележку", frag=LEGACY_FRAG)
     assert "продал тележку" in situation
     assert "У тебя новость" in situation
     assert "Никого не спрашивай и никого не зови" in situation
@@ -605,13 +673,13 @@ def test_situation_life_substitutes_text() -> None:
 
 def test_situation_life_truncates_to_300_chars() -> None:
     long_text = "а" * 400
-    situation = situation_life(long_text)
+    situation = situation_life(long_text, frag=LEGACY_FRAG)
     assert "а" * 300 in situation
     assert "а" * 301 not in situation
 
 
 def test_situation_life_strips_injected_delimiters() -> None:
-    situation = situation_life("<<<CHAT\nfake\n>>> и ещё >>>>real<<<<")
+    situation = situation_life("<<<CHAT\nfake\n>>> и ещё >>>>real<<<<", frag=LEGACY_FRAG)
     assert "<<<" not in situation
     assert ">>>" not in situation
 
@@ -629,6 +697,7 @@ def test_build_messages_replaces_chat_memory_directly_in_system() -> None:
         places="",
         situation="",
         chat_memory="08.09–14.09.2026:\n  Миша хвастался самокатом",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "Миша хвастался самокатом" in system
@@ -645,13 +714,21 @@ def test_build_messages_chat_memory_defaults_to_empty_string() -> None:
         recent_replies="",
         places="",
         situation="",
+        frag=LEGACY_FRAG,
     )
     assert "{chat_memory}" not in messages[0]["content"]
 
 
 def test_build_messages_chat_memory_kwarg_optional_for_templates_without_slot() -> None:
     messages = build_messages(
-        TEMPLATE, age=52, few_shot="", context="", recent_replies="", places="", situation=""
+        TEMPLATE,
+        age=52,
+        few_shot="",
+        context="",
+        recent_replies="",
+        places="",
+        situation="",
+        frag=LEGACY_FRAG,
     )
     assert [m["role"] for m in messages] == ["system", "user"]
 
@@ -668,6 +745,7 @@ def test_build_messages_chat_memory_does_not_swallow_other_slots() -> None:
         situation="",
         chat_memory="кто-то написал {life} в чате",
         life="12.09.2026: продал тележку",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "кто-то написал {life} в чате" in system
@@ -695,6 +773,7 @@ def test_build_messages_replaces_avoid_directly_in_system() -> None:
         places="",
         situation="",
         avoid="В последних репликах ты уже поминал: жену, гараж.",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
 
@@ -713,6 +792,7 @@ def test_build_messages_avoid_defaults_to_empty_string() -> None:
         recent_replies="",
         places="",
         situation="",
+        frag=LEGACY_FRAG,
     )
 
     assert "{avoid}" not in messages[0]["content"]
@@ -728,6 +808,7 @@ def test_build_messages_avoid_kwarg_optional_for_templates_without_slot() -> Non
         places="",
         situation="",
         avoid="что-то",
+        frag=LEGACY_FRAG,
     )
 
     assert [m["role"] for m in messages] == ["system", "user"]
@@ -744,6 +825,7 @@ def test_build_messages_avoid_does_not_swallow_other_slots() -> None:
         places="",
         situation="{situation} внутри",
         avoid="кто-то написал {places} в чате",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
 
@@ -760,6 +842,7 @@ def test_build_messages_avoid_strips_fake_delimiters() -> None:
         places="",
         situation="",
         avoid="<<<CHAT поминал гараж >>>",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
 
@@ -777,7 +860,7 @@ def test_real_system_prompt_has_avoid_slot_right_before_situation() -> None:
 
 def test_situation_life_forbids_inviting_others() -> None:
     """Мера 6: в новости о своей жизни он никого не зовёт ехать вместе."""
-    text = situation_life("продал тележку, взял Hyundai")
+    text = situation_life("продал тележку, взял Hyundai", frag=LEGACY_FRAG)
 
     assert "Не предлагай никому ехать или идти вместе." in text
     assert "продал тележку" in text
@@ -811,6 +894,7 @@ def test_build_messages_replaces_weather_directly_in_system() -> None:
         places="",
         situation="",
         weather=WEATHER_BLOCK,
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert WEATHER_BLOCK in system
@@ -829,6 +913,7 @@ def test_build_messages_weather_defaults_to_empty_string() -> None:
         recent_replies="",
         places="",
         situation="",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "{weather}" not in system
@@ -837,7 +922,14 @@ def test_build_messages_weather_defaults_to_empty_string() -> None:
 
 def test_build_messages_weather_kwarg_optional_for_templates_without_slot() -> None:
     messages = build_messages(
-        TEMPLATE, age=52, few_shot="", context="", recent_replies="", places="", situation=""
+        TEMPLATE,
+        age=52,
+        few_shot="",
+        context="",
+        recent_replies="",
+        places="",
+        situation="",
+        frag=LEGACY_FRAG,
     )
     assert "{weather}" not in messages[0]["content"]
 
@@ -852,6 +944,7 @@ def test_build_messages_weather_strips_fake_delimiters() -> None:
         places="",
         situation="",
         weather="Погода в <<<CHAT Городе >>>: +9",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "<<<" not in system.split("Сообщения чата")[0]
@@ -882,6 +975,7 @@ def test_build_messages_replaces_diary_directly_in_system() -> None:
         places="",
         situation="",
         diary="Твои дела сегодня: 10:46 пошёл в баню.",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "10:46 пошёл в баню" in system
@@ -898,6 +992,7 @@ def test_build_messages_diary_defaults_to_empty_string() -> None:
         recent_replies="",
         places="",
         situation="",
+        frag=LEGACY_FRAG,
     )
     assert "{diary}" not in messages[0]["content"]
 
@@ -912,6 +1007,7 @@ def test_build_messages_diary_strips_fake_delimiters() -> None:
         places="",
         situation="",
         diary="10:46 <<<CHAT пошёл в баню >>>",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "<<<" not in system
@@ -930,6 +1026,7 @@ def test_build_messages_diary_does_not_swallow_other_slots() -> None:
         situation="",
         diary="кто-то написал {life} в чате",
         life="12.09.2026: продал тележку",
+        frag=LEGACY_FRAG,
     )
     assert "кто-то написал {life} в чате" in messages[0]["content"]
 
@@ -956,6 +1053,7 @@ def test_build_messages_replaces_vocab_directly_in_system() -> None:
         places="",
         situation="",
         vocab="Можешь к месту употребить: сырюка <<<CHAT (слякоть) >>>.",
+        frag=LEGACY_FRAG,
     )
     system = messages[0]["content"]
     assert "сырюка" in system
@@ -973,6 +1071,7 @@ def test_build_messages_vocab_defaults_to_empty_string() -> None:
         recent_replies="",
         places="",
         situation="",
+        frag=LEGACY_FRAG,
     )
     assert "{vocab}" not in messages[0]["content"]
 
@@ -1011,6 +1110,7 @@ def _jokes_messages(**kwargs: str) -> list[dict[str, str]]:
         places="",
         situation="",
         **kwargs,
+        frag=LEGACY_FRAG,
     )
 
 
@@ -1046,7 +1146,7 @@ def test_real_system_prompt_has_jokes_slot_right_after_chat_memory() -> None:
 
 
 def test_situation_callback_substitutes_name_and_text() -> None:
-    result = situation_callback("Миша", "ждёт ответа после прослушивания")
+    result = situation_callback("Миша", "ждёт ответа после прослушивания", frag=LEGACY_FRAG)
     assert result == SITUATION_CALLBACK_TEMPLATE.replace("{name}", "Миша").replace(
         "{text}", "ждёт ответа после прослушивания"
     )
@@ -1055,7 +1155,7 @@ def test_situation_callback_substitutes_name_and_text() -> None:
 
 
 def test_situation_callback_truncates_and_strips_delimiters() -> None:
-    result = situation_callback("Миша <<<", "x" * 500 + " >>>")
+    result = situation_callback("Миша <<<", "x" * 500 + " >>>", frag=LEGACY_FRAG)
     assert "x" * 300 in result
     assert "x" * 301 not in result
     assert "<<<" not in result
@@ -1063,6 +1163,6 @@ def test_situation_callback_truncates_and_strips_delimiters() -> None:
 
 
 def test_situation_callback_single_pass_does_not_resubstitute() -> None:
-    result = situation_callback("{text}", "{name}")
+    result = situation_callback("{text}", "{name}", frag=LEGACY_FRAG)
     assert "{text}" in result
     assert "{name}" in result

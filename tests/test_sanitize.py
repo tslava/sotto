@@ -10,6 +10,7 @@ from sotto.sanitize import (
     sanitize_display_name,
     stable_n,
 )
+from tests.packs import LEGACY_FRAG
 
 # Как в CHARACTER.md, раздел persona: name + display_name + name_triggers.
 RESERVED = {
@@ -153,7 +154,7 @@ SANITIZE_DISPLAY_NAME_CASES = [
 def test_sanitize_display_name(
     case_id: str, raw: str | None, user_id: int, reserved: set[str], expected: str
 ) -> None:
-    assert sanitize_display_name(raw, user_id, reserved) == expected
+    assert sanitize_display_name(raw, user_id, reserved, frag=LEGACY_FRAG) == expected
 
 
 # --- stable_n ----------------------------------------------------------------
@@ -309,4 +310,4 @@ MEDIA_PLACEHOLDER_CASES = [
     ids=[c[0] for c in MEDIA_PLACEHOLDER_CASES],
 )
 def test_media_placeholder(case_id: str, message: SimpleNamespace, expected: str | None) -> None:
-    assert media_placeholder(message) == expected
+    assert media_placeholder(message, frag=LEGACY_FRAG) == expected

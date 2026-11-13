@@ -15,6 +15,8 @@
 ### Для владельца
 
 - Персона вынесена в пакет: `config.yaml`, `few_shot.yaml`, `stickers.yaml`, `places_manual.yaml`, `prompts/` и `pack.yaml` лежат в каталоге, который задаёт `PERSONA_DIR` (в репозитории пока `personas/_legacy_ru`). Без `PERSONA_DIR` процесс не стартует; `ALLOW_DEMO_PERSONA=true` разрешает демо-персону. `python -m sotto.packcheck <каталог> [--boot] [--db bot.db --seed-dry-run]` проверяет пакет, сборку процесса и то, что рестарт не заведёт новую версию промпта.
+- Тексты, которые движок подставляет в промпты моделей и пишет в БД (ситуации, заголовки блоков, плейсхолдеры `[фото]`/`[стикер #N]`/«Участник N», кусочки строки погоды, словечки, промпты `places_fill` и `stickers_fill`), переехали из кода в `fragments.yaml` пакета (70 ключей, схема `fragments.FRAGMENT_SPEC`; пакет без файла или с кривым файлом не стартует, `packcheck` называет ключи). Результат для `_legacy_ru` и реальной персоны тот же: golden-сравнение без отличий. `tools/extract_fragments.py` создаёт файл из исходников до этого PR.
+- Из кода в `config.yaml` пакета переехали язык и «домашняя страна» геокодера (`behaviour.weather.geocode_language`, `home_country_codes`, `home_country_names`) и привязка Google Places (`places.search_center`, `region_code`, `language_code`, `default_district`, `district_aliases`, `quiet_keywords`, `outskirts_keywords`); дефолты в движке прежние, значения не меняются.
 - Переменные `CONFIG_PATH`, `FEW_SHOT_PATH`, `PROMPT_PATH`, `*_PROMPT_PATH`, `STICKERS_PATH`, `CHANGELOG_PATH` больше не читаются: если заданы, на старте один WARNING, значение игнорируется. `replay` получил `--persona`, `places_fill` и `stickers_fill` берут конфиг и пути по умолчанию из пакета.
 
 ## [0.9.1] — 2026-11-05

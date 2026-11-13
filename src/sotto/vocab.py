@@ -29,6 +29,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from sotto.config_models import VocabConfig
+from sotto.fragments import Fragments
 
 if TYPE_CHECKING:
     from sotto.db import Database, VocabDictRow
@@ -43,7 +44,6 @@ _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 # Тире в промпте модель копирует в реплики (CLAUDE.md, "пост-обработка").
 _DASH_RE = re.compile(r"\s*[‒–—―]\s*")
-_STICKER_PREFIX = "[стикер #"
 
 # Формы слова ищутся по основе и ЗАКРЫТОМУ списку русских окончаний (ревью Codex
 # 17.10: «любой хвост до N букв» путал «костюм» с «коста»). Основа короче трёх букв —
@@ -88,24 +88,10 @@ _FORMS_MAX = 30
 _WORDS_MAX = 2000
 _ERRORS_SHOWN = 5
 
-# «Можешь, только если само ложится» модель не исполняла никогда: за 17.10–05.11 ни
-# одного словечка, в замере на 8 прошлых случаях 0 из 8. «Употреби» с выбором из восьми
-# слов — 8 из 8, и выбирает подходящее, а не притягивает (решение владельца 05.11).
-_OFFER_HEADER = "В этой реплике употреби одно из этих словечек"
-_OFFER_TAIL = (
-    ": выбери то, что лучше ложится в твою мысль, и встрой естественно, как своё. Не меняй "
-    "ради словечка, о чём говоришь; не объясняй его и не бери в кавычки: "
-)
-_REQUEST_HEADER = "Тебя просят сказать по-своему: употреби одно-два из этих словечек"
-_REQUEST_TAIL = ", к месту, как сказал бы сам; объяснять не нужно, пока не спросят: "
 # Имя словаря как признак просьбы: «дворовые» -> «дворо» ловит «по-дворовому»,
 # «дворовое», но не «двора».
 _NAME_STEM_MIN = 5
 _NAME_STEM_CUT = 3
-_MEANINGS_HEADER = (
-    "Справка: в разговоре мелькнули словечки. Если спросят, что они значат, объясни "
-    "своими словами; сам их без вопроса не повторяй: "
-)
 
 
 def normalize(text: str) -> str:
@@ -403,8 +389,10 @@ class Vocab:
         return found
 
 
-def _speech(replies: Sequence[str]) -> list[str]:
-    return [reply for reply in replies if not reply.startswith(_STICKER_PREFIX)]
+def _speech(replies: Sequence[str], frag: Fragments) -> list[str]:
+    """Реплики без записей-стикеров (префикс — из ``placeholders.sticker_tag`` пакета)."""
+    prefix = frag.prefix("placeholders.sticker_tag")
+    return [reply for reply in replies if not reply.startswith(prefix)]
 
 
 def offer_allowed(
@@ -414,6 +402,7 @@ def offer_allowed(
     recent_replies: Sequence[str],
     count_today: int,
     rng: random.Random,
+    frag: Fragments,
 ) -> bool:
     """Предложить ли модели словечки в этой реплике. Кубик последним: ``rng`` тратится,
     только когда всё остальное позволяет (как ``reactions.pick_reaction``)."""
@@ -421,7 +410,7 @@ def offer_allowed(
         return False
     if count_today >= cfg.daily_cap:
         return False
-    window = _speech(recent_replies)[-cfg.recent_window :] if cfg.recent_window > 0 else []
+    window = _speech(recent_replies, frag)[-cfg.recent_window :] if cfg.recent_window > 0 else []
     if any(vocab.find(reply) for reply in window):
         return False
     return rng.random() < cfg.probability
@@ -435,11 +424,12 @@ def pick_offer(
     rng: random.Random,
     exclude: Sequence[VocabEntry] = (),
     fill: bool = False,
+    frag: Fragments,
 ) -> list[VocabEntry]:
     """``size`` случайных слов, которых не было в ``recent_replies`` и нет в ``exclude``.
     ``fill`` — не хватило таких (маленький словарь, всё недавно звучало) — добрать из
     остальных: по прямой просьбе пустой список хуже повтора (ревью Codex 18.10)."""
-    used = {id(entry) for reply in _speech(recent_replies) for entry in vocab.find(reply)}
+    used = {id(entry) for reply in _speech(recent_replies, frag) for entry in vocab.find(reply)}
     used.update(id(entry) for entry in exclude)
     pool = [entry for entry in vocab.entries if id(entry) not in used]
     picked = rng.sample(pool, min(size, len(pool)))
@@ -466,7 +456,11 @@ def _meaning(text: str) -> str:
 
 
 def render_vocab(
-    offer: Sequence[VocabEntry], meanings: Sequence[VocabEntry], *, requested: bool = False
+    offer: Sequence[VocabEntry],
+    meanings: Sequence[VocabEntry],
+    *,
+    requested: bool = False,
+    frag: Fragments,
 ) -> str:
     """Блок слота ``{vocab}``: предложение словечек и/или значения мелькнувших.
     ``requested`` — его прямо попросили сказать словечком (другой заголовок).
@@ -475,18 +469,20 @@ def render_vocab(
     if offer:
         abouts = {_clean(entry.about) for entry in offer}
         about = abouts.pop() if len(abouts) == 1 else ""
+        quote_open, quote_close = frag.text("render.quote_open"), frag.text("render.quote_close")
         items = []
         for entry in offer:
             example = _clean(entry.example)
             meaning = _meaning(entry.meaning)
-            detail = f"{meaning}; «{example}»" if example else meaning
+            detail = f"{meaning}; {quote_open}{example}{quote_close}" if example else meaning
             items.append(f"{_clean(entry.word)} ({detail})")
-        base, tail = (_REQUEST_HEADER, _REQUEST_TAIL) if requested else (_OFFER_HEADER, _OFFER_TAIL)
+        kind = "request" if requested else "offer"
+        base, tail = frag.get(f"vocab.{kind}_header"), frag.get(f"vocab.{kind}_tail")
         header = f"{base} ({about})" if about else base
         parts.append(header + tail + "; ".join(items) + ".")
     if meanings:
         items = [f"{_clean(entry.word)}: {_meaning(entry.meaning)}" for entry in meanings]
-        parts.append(_MEANINGS_HEADER + "; ".join(items) + ".")
+        parts.append(frag.text("vocab.meanings_header") + "; ".join(items) + ".")
     return "\n".join(parts)
 
 
@@ -552,7 +548,12 @@ class VocabStore:
 
 
 def vocab_over_quota(
-    vocab: Vocab, *, cfg: VocabConfig, recent_replies: Sequence[str], count_today: int
+    vocab: Vocab,
+    *,
+    cfg: VocabConfig,
+    recent_replies: Sequence[str],
+    count_today: int,
+    frag: Fragments,
 ) -> bool:
     """Словечек на сегодня хватит: потолок суток выбран или словечко уже звучало в
     последних ``recent_window`` репликах. Тогда выходной фильтр режет реплику с
@@ -560,5 +561,5 @@ def vocab_over_quota(
     (ревью Codex 17.10)."""
     if count_today >= cfg.daily_cap:
         return True
-    window = _speech(recent_replies)[-cfg.recent_window :] if cfg.recent_window > 0 else []
+    window = _speech(recent_replies, frag)[-cfg.recent_window :] if cfg.recent_window > 0 else []
     return any(vocab.find(reply) for reply in window)

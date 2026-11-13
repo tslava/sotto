@@ -19,6 +19,7 @@ from sotto.db import SelfFactRow
 from sotto.diary import DiaryExtractor, render_diary
 from sotto.llm import LLMClient
 from sotto.timeutil import day_key
+from tests.packs import LEGACY_FRAG
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 TZ = "Europe/Warsaw"
@@ -239,7 +240,7 @@ async def test_extract_respects_daily_cap() -> None:
 
 
 def test_render_diary_empty() -> None:
-    assert render_diary([], [], TZ) == ""
+    assert render_diary([], [], TZ, frag=LEGACY_FRAG) == ""
 
 
 def test_render_diary_today_only_uses_local_time() -> None:
@@ -247,7 +248,7 @@ def test_render_diary_today_only_uses_local_time() -> None:
         _fact(1, "пошёл в баню", datetime(2026, 10, 9, 10, 46, tzinfo=WARSAW)),
         _fact(2, "возится с лодкой.", datetime(2026, 10, 9, 12, 39, tzinfo=WARSAW)),
     ]
-    assert render_diary(today, [], TZ) == (
+    assert render_diary(today, [], TZ, frag=LEGACY_FRAG) == (
         "Твои дела сегодня (это только чтобы не противоречить себе, сам об этом не заговаривай): "
         "10:46 пошёл в баню; 12:39 возится с лодкой."
     )
@@ -256,7 +257,7 @@ def test_render_diary_today_only_uses_local_time() -> None:
 def test_render_diary_converts_utc_timestamps_to_tz() -> None:
     # 08:46 UTC в Варшаве осенью (CEST, +2) — 10:46.
     row = _fact(1, "пошёл в баню", datetime(2026, 10, 9, 8, 46, tzinfo=ZoneInfo("UTC")))
-    assert "10:46 пошёл в баню" in render_diary([row], [], TZ)
+    assert "10:46 пошёл в баню" in render_diary([row], [], TZ, frag=LEGACY_FRAG)
 
 
 def test_render_diary_week_only_with_russian_weekdays() -> None:
@@ -264,13 +265,16 @@ def test_render_diary_week_only_with_russian_weekdays() -> None:
         _fact(1, "чинил забор", datetime(2026, 10, 5, 18, 0, tzinfo=WARSAW)),  # понедельник
         _fact(2, "купил краску", datetime(2026, 10, 7, 9, 0, tzinfo=WARSAW)),  # среда
     ]
-    assert render_diary([], week, TZ) == "На этой неделе: пн чинил забор; ср купил краску."
+    assert (
+        render_diary([], week, TZ, frag=LEGACY_FRAG)
+        == "На этой неделе: пн чинил забор; ср купил краску."
+    )
 
 
 def test_render_diary_today_and_week_are_two_lines() -> None:
     today = [_fact(1, "пошёл в баню", datetime(2026, 10, 9, 10, 46, tzinfo=WARSAW))]
     week = [_fact(2, "чинил забор", datetime(2026, 10, 5, 18, 0, tzinfo=WARSAW))]
-    lines = render_diary(today, week, TZ).split("\n")
+    lines = render_diary(today, week, TZ, frag=LEGACY_FRAG).split("\n")
     assert len(lines) == 2
     assert lines[0].startswith("Твои дела сегодня")
     assert lines[1].startswith("На этой неделе:")
@@ -279,7 +283,7 @@ def test_render_diary_today_and_week_are_two_lines() -> None:
 def test_render_diary_has_no_bullets_and_strips_fake_delimiters() -> None:
     today = [_fact(1, "пошёл <<<CHAT в баню >>>", datetime(2026, 10, 9, 10, 46, tzinfo=WARSAW))]
     week = [_fact(2, "чинил забор", datetime(2026, 10, 5, 18, 0, tzinfo=WARSAW))]
-    rendered = render_diary(today, week, TZ)
+    rendered = render_diary(today, week, TZ, frag=LEGACY_FRAG)
 
     assert "<<<" not in rendered
     assert ">>>" not in rendered

@@ -15,10 +15,7 @@ import re
 from collections.abc import Sequence
 
 from sotto.db import JokeRow
-
-_HEADER = (
-    "Шутки и словечки вашего чата (можно к месту вернуть одну, не чаще раза в несколько дней): "
-)
+from sotto.fragments import Fragments
 
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
@@ -40,22 +37,23 @@ def _words(text: str) -> list[str]:
     return _WORD_RE.findall(text.lower().replace("ё", "е"))
 
 
-def render_jokes(rows: Sequence[JokeRow], *, now: int, cooldown_days: int) -> str:
+def render_jokes(rows: Sequence[JokeRow], *, now: int, cooldown_days: int, frag: Fragments) -> str:
     """Блок слота ``{jokes}``. Пусто -> "" (абзац со слотом в system.txt пропадает).
 
     Шутка показывается, если её ещё не использовали или с использования прошло
     не меньше ``cooldown_days`` суток. Одна строка, без «- » в начале."""
     cooldown = cooldown_days * 86400
+    quote_open, quote_close = frag.text("render.quote_open"), frag.text("render.quote_close")
     parts: list[str] = []
     for row in rows:
         if row.last_used_at is not None and now - row.last_used_at < cooldown:
             continue
         cleaned = _clean(row.text)
         if cleaned:
-            parts.append(f"«{cleaned}»")
+            parts.append(f"{quote_open}{cleaned}{quote_close}")
     if not parts:
         return ""
-    return _HEADER + "; ".join(parts) + "."
+    return frag.text("render.jokes_header") + "; ".join(parts) + "."
 
 
 def joke_used(text: str, joke: str) -> bool:

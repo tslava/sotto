@@ -31,6 +31,7 @@ from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
 from sotto.config_models import Config, VisionConfig
+from sotto.fragments import Fragments
 from sotto.llm import LLMClient, LLMError
 from sotto.sanitize import normalize_text
 
@@ -40,8 +41,6 @@ logger = logging.getLogger(__name__)
 # съедать бюджет вызовов основной модели (тот же приём, что followup._COUNTER_KEY).
 _COUNTER_KEY = "vision_calls"
 
-_PHOTO_PLACEHOLDER = "[фото]"
-_CAPTION_EMPTY = "(без подписи)"
 _ELLIPSIS = "…"
 
 # Дублирует вырезание разделителей из sanitize.normalize_text/prompt.py/judge.py —
@@ -124,14 +123,18 @@ def _truncate(text: str, max_chars: int) -> str:
     return truncated.rstrip() + _ELLIPSIS
 
 
-def photo_text(description: str | None, caption: str) -> str:
+def photo_text(description: str | None, caption: str, *, frag: Fragments) -> str:
     """Текст, который ляжет в ``messages.text`` вместо фото.
 
     Без описания — привычный «[фото]» (как ``sanitize.media_placeholder``), с
     описанием — «[фото: ...]». Подпись автора, если она есть, дописывается следом
     и остаётся его собственными словами.
     """
-    head = f"[фото: {description}]" if description else _PHOTO_PLACEHOLDER
+    head = (
+        frag.render("placeholders.photo_with_desc", desc=description)
+        if description
+        else frag.text("placeholders.photo")
+    )
     caption = caption.strip()
     return f"{head} {caption}" if caption else head
 
@@ -153,10 +156,13 @@ class VisionDescriber:
         llm: LLMClient,
         cfg_getter: Callable[[], Config],
         prompt_template: str,
+        *,
+        frag: Fragments,
     ) -> None:
         self._llm = llm
         self._cfg_getter = cfg_getter
         self._prompt_template = prompt_template
+        self._frag = frag
 
     async def describe(self, image: bytes, *, mime: str, caption: str, now: int) -> str | None:
         cfg = self._cfg_getter()
@@ -167,7 +173,10 @@ class VisionDescriber:
             return None
 
         clean_caption = _strip_fake_delimiters(normalize_text(caption)).strip()
-        prompt = _SLOT_RE.sub(lambda _m: clean_caption or _CAPTION_EMPTY, self._prompt_template)
+        prompt = _SLOT_RE.sub(
+            lambda _m: clean_caption or self._frag.text("placeholders.no_caption"),
+            self._prompt_template,
+        )
 
         # base64 живёт только внутри тела запроса: ни в лог, ни в БД он не попадает.
         data_url = f"data:{mime};base64,{base64.b64encode(image).decode('ascii')}"

@@ -185,6 +185,7 @@ async def boot_check(persona: Persona) -> list[str]:
                 rng=rng,
                 config_store=config_store,
                 prompt_store=prompt_store,
+                frag=persona.frag,
                 bot_username="packcheck_bot",
                 persona=persona,
                 bot=bot,

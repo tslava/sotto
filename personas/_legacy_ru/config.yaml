@@ -198,6 +198,9 @@ behaviour:
     lookup_max_tokens: 40
     lookup_daily_cap: 30               # вызовов в сутки, свой счётчик weather_calls
     geocode_ttl_days: 30               # сколько помнить координаты найденного места
+    geocode_language: ru               # язык названий в ответе геокодера
+    home_country_codes: [PL]           # эта страна не дописывается к названию места
+    home_country_names: [польша, poland, polska]
 
   # прямые обращения — отдельный бюджет; кулдаун = задержка, не отказ (сдвигает due_at, не отбрасывает)
   mention_cooldown_sec: 60             # на человека
@@ -253,6 +256,24 @@ places:
     - kawiarnia planszówki Wolsań
     - restauracja Bórnik
     - Leszczykowo bar
+  # привязка поиска Google Places (places_fill.py), раньше была зашита в коде
+  search_center: [51.5, 18.0]          # широта, долгота
+  region_code: PL
+  language_code: pl
+  default_district: Wolsań             # если в адресе района не нашлось
+  district_aliases:                    # район -> варианты написания (для выбора мест и district)
+    Dolna: [dolna, долна]
+    Rożyce: [rożyce, rozyce, рожице, рожицы]
+    Dawne Miasto: [dawne miasto, старый город, давне място, центр, centrum]
+    Granwald: [granwald, гранвальд]
+    Łanowo: [łanowo, lanowo, ланов]
+    Kępice: [kępice, кепице]
+    Ogrody: [ogrody, огроды]
+    Bórnik: [bórnik, bornik, борник, бёрник]
+    Leszczykowo: [leszczykowo, лещиково]
+    Strzechyn: [strzechyn, стшехин, стржехин]
+  quiet_keywords: [тихо, спокойно, поговорить, посидеть, не орать]
+  outskirts_keywords: [за город, съездить, природа, озеро, лес]
 
 filters:
   shadow: true              # true = фильтры логируют, но не режут ответ (щадящий старт)

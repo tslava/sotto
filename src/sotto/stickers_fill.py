@@ -42,6 +42,7 @@ from typing import Protocol
 import yaml
 
 from sotto.config import load_config
+from sotto.fragments import Fragments
 from sotto.llm import LLMClient, LLMError, LLMResult
 from sotto.persona import Persona, persona_from_env
 from sotto.settings import Settings
@@ -50,11 +51,6 @@ from sotto.stickers import Sticker, StickerCatalog, load_catalog
 logger = logging.getLogger(__name__)
 
 _RECOGNITION_MAX_TOKENS = 120
-_RECOGNITION_INSTRUCTION = (
-    "На стикере надпись. Ответь одним JSON без markdown: "
-    '{"text": "надпись дословно", "when": "когда такой стикер уместен в дружеском '
-    'чате, 3-8 слов"}. Если надписи нет — text пустой.'
-)
 
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```$", re.DOTALL | re.IGNORECASE)
 
@@ -165,7 +161,7 @@ def _parse_recognition(raw: str) -> tuple[str, str]:
 
 
 async def recognize_sticker(
-    image_bytes: bytes, *, llm: LLMLike | None, model: str, now: int
+    image_bytes: bytes, *, llm: LLMLike | None, model: str, now: int, frag: Fragments
 ) -> tuple[str, str]:
     """(text, when) черновика по картинке стикера (webp). ``llm=None`` -> ("", "")
     без сетевого вызова — это и есть ``--no-llm``."""
@@ -177,7 +173,7 @@ async def recognize_sticker(
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": _RECOGNITION_INSTRUCTION},
+                {"type": "text", "text": frag.text("tools.sticker_ocr_prompt")},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ],
         }
@@ -207,6 +203,7 @@ async def build_catalog(
     llm: LLMLike | None,
     model: str,
     now: int,
+    frag: Fragments,
 ) -> StickerCatalog:
     """Тянет набор из Bot API и мержит с ``existing`` по ``file_id`` (см. модульный
     докстринг: правки владельца сохраняются, новые получают следующие id, пропавшие
@@ -245,7 +242,7 @@ async def build_catalog(
             continue
 
         image_bytes = await _download_bytes(bot, raw.file_id)
-        text, when = await recognize_sticker(image_bytes, llm=llm, model=model, now=now)
+        text, when = await recognize_sticker(image_bytes, llm=llm, model=model, now=now, frag=frag)
         sticker_id = next_id
         next_id += 1
         result.append(
@@ -390,6 +387,7 @@ async def run(
             llm=use_llm,
             model=model,
             now=now,
+            frag=get_persona().frag,
         )
     finally:
         if owns_bot:

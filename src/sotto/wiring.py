@@ -77,7 +77,7 @@ def build_llm_stack(
         on_refusal=alerter.provider_refused,
     )
 
-    judge = Judge(llm, config_store.get, persona.prompts["judge"])
+    judge = Judge(llm, config_store.get, persona.prompts["judge"], frag=persona.frag)
 
     # Дешёвая проверка «это мне?» в горячем окне (CLAUDE.md, "внимание как
     # у живого человека") — создаётся вместе с остальными LLM-зависимыми
@@ -99,19 +99,20 @@ def build_llm_stack(
         followup_prompt,
         checkin_prefilter_prompt,
         name_check_prompt,
+        frag=persona.frag,
     )
 
     # Зрение на фото (CLAUDE.md, "зрение на фото") — как и followup,
     # создаётся вместе с остальными LLM-зависимыми компонентами; enabled и
     # модель проверяются на каждом снимке, а не один раз при старте.
     vision_prompt = persona.prompts["vision"]
-    vision = VisionDescriber(llm, config_store.get, vision_prompt)
+    vision = VisionDescriber(llm, config_store.get, vision_prompt, frag=persona.frag)
 
     # Выбор реакции моделью (CLAUDE.md, "реакции с задержкой и смыслом") —
     # как followup и зрение, создаётся при наличии ключа; модель и
     # semantic проверяются на каждом вызове, а не один раз при старте.
     reaction_prompt = persona.prompts["reaction"]
-    reaction_chooser = ReactionChooser(llm, config_store.get, reaction_prompt)
+    reaction_chooser = ReactionChooser(llm, config_store.get, reaction_prompt, frag=persona.frag)
 
     # Каталог стикеров — офлайн-файл (CLAUDE.md, "Интерфейсы: стикеры"),
     # правится stickers_fill.py и владельцем руками. Пустой/отсутствующий
@@ -122,7 +123,9 @@ def build_llm_stack(
     sticker_chooser: StickerChooser | None = None
     if sticker_catalog_enabled:
         sticker_prompt = persona.prompts["sticker"]
-        sticker_chooser = StickerChooser(llm, config_store.get, catalog, sticker_prompt)
+        sticker_chooser = StickerChooser(
+            llm, config_store.get, catalog, sticker_prompt, frag=persona.frag
+        )
 
     # Долгая память чата (CLAUDE.md, "долгая память чата"): фоновый таск
     # раз в час смотрит, попало ли локальное время в run_window, и
@@ -176,6 +179,7 @@ def build_llm_stack(
         # и разнообразнее", мера 3).
         followup=followup_checker,
         persona=persona,
+        frag=persona.frag,
     )
 
     return LlmStack(

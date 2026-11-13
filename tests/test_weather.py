@@ -30,6 +30,7 @@ from sotto.weather import (
     render_weather,
     render_weather_place,
 )
+from tests.packs import LEGACY_FRAG
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 TZ = "Europe/Warsaw"
@@ -155,22 +156,22 @@ def _client(
     ],
 )
 def test_describe_known_codes(code: int, expected: str) -> None:
-    assert describe(code) == expected
+    assert describe(code, frag=LEGACY_FRAG) == expected
 
 
 def test_describe_unknown_code_is_empty() -> None:
-    assert describe(4242) == ""
+    assert describe(4242, frag=LEGACY_FRAG) == ""
 
 
 # --- render_weather -------------------------------------------------------------
 
 
 def test_render_weather_none_is_empty() -> None:
-    assert render_weather(None, TZ, NOW) == ""
+    assert render_weather(None, TZ, NOW, frag=LEGACY_FRAG) == ""
 
 
 def test_render_weather_format_without_home_name() -> None:
-    text = render_weather(_weather(), TZ, NOW)
+    text = render_weather(_weather(), TZ, NOW, frag=LEGACY_FRAG)
 
     assert text == (
         "Погода за окном (это фон, упоминай только если к слову): "
@@ -183,14 +184,14 @@ def test_render_weather_ignores_home_name_in_text() -> None:
     """Название домашней точки в текст не попадает: его пришлось бы склонять
     («в Волсань» вместо «в Волсани»), а модель и так знает, где персонаж живёт.
     home_name нужен только для сравнения со спрошенным местом в responder."""
-    text = render_weather(_weather(), TZ, NOW, "Город")
+    text = render_weather(_weather(), TZ, NOW, home_name="Город", frag=LEGACY_FRAG)
 
     assert text.startswith("Погода за окном (это фон")
     assert "Город" not in text
 
 
 def test_render_weather_zero_without_sign() -> None:
-    text = render_weather(_weather(temp_now=0.2, today=(-0.4, 0.0)), TZ, NOW)
+    text = render_weather(_weather(temp_now=0.2, today=(-0.4, 0.0)), TZ, NOW, frag=LEGACY_FRAG)
 
     assert "сейчас 0 и" in text
     assert "днём от 0 до 0" in text
@@ -198,13 +199,13 @@ def test_render_weather_zero_without_sign() -> None:
 
 def test_render_weather_no_bullet_lines() -> None:
     """regex:prompt_leak считает утечкой строки-буллеты «- …» из системного промпта."""
-    text = render_weather(_weather(), TZ, NOW, "Город")
+    text = render_weather(_weather(), TZ, NOW, home_name="Город", frag=LEGACY_FRAG)
 
     assert all(not line.startswith("- ") for line in text.splitlines())
 
 
 def test_render_weather_unknown_code_leaves_no_dangling_words() -> None:
-    text = render_weather(_weather(code_now=4242, tomorrow_code=4242), TZ, NOW)
+    text = render_weather(_weather(code_now=4242, tomorrow_code=4242), TZ, NOW, frag=LEGACY_FRAG)
 
     assert "сейчас +9, днём" in text
     assert text.endswith("Завтра от -3 до +3.")
@@ -212,11 +213,11 @@ def test_render_weather_unknown_code_leaves_no_dangling_words() -> None:
 
 def test_render_weather_from_another_local_day_is_empty() -> None:
     """Протухший на сутки снимок не рендерится: «завтра» в нём — уже сегодня."""
-    assert render_weather(_weather(fetched_at=YESTERDAY), TZ, NOW) == ""
+    assert render_weather(_weather(fetched_at=YESTERDAY), TZ, NOW, frag=LEGACY_FRAG) == ""
 
 
 def test_render_weather_place_format() -> None:
-    text = render_weather_place("Гданьск", _weather(), TZ, NOW)
+    text = render_weather_place("Гданьск", _weather(), TZ, NOW, frag=LEGACY_FRAG)
 
     assert text == (
         "Спрашивают про место: Гданьск. Сейчас +9 и пасмурно, завтра от -3 до +3, дождь."
@@ -225,7 +226,7 @@ def test_render_weather_place_format() -> None:
 
 
 def test_render_weather_place_none_is_empty() -> None:
-    assert render_weather_place("Гданьск", None, TZ, NOW) == ""
+    assert render_weather_place("Гданьск", None, TZ, NOW, frag=LEGACY_FRAG) == ""
 
 
 # --- WeatherClient.get ----------------------------------------------------------

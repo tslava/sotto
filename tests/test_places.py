@@ -13,7 +13,9 @@ import pytest
 from sotto.config_models import PlacesConfig
 from sotto.db import PlaceRow
 from sotto.places import render_places_block, render_places_menu, select_places, validate_fact
-from sotto.prompt import PLACES_NONE
+from tests.packs import LEGACY_FRAG
+
+PLACES_NONE = LEGACY_FRAG.text("prompt.places_none")
 
 
 def _row(
@@ -230,13 +232,13 @@ def test_select_places_deterministic_with_same_seed() -> None:
 
 
 def test_render_places_block_empty_is_places_none() -> None:
-    assert render_places_block([]) == PLACES_NONE
+    assert render_places_block([], frag=LEGACY_FRAG) == PLACES_NONE
 
 
 def test_render_places_block_contains_name_district_category_fact() -> None:
     rows = [_row("p1", "PLAMY", district="Dolna", category="cheap", fact="дёшево, тераса")]
 
-    block = render_places_block(rows)
+    block = render_places_block(rows, frag=LEGACY_FRAG)
 
     assert "PLAMY" in block
     assert "Dolna" in block
@@ -247,7 +249,7 @@ def test_render_places_block_contains_name_district_category_fact() -> None:
 def test_render_places_block_never_contains_hours_or_google() -> None:
     rows = [_row("p1", "PLAMY", fact="дёшево")]
 
-    block = render_places_block(rows)
+    block = render_places_block(rows, frag=LEGACY_FRAG)
 
     assert "Google" not in block
     assert "гугл" not in block.lower()
@@ -263,7 +265,7 @@ def test_render_places_block_never_contains_hours_or_google() -> None:
 
 
 def test_render_places_menu_empty_is_places_none() -> None:
-    assert render_places_menu([]) == PLACES_NONE
+    assert render_places_menu([], frag=LEGACY_FRAG) == PLACES_NONE
 
 
 def test_render_places_menu_has_instruction_and_all_rows() -> None:
@@ -272,7 +274,7 @@ def test_render_places_menu_has_instruction_and_all_rows() -> None:
         _row("p2", "Шумный Бар", district="Kępice", category="pub", quiet=False, fact=""),
     ]
 
-    menu = render_places_menu(rows)
+    menu = render_places_menu(rows, frag=LEGACY_FRAG)
 
     assert "Если про место НЕ спрашивали" in menu
     assert "Тихий Дворик" in menu
@@ -285,7 +287,7 @@ def test_render_places_menu_quiet_flag_renders_tiho_or_shumno() -> None:
         _row("p2", "Шумный Бар", quiet=False, fact=""),
     ]
 
-    menu = render_places_menu(rows)
+    menu = render_places_menu(rows, frag=LEGACY_FRAG)
     lines = {line.split(", ")[0]: line for line in menu.splitlines() if line.startswith("- ")}
     quiet_line = lines["- Тихий Дворик"]
     loud_line = lines["- Шумный Бар"]
@@ -302,7 +304,7 @@ def test_render_places_menu_fact_optional() -> None:
         _row("p2", "Без Факта", quiet=True, fact=""),
     ]
 
-    menu = render_places_menu(rows)
+    menu = render_places_menu(rows, frag=LEGACY_FRAG)
 
     assert "С Фактом, Dolna, craft, тихо, терраса" in menu
     assert "Без Факта, Dolna, craft, тихо" in menu
@@ -315,7 +317,7 @@ def test_render_places_menu_never_contains_google_rating_prices_or_hours() -> No
     а сама инструкция для модели, поэтому проверяем строку данных отдельно."""
     rows = [_row("p1", "PLAMY", fact="дёшево")]
 
-    menu = render_places_menu(rows)
+    menu = render_places_menu(rows, frag=LEGACY_FRAG)
     data_line = next(line for line in menu.splitlines() if line.startswith("- "))
 
     assert "Google" not in menu

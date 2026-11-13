@@ -19,7 +19,7 @@ from sotto import replay as replay_module
 from sotto.db import Database
 from sotto.gate_types import GateMessage, StateChange, Trigger
 from sotto.replay import ReplayState, run_replay
-from tests.packs import LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK
 
 TZ = "Europe/Warsaw"
 
@@ -608,7 +608,7 @@ def test_run_replay_from_bot_db_does_not_modify_live_file(tmp_path: Path) -> Non
 
 def test_situation_for_ambient_matches_responder() -> None:
     from sotto.gate_types import Trigger
-    from sotto.prompt import SITUATION_AMBIENT
 
-    assert replay_module.situation_for(Trigger.AMBIENT) == SITUATION_AMBIENT
-    assert replay_module.situation_for(Trigger.NAME) == ""
+    ambient = LEGACY_FRAG.text("situations.ambient")
+    assert replay_module.situation_for(Trigger.AMBIENT, frag=LEGACY_FRAG) == ambient
+    assert replay_module.situation_for(Trigger.NAME, frag=LEGACY_FRAG) == ""

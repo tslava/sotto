@@ -28,6 +28,7 @@ from typing import Protocol, cast
 
 from sotto.config_models import Config
 from sotto.db import MessageRow
+from sotto.fragments import Fragments
 from sotto.gate_types import PatternsLike
 from sotto.motifs import motifs_in, story_count, used_motifs
 from sotto.patterns import Patterns
@@ -498,7 +499,7 @@ def _check_motif(text: str, ctx: FilterContext, patterns: Patterns) -> bool:
     candidate = motifs_in(text, patterns.motifs)
     if not candidate:
         return False
-    recent = used_motifs(ctx.recent_replies, window, patterns.motifs)
+    recent = used_motifs(ctx.recent_replies, window, patterns.motifs, frag=ctx.frag)
     return bool(set(candidate) & set(recent))
 
 
@@ -516,7 +517,7 @@ def _check_story_quota(text: str, ctx: FilterContext, patterns: Patterns) -> boo
         return False
     if not any(marker.search(text) for marker in markers):
         return False
-    told = story_count(ctx.recent_replies, filters_cfg.story_window, markers)
+    told = story_count(ctx.recent_replies, filters_cfg.story_window, markers, frag=ctx.frag)
     return told >= filters_cfg.story_max
 
 
@@ -605,6 +606,8 @@ class FilterContext:
     # Словечки, которые можно и сверх лимита: предложенные по просьбе «скажи
     # по-дворовому» и свои недавние, когда их просят объяснить.
     vocab_allowed: frozenset[VocabEntry] = frozenset()
+    # Фрагменты пакета: префикс записей-стикеров, который motifs пропускает при подсчёте.
+    frag: Fragments = field(kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)

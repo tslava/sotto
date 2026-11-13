@@ -42,6 +42,7 @@ from sotto.db import (
     SelfFactRow,
 )
 from sotto.few_shot import FewShot
+from sotto.fragments import Fragments
 from sotto.motifs import render_self_share, self_share
 from sotto.patterns import Patterns
 from sotto.persona import Persona
@@ -328,6 +329,8 @@ class _CommandsDeps(Protocol):
     @property
     def persona(self) -> Persona | None: ...
     @property
+    def frag(self) -> Fragments: ...
+    @property
     def config_store(self) -> _ConfigStoreLike: ...
     @property
     def prompt_store(self) -> _PromptStoreLike: ...
@@ -407,7 +410,7 @@ async def _cmd_mute(message: Message, deps: _CommandsDeps, now: int, user: User 
             return
     if target_id == deps.settings.admin_user_id or target_id == deps.bot_user_id:
         return
-    display_name = sanitize_display_name(target_name, target_id, set())
+    display_name = sanitize_display_name(target_name, target_id, set(), frag=deps.frag)
     await deps.db.add_mute(target_id, display_name, user.id, now)
     await deps.db.audit_stop(f"mute:{target_id}", user.id, now)
     logger.info("mute: user_id=%s by user_id=%s", target_id, user.id)
@@ -554,8 +557,10 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
         self_share(
             ((row.trigger, row.text) for row in self_rows),
             deps.config_store.patterns().self_markers,
+            frag=deps.frag,
         ),
         _SELF_SHARE_DAYS,
+        frag=deps.frag,
     )
 
     diary_calls = int(await deps.db.get_state(day_key("diary_calls", now, tz)) or "0")
@@ -620,7 +625,7 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
     weather_client = deps.weather
     snapshot = await weather_client.get() if weather_client is not None else None
     if snapshot is not None:
-        now_desc = describe(snapshot.code_now)
+        now_desc = describe(snapshot.code_now, frag=deps.frag)
         weather_line = (
             f"погода: {format_temp(snapshot.temp_now)}"
             f"{f', {now_desc}' if now_desc else ''}, "
@@ -1216,7 +1221,9 @@ async def _cmd_ask(
     # Имя — то, под которым владелец уже есть в контексте чата; не писал в чат —
     # имя из Telegram через тот же sanitize, что и для сообщений.
     known = await deps.db.display_names([user.id])
-    name = known.get(user.id) or sanitize_display_name(user.full_name, user.id, set())
+    name = known.get(user.id) or sanitize_display_name(
+        user.full_name, user.id, set(), frag=deps.frag
+    )
     logger.info("ask preview: %r", text)
     outcome = await deps.responder.preview(text, name, user.id)
     await _reply(message, _preview_text(outcome))

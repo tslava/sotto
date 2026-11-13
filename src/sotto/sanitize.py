@@ -12,6 +12,8 @@ import re
 import unicodedata
 from typing import Protocol
 
+from sotto.fragments import Fragments
+
 # Ограничение длины отображаемого имени в контексте (символов).
 _MAX_DISPLAY_NAME_LEN = 24
 
@@ -35,7 +37,9 @@ def stable_n(user_id: int) -> int:
     return user_id % _STABLE_N_MODULUS + 1
 
 
-def sanitize_display_name(raw: str | None, user_id: int, reserved: set[str]) -> str:
+def sanitize_display_name(
+    raw: str | None, user_id: int, reserved: set[str], *, frag: Fragments
+) -> str:
     """Санитизирует display_name перед записью в БД и подстановкой в промпт.
 
     Оставляет только буквы любого алфавита (str.isalpha), пробельные символы
@@ -62,7 +66,7 @@ def sanitize_display_name(raw: str | None, user_id: int, reserved: set[str]) -> 
             truncated = truncated.rsplit(" ", 1)[0]
         filtered = truncated.strip()
 
-    fallback = f"Участник {stable_n(user_id)}"
+    fallback = frag.render("placeholders.participant", n=str(stable_n(user_id)))
 
     if not filtered:
         return fallback
@@ -133,7 +137,7 @@ class MediaMessage(Protocol):
     def document(self) -> object | None: ...
 
 
-def media_placeholder(message: MediaMessage) -> str | None:
+def media_placeholder(message: MediaMessage, *, frag: Fragments) -> str | None:
     """Плейсхолдер для медиа-сообщения без текста, иначе None.
 
     Порядок приоритета (первое совпадение побеждает, если у сообщения
@@ -142,13 +146,13 @@ def media_placeholder(message: MediaMessage) -> str | None:
     document -> "[файл]".
     """
     if message.sticker is not None:
-        return "[стикер]"
+        return frag.text("placeholders.sticker")
     if message.photo is not None:
-        return "[фото]"
+        return frag.text("placeholders.photo")
     if message.voice is not None or message.audio is not None:
-        return "[голосовое]"
+        return frag.text("placeholders.voice")
     if message.video is not None or message.video_note is not None or message.animation is not None:
-        return "[видео]"
+        return frag.text("placeholders.video")
     if message.document is not None:
-        return "[файл]"
+        return frag.text("placeholders.file")
     return None

@@ -18,6 +18,7 @@ from sotto.motifs import (
     used_motifs,
 )
 from sotto.patterns import Patterns
+from tests.packs import LEGACY_FRAG
 
 
 def _patterns() -> Patterns:
@@ -86,25 +87,25 @@ def test_motifs_in_factory_forms() -> None:
 def test_used_motifs_only_looks_at_window_tail() -> None:
     replies = ["Жена сказала.", "Теплица протекла.", "Тихо прошли.", "Ключи нашлись."]
 
-    assert used_motifs(replies, 2, _motifs()) == []
-    assert used_motifs(replies, 4, _motifs()) == ["жена", "теплица"]
+    assert used_motifs(replies, 2, _motifs(), frag=LEGACY_FRAG) == []
+    assert used_motifs(replies, 4, _motifs(), frag=LEGACY_FRAG) == ["жена", "теплица"]
 
 
 def test_used_motifs_zero_window_is_empty() -> None:
-    assert used_motifs(["Жена сказала."], 0, _motifs()) == []
+    assert used_motifs(["Жена сказала."], 0, _motifs(), frag=LEGACY_FRAG) == []
 
 
 def test_used_motifs_deduplicates_labels() -> None:
     replies = ["Жена сказала.", "Жене не понравилось."]
 
-    assert used_motifs(replies, 10, _motifs()) == ["жена"]
+    assert used_motifs(replies, 10, _motifs(), frag=LEGACY_FRAG) == ["жена"]
 
 
 def test_used_motifs_skips_sticker_records() -> None:
     """«[стикер #N] надпись» — картинка, а не реплика персонажа: мотивов в ней нет."""
     replies = ["[стикер #3] Жена сказала", "Тихо прошли."]
 
-    assert used_motifs(replies, 10, _motifs()) == []
+    assert used_motifs(replies, 10, _motifs(), frag=LEGACY_FRAG) == []
 
 
 # --- story_count -------------------------------------------------------------------
@@ -113,52 +114,52 @@ def test_used_motifs_skips_sticker_records() -> None:
 def test_story_count_counts_replies_not_matches() -> None:
     replies = ["Помню, в девяностых так же было.", "Тихо прошли.", "Как-то раз повезло."]
 
-    assert story_count(replies, 10, _story_markers()) == 2
+    assert story_count(replies, 10, _story_markers(), frag=LEGACY_FRAG) == 2
 
 
 def test_story_count_respects_window() -> None:
     replies = ["Помню, было дело.", "Тихо прошли.", "Ключи нашлись."]
 
-    assert story_count(replies, 2, _story_markers()) == 0
-    assert story_count(replies, 3, _story_markers()) == 1
+    assert story_count(replies, 2, _story_markers(), frag=LEGACY_FRAG) == 0
+    assert story_count(replies, 3, _story_markers(), frag=LEGACY_FRAG) == 1
 
 
 def test_story_count_skips_sticker_records() -> None:
-    assert story_count(["[стикер #1] помню такое"], 10, _story_markers()) == 0
+    assert story_count(["[стикер #1] помню такое"], 10, _story_markers(), frag=LEGACY_FRAG) == 0
 
 
 def test_story_count_zero_window_is_zero() -> None:
-    assert story_count(["Помню, было дело."], 0, _story_markers()) == 0
+    assert story_count(["Помню, было дело."], 0, _story_markers(), frag=LEGACY_FRAG) == 0
 
 
 # --- render_avoid ------------------------------------------------------------------
 
 
 def test_render_avoid_empty_when_nothing_to_say() -> None:
-    assert render_avoid([], no_story=False) == ""
+    assert render_avoid([], no_story=False, frag=LEGACY_FRAG) == ""
 
 
 def test_render_avoid_declines_known_labels() -> None:
-    text = render_avoid(["жена", "теплица", "гараж"], no_story=False)
+    text = render_avoid(["жена", "теплица", "гараж"], no_story=False, frag=LEGACY_FRAG)
 
     assert "уже поминал: жену, теплицу, гараж" in text
     assert "другая деталь или вовсе без байки" in text
 
 
 def test_render_avoid_unknown_label_goes_as_is() -> None:
-    assert "рыбалку" not in render_avoid(["рыбалка"], no_story=False)
-    assert "рыбалка" in render_avoid(["рыбалка"], no_story=False)
+    assert "рыбалку" not in render_avoid(["рыбалка"], no_story=False, frag=LEGACY_FRAG)
+    assert "рыбалка" in render_avoid(["рыбалка"], no_story=False, frag=LEGACY_FRAG)
 
 
 def test_render_avoid_no_story_only() -> None:
-    text = render_avoid([], no_story=True)
+    text = render_avoid([], no_story=True, frag=LEGACY_FRAG)
 
     assert text.startswith("Байку сейчас не рассказывай")
     assert "поминал" not in text
 
 
 def test_render_avoid_both_parts() -> None:
-    text = render_avoid(["гараж"], no_story=True)
+    text = render_avoid(["гараж"], no_story=True, frag=LEGACY_FRAG)
 
     assert "уже поминал: гараж" in text
     assert "Байку сейчас не рассказывай" in text
@@ -166,7 +167,7 @@ def test_render_avoid_both_parts() -> None:
 
 def test_render_avoid_has_no_typographic_dash() -> None:
     """Модель копирует типографику промпта — тире в нём быть не должно."""
-    text = render_avoid(["жена"], no_story=True)
+    text = render_avoid(["жена"], no_story=True, frag=LEGACY_FRAG)
 
     assert "—" not in text
     assert "–" not in text
@@ -196,7 +197,7 @@ def _self_markers() -> list[re.Pattern[str]]:
     ],
 )
 def test_speaks_about_self_catches_real_self_replies(text: str) -> None:
-    assert speaks_about_self(text, _self_markers())
+    assert speaks_about_self(text, _self_markers(), frag=LEGACY_FRAG)
 
 
 @pytest.mark.parametrize(
@@ -213,7 +214,7 @@ def test_speaks_about_self_catches_real_self_replies(text: str) -> None:
     ],
 )
 def test_speaks_about_self_ignores_other_replies(text: str) -> None:
-    assert not speaks_about_self(text, _self_markers())
+    assert not speaks_about_self(text, _self_markers(), frag=LEGACY_FRAG)
 
 
 def test_self_share_groups_and_skips() -> None:
@@ -230,12 +231,13 @@ def test_self_share_groups_and_skips() -> None:
             ("ambient", "[стикер #1] я"),
         ],
         _self_markers(),
+        frag=LEGACY_FRAG,
     )
     assert share == SelfShare(ambient=(1, 2), address=(2, 3), other=(1, 1))
 
 
 def test_render_self_share() -> None:
     share = SelfShare(ambient=(6, 6), address=(2, 2), other=(0, 1))
-    assert render_self_share(share, 3) == (
+    assert render_self_share(share, 3, frag=LEGACY_FRAG) == (
         "о себе за 3 сут: ambient 6/6, обращения 2/2, прочее 0/1"
     )
