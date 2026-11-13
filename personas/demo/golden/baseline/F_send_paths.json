@@ -58,8 +58,8 @@
    {
     "active": 1,
     "body_yaml": {
-     "len": 3042,
-     "sha256": "8e8aeca16ffa206ff50a905586495fb34c40ce0f6f8eec923f8a059d8937a706"
+     "len": 3044,
+     "sha256": "5d9c871010589b7d0303da242cb5dd6b302e6e0b0724fdc80bf15e2a0ce5c6a3"
     },
     "created_at": 1793793600,
     "note": "seed from file",

@@ -1,6 +1,6 @@
 # Few-shot examples for the demo persona. Everything here is invented.
 # "user" is a typical chat message, "text" is Gus's answer, written from scratch.
-# Most speak=true examples are light and play along with the joke. Six examples are
+# Most speak=true examples are light and play along with the joke. Seven examples are
 # speak=false: silence has to stay a normal answer. He talks about himself only where he
 # was asked; to anything said to someone else he answers about the other person: a tease,
 # a counter-question, a short remark. Grown with /ex add.

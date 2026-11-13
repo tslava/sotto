@@ -1,7 +1,7 @@
 # Golden scenarios for the English demo pack. All chat text below is invented.
 # Time offsets are relative to the scenario clock (default 2026-11-04 12:00 local, a Wednesday):
 # "-10m", "-2h", "-3d". Scenario ids start with their group letter (A..F, see tools/golden/README.md).
-# The same 101 scenarios as tools/golden/scenarios_ru.yaml, retold for Gus Marlow's chat.
+# 101 scenarios (groups A to F) for Gus Marlow's chat.
 version: 1
 
 # Values the harness uses where a scenario does not say otherwise.
