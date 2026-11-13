@@ -484,7 +484,7 @@ def _deps(
         bot_username=BOT_USERNAME,
         memorizer=memorizer,
         weather=weather,
-        persona=replace(load_persona(LEGACY_PACK), legacy_changelog=changelog),
+        persona=replace(load_persona(LEGACY_PACK), legacy_changelog=changelog, chat_notes=""),
     )
     return deps, fake_db, config_store, prompt_store
 

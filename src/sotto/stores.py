@@ -20,6 +20,7 @@ import yaml
 from sotto.config import KeyInfo, describe_key, flatten_config, load_config
 from sotto.config_models import Config
 from sotto.db import Database
+from sotto.errors import OwnerError
 from sotto.few_shot import FewShot, render_few_shot
 from sotto.patterns import Patterns
 from sotto.persona import Persona
@@ -109,9 +110,9 @@ class ConfigStore:
     ) -> tuple[str | None, str]:
         async with self._lock:
             if key.startswith("persona."):
-                raise ValueError("persona меняется только в config.yaml")
+                raise OwnerError("set_persona")
             if not key.startswith(_ALLOWED_PREFIXES):
-                raise ValueError(f"неизвестный раздел: {key!r}")
+                raise OwnerError("set_unknown_section", key=key)
 
             candidate_overrides = dict(self._overrides)
             candidate_overrides[key] = raw_value
@@ -300,7 +301,7 @@ class PromptStore:
     async def _remove_example_locked(self, index: int, now: int) -> int:
         examples = self.examples()
         if index < 1 or index > len(examples):
-            raise ValueError(f"индекс {index} вне диапазона: всего примеров {len(examples)}")
+            raise OwnerError("ex_rm_range", index=index, total=len(examples))
         del examples[-index]
         body_yaml = yaml.safe_dump(
             [item.model_dump(mode="json") for item in examples],

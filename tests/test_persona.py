@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from sotto.fragments import PROMPT_NAMES
+from sotto.i18n import read_locale_dir
 from sotto.lang import UnknownLanguageError, default_config_layer, get_language
 from sotto.persona import (
     DEMO_PACK_DIR,
@@ -54,10 +55,11 @@ def test_legacy_pack_loads_with_expected_shape() -> None:
     assert set(persona.prompts) == set(PROMPT_NAMES)
     assert len(persona.prompts) == 13
     assert persona.revision == "dev"
-    assert persona.chat_notes == ""
+    assert persona.chat_notes == (LEGACY_PACK / "chat_notes.md").read_text(encoding="utf-8")
     assert persona.legacy_changelog == (LEGACY_PACK / "CHANGELOG.md").read_text(encoding="utf-8")
     assert persona.fragment_errors() == []
-    assert persona.catalog.keys() == set()
+    assert persona.catalog.keys() == set(read_locale_dir(LEGACY_PACK / "locale" / "ru"))
+    assert persona.catalog.keys()
 
 
 def test_prompts_are_the_file_text_as_prompt_store_reads_it() -> None:
@@ -168,7 +170,7 @@ def test_malformed_fragments_file_is_a_pack_error(pack: Path) -> None:
 
 def test_malformed_locale_file_is_a_pack_error(pack: Path) -> None:
     locale_dir = pack / "locale" / "ru"
-    locale_dir.mkdir(parents=True)
+    locale_dir.mkdir(parents=True, exist_ok=True)  # the legacy pack already has one
     (locale_dir / "help.yaml").write_text("other:\n  a: b\n", encoding="utf-8")
 
     with pytest.raises(PackError, match="top-level key"):

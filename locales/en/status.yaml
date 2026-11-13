@@ -1,0 +1,36 @@
+status:
+  header: sotto v{version}
+  'yes': 'yes'
+  'no': 'no'
+  none: none
+  panic: 'Panic: {value}'
+  stop_until: 'Stopped until: {value}'
+  circuit: 'LLM circuit breaker: {state}, consecutive errors: {streak}, last provider refusal: {refusal}'
+  circuit_closed: closed
+  circuit_open: open until {time}
+  refusal_none: none in 24 h
+  refusal: '{status} at {time}'
+  prompt: 'Prompt: v{prompt}, few-shot: v{few_shot}'
+  models: 'Models: main={main}, judge={judge}'
+  shadow: 'Shadow: {value}'
+  today: 'Today: ambient={ambient}, mention={mention}, llm_calls={llm_calls}, llm_spent=${llm_spent:.2f}, reactions={reactions}/{reactions_cap}, semantic calls {reaction_calls}/{semantic_cap}, stickers={stickers}/{stickers_cap} ({catalog} in the catalog)'
+  pending: 'Pending: {count}'
+  night_queue: 'Night queue: {count}'
+  life_events: 'life events: {total} ({unsent})'
+  memory: 'chat memory: {total}, last up to {date}'
+  memory_none: 'chat memory: none'
+  hot: 'hot window: until {time} ({count}/{cap})'
+  hot_none: 'hot window: none'
+  followup: 'followup calls: {calls}/{cap}'
+  vision: 'vision: {count}/{cap}'
+  diary: 'diary: {today}, calls {calls}/{cap}'
+  jokes: 'jokes: {jokes}, people: {people}, callback: {callback}'
+  callback_last: last {date}
+  checkin: 'checkin: due {time}'
+  checkin_none: 'checkin: none'
+  presence: 'presence: {bot}/{allowance} (people {people})'
+  vocab: 'vocab: {enabled}/{total} dictionaries ({words} words), today {today}/{cap}, last {last}'
+  vocab_none: 'vocab: none'
+  vocab_last_none: '-'
+  weather: 'weather: {temp}{desc}, updated {time}'
+  weather_none: 'weather: none'

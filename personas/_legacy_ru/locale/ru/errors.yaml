@@ -1,0 +1,5 @@
+errors:
+  generic: 'Ошибка: {message}'
+  set_persona: persona меняется только в config.yaml
+  set_unknown_section: 'неизвестный раздел: {key!r}'
+  ex_rm_range: 'индекс {index} вне диапазона: всего примеров {total}'

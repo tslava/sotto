@@ -1,0 +1,34 @@
+help:
+  text: |-
+    Commands:
+
+    In the chat (everyone):
+    /stop - silence for the whole chat for 24 hours
+    /mute - no reply: mute yourself; as a reply to someone else, owner only
+    /unmute - no reply: unmute yourself; as a reply to someone else, owner only
+    /ex add - as a reply to a bot message, owner only: add the pair to few-shot
+
+    In a private chat (owner only):
+    /panic - stop until /resume
+    /resume - clear panic and /stop
+    /status - short state of the bot
+    /last [n] - the bot's latest replies (default 5, max 20)
+    /why [hours] - why the bot stayed silent in the last N hours (default 1)
+    /get [key|prefix] - config parameters; an exact key shows its description, type and range
+    /set <key> <value> - change a parameter without a restart; lists in YAML: [a, b]
+    /unset <key> - reset a parameter to the yaml default
+    /prompt [full] - the current system prompt
+    /rollback <version> - roll the prompt back to a version
+    /ex last [n] - the latest few-shot examples
+    /ex rm [n] - delete the n-th few-shot example from the end
+    /life <text> - news about yourself: remember it and tell the chat right away
+    /life list | rm N | post N - events: list, delete, repeat
+    /say <text> - say this to the chat word for word
+    /ask <text> - what the bot would answer to such a message; nothing is sent to the chat
+    /memory [list|rm N|run] - long-term chat memory: weekly summaries
+    /diary [rm N] - facts about itself from the past week (day diary): list, delete
+    /jokes [rm N] - the chat's jokes it remembers: list, delete
+    /people [rm N] - open stories about people for a follow-up question: list, delete
+    /words [show|on|off|rm <name>] - word dictionaries; to upload, send a file captioned /words
+    /changelog [owner|<version>] - what is new: the chat block or the owner block
+    /help - this help

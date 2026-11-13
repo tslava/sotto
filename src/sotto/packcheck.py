@@ -10,6 +10,7 @@ every prompt has exactly the slots it may have (``fragments.PROMPT_SLOTS``), the
 validates through ``load_config(layers)``, few-shot / stickers / manual places parse and
 the catalog has no missing keys. ``--boot`` then builds the process wiring (stores, checkers,
 responder, routers) against a temporary database and a dummy API key, without any network call.
+``--locale-parity`` compares the pack's own ``locale/<code>/`` with the engine's English catalog.
 ``--seed-dry-run`` opens ``--db`` read-only and reports what ``PromptStore.load`` would do.
 """
 
@@ -28,6 +29,7 @@ from typing import Any
 import httpx
 
 from sotto.config import load_config
+from sotto.i18n import ENGINE_LOCALES_DIR, FALLBACK_LOCALE, catalog_parity, read_locale_dir
 from sotto.persona import PackError, Persona, load_persona
 from sotto.stores import SeedPlan, build_seed_plan
 
@@ -77,6 +79,28 @@ def check_pack(persona: Persona) -> list[str]:
     if persona.catalog.missing:
         errors.append(f"catalog: missing keys {sorted(persona.catalog.missing)}")
     return errors
+
+
+def locale_parity_errors(persona: Persona) -> list[str]:
+    """The pack's own ``locale/<code>/`` against the engine's English catalog (``--locale-parity``).
+
+    Every English key must exist with the same placeholders, plural forms must cover what the
+    language's rule returns, extra keys are errors. A pack whose locale is English and carries no
+    ``locale/en`` reads the engine's catalog directly: nothing to compare.
+    """
+    locale = persona.manifest.locale or persona.manifest.language
+    own_dir = persona.root / "locale" / locale
+    if not own_dir.is_dir():
+        if locale == FALLBACK_LOCALE:
+            return []
+        return [f"locale/{locale}: directory not found (the pack reads English for every text)"]
+    categories = sorted({persona.lang.plural(n) for n in range(200)})
+    return catalog_parity(
+        read_locale_dir(ENGINE_LOCALES_DIR / FALLBACK_LOCALE),
+        read_locale_dir(own_dir),
+        categories,
+        other_name=f"locale/{locale}",
+    )
 
 
 def read_seed_plan(persona: Persona, db_path: Path) -> SeedPlan:
@@ -226,6 +250,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m sotto.packcheck", description=__doc__)
     parser.add_argument("pack", type=Path, help="persona pack directory")
     parser.add_argument("--boot", action="store_true", help="build the process wiring (no network)")
+    parser.add_argument(
+        "--locale-parity",
+        action="store_true",
+        help="compare the pack's locale/<code>/ with the engine's English catalog",
+    )
     parser.add_argument("--db", type=Path, default=None, help="bot database for --seed-dry-run")
     parser.add_argument(
         "--seed-dry-run",
@@ -255,6 +284,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_INVALID
 
     errors = check_pack(persona)
+    if args.locale_parity:
+        errors += locale_parity_errors(persona)
     if not errors and args.boot:
         errors = asyncio.run(boot_check(persona))
     if errors:

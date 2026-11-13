@@ -8,6 +8,7 @@ from aiogram.methods import SendMessage
 
 from sotto.alerts import OwnerAlerter, is_refusal, render_alert
 from sotto.config_models import Config
+from sotto.persona import Persona
 
 ADMIN_ID = 42
 NOW = 1_793_000_000
@@ -101,9 +102,13 @@ def test_is_refusal(status: int, expected: bool) -> None:
     assert is_refusal(status) is expected
 
 
-def test_render_alert_has_hint_model_and_message() -> None:
+def test_render_alert_has_hint_model_and_message(legacy_pack: Persona) -> None:
     text = render_alert(
-        status=402, model="anthropic/claude-opus-5", message="x" * 500, interval_hours=24
+        status=402,
+        model="anthropic/claude-opus-5",
+        message="x" * 500,
+        interval_hours=24,
+        catalog=legacy_pack.catalog,
     )
     assert "402" in text
     assert "openrouter.ai/settings/credits" in text
@@ -112,10 +117,39 @@ def test_render_alert_has_hint_model_and_message() -> None:
     assert "24 ч" in text
 
 
-def test_render_alert_without_message_and_unknown_status() -> None:
-    text = render_alert(status=404, model="m", message="", interval_hours=6)
+def test_render_alert_without_message_and_unknown_status(legacy_pack: Persona) -> None:
+    text = render_alert(
+        status=404, model="m", message="", interval_hours=6, catalog=legacy_pack.catalog
+    )
     assert "404, запрос отклонён" in text
     assert "Ответ:" not in text
+
+
+def test_render_alert_defaults_to_the_english_catalog() -> None:
+    text = render_alert(status=401, model="m", message="bad key", interval_hours=12)
+    assert text.splitlines() == [
+        "OpenRouter refused the request: 401, the OpenRouter key was not accepted, "
+        "check OPENROUTER_API_KEY.",
+        "Model: m.",
+        "Response: bad key",
+        "Until this is fixed, the bot stays silent wherever this model is needed. "
+        "The next message like this will come in 12 h at the earliest.",
+    ]
+
+
+async def test_alert_text_comes_from_the_persona_locale(legacy_pack: Persona) -> None:
+    bot, store = FakeBot(), FakeStore()
+    alerter = OwnerAlerter(
+        bot=bot,
+        db=store,
+        admin_user_id=ADMIN_ID,
+        cfg_getter=Config,
+        clock=lambda: NOW,
+        persona=legacy_pack,
+    )
+    await alerter.provider_refused(status=402, model="m", message="no credits")
+    await asyncio.sleep(0.05)
+    assert "кончились кредиты" in bot.sent[0][1]
 
 
 async def test_refusal_sends_once_per_interval_per_status() -> None:

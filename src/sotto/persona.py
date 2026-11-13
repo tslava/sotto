@@ -7,6 +7,9 @@ module-level "active pack". A pack is::
     pack.yaml  config.yaml  few_shot.yaml  stickers.yaml  places_manual.yaml
     prompts/<name>.txt (13)  [fragments.yaml]  [locale/<code>/*.yaml]  [chat_notes.md]
     [CHANGELOG.md]  [.revision]
+
+A pack's ``locale/<code>/`` may be partial or absent: every key it lacks is read from the engine's
+``locales/en`` (``i18n``).
 """
 
 from __future__ import annotations
@@ -28,7 +31,13 @@ from sotto.fragments import (
     load_fragments,
     slot_errors,
 )
-from sotto.i18n import Catalog, CatalogError, load_catalog_dir
+from sotto.i18n import (
+    ENGINE_LOCALES_DIR,
+    FALLBACK_LOCALE,
+    Catalog,
+    CatalogError,
+    load_catalog_dir,
+)
 from sotto.lang import Language, UnknownLanguageError, default_config_layer, get_language
 
 logger = logging.getLogger(__name__)
@@ -150,7 +159,17 @@ def load_persona(path: Path) -> Persona:
     try:
         lang = get_language(manifest.language)
         locale = manifest.locale or manifest.language
-        catalog = load_catalog_dir(root / "locale" / locale, locale, plural_rule=lang.plural)
+        pack_locale_dir = root / "locale" / locale
+        engine_dir = ENGINE_LOCALES_DIR / FALLBACK_LOCALE
+        # A pack without its own texts for the locale reads the engine's English catalog.
+        catalog = load_catalog_dir(
+            pack_locale_dir
+            if pack_locale_dir.is_dir() or locale != FALLBACK_LOCALE
+            else engine_dir,
+            locale,
+            plural_rule=lang.plural,
+            fallback_dir=engine_dir,
+        )
         frag = load_fragments(root / "fragments.yaml")
     except (UnknownLanguageError, CatalogError, ValueError) as exc:
         raise PackError(f"pack {root}: {exc}") from exc

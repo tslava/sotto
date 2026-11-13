@@ -1,0 +1,8 @@
+alerts:
+  refused: 'OpenRouter refused the request: {status}, {hint}.'
+  hint_401: the OpenRouter key was not accepted, check OPENROUTER_API_KEY
+  hint_402: out of credits, top up at openrouter.ai/settings/credits
+  hint_default: request rejected
+  model: 'Model: {model}.'
+  reply: 'Response: {message}'
+  tail: Until this is fixed, the bot stays silent wherever this model is needed. The next message like this will come in {hours} h at the earliest.

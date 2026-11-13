@@ -54,6 +54,7 @@ from sotto.config import flatten_config, load_config
 from sotto.config_models import Config
 from sotto.db import Database, MessageRow, PlaceRow
 from sotto.diary import DiaryExtractor
+from sotto.errors import OwnerError
 from sotto.followup import FollowupChecker
 from sotto.gate_types import GateMessage, Trigger
 from sotto.judge import Judge
@@ -1350,6 +1351,7 @@ async def _act_alert(engine: Engine, args: dict[str, Any]) -> Any:
                 model=case.get("model", "vendor/model"),
                 message=case.get("message", "golden message"),
                 interval_hours=interval,
+                catalog=engine.persona.catalog,
             ),
         }
         for case in args.get("cases", [])
@@ -1448,7 +1450,12 @@ class _ErrorCollector(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         if record.exc_info and record.exc_info[0] is not None:
-            self.types.append(record.exc_info[0].__name__)
+            exc_type = record.exc_info[0]
+            # OwnerError (PR-5a) is a ValueError subclass that replaced plain ValueErrors in owner
+            # commands; the baseline recorded them as ValueError, so keep recording that name.
+            self.types.append(
+                "ValueError" if issubclass(exc_type, OwnerError) else exc_type.__name__
+            )
             if os.environ.get("GOLDEN_DEBUG"):
                 traceback.print_exception(*record.exc_info)
 

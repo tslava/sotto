@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import sotto
-from sotto.changelog import Release, latest_release, parse_changelog
+from sotto.changelog import (
+    Release,
+    chat_releases,
+    latest_release,
+    owner_releases,
+    parse_changelog,
+    parse_chat_notes,
+)
 from tests.packs import LEGACY_PACK
 
 REAL_CHANGELOG = (LEGACY_PACK / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -113,3 +120,52 @@ def test_parse_changelog_ignores_unreleased_entirely() -> None:
     assert len(releases) == 1
     assert releases[0].version == "1.0.0"
     assert "Не должно" not in releases[0].for_chat
+
+
+NOTES = """## [1.2.0] - 2026-02-01
+
+First line.
+Second line.
+
+## [1.1.0] — 2026-01-01
+
+Only one.
+
+## [1.0.0] - 2025-12-01
+
+## [Unreleased]
+
+Not a release.
+"""
+
+
+def test_parse_chat_notes_reads_headings_and_free_text() -> None:
+    assert parse_chat_notes(NOTES) == [
+        Release("1.2.0", "2026-02-01", "First line.\nSecond line.", ""),
+        Release("1.1.0", "2026-01-01", "Only one.", ""),
+        Release("1.0.0", "2025-12-01", "", ""),
+    ]
+
+
+def test_parse_chat_notes_of_nothing_is_empty() -> None:
+    assert parse_chat_notes("") == []
+    assert parse_chat_notes("no headings here") == []
+
+
+def test_chat_releases_prefer_notes_and_fall_back_to_the_legacy_changelog() -> None:
+    assert chat_releases(NOTES, REAL_CHANGELOG)[0].version == "1.2.0"
+    assert chat_releases("", REAL_CHANGELOG) == parse_changelog(REAL_CHANGELOG)
+    assert chat_releases("", "") == []
+
+
+def test_owner_releases_come_from_the_legacy_changelog() -> None:
+    assert owner_releases(REAL_CHANGELOG) == parse_changelog(REAL_CHANGELOG)
+    assert owner_releases("") == []
+
+
+def test_legacy_pack_chat_notes_equal_the_chat_blocks_of_its_changelog() -> None:
+    notes = (LEGACY_PACK / "chat_notes.md").read_text(encoding="utf-8")
+    from_notes = [(r.version, r.date, r.for_chat) for r in parse_chat_notes(notes)]
+    from_changelog = [(r.version, r.date, r.for_chat) for r in parse_changelog(REAL_CHANGELOG)]
+    assert from_notes == from_changelog
+    assert from_notes

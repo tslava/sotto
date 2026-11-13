@@ -30,7 +30,7 @@ from aiogram import F, Router
 from aiogram.types import Message, User
 
 from sotto import __version__
-from sotto.changelog import Release, parse_changelog
+from sotto.changelog import Release, chat_releases, owner_releases
 from sotto.chat_memory import format_period
 from sotto.config import KeyInfo
 from sotto.config_models import Config
@@ -41,8 +41,10 @@ from sotto.db import (
     PeopleThreadRow,
     SelfFactRow,
 )
+from sotto.errors import OwnerError
 from sotto.few_shot import FewShot
 from sotto.fragments import Fragments
+from sotto.i18n import Catalog, engine_catalog
 from sotto.motifs import render_self_share, self_share
 from sotto.patterns import Patterns
 from sotto.persona import Persona
@@ -66,49 +68,6 @@ logger = logging.getLogger(__name__)
 _MAX_REPLY_LEN = 3500
 # Превью тела промпта в /prompt без "full" (CLAUDE.md, "Интерфейсы этапа 6").
 _PROMPT_PREVIEW_LEN = 1500
-# Подсказка в конце /get — список (не карточка одного ключа).
-_GET_LIST_HINT = "* — переопределено через /set. Описание ключа: /get <ключ>"
-
-_HELP_TEXT = (
-    "Команды:\n"
-    "\n"
-    "В чате (всем участникам):\n"
-    "/stop — тишина на 24 часа для всего чата\n"
-    "/mute — без реплая: замьютить себя; реплаем на другого — только владелец\n"
-    "/unmute — без реплая: снять мьют с себя; реплаем на другого — только владелец\n"
-    "/ex add — реплаем на ответ бота, только владелец: добавить пару в few-shot\n"
-    "\n"
-    "В личке (только владелец):\n"
-    "/panic — стоп навсегда, до /resume\n"
-    "/resume — снять панику и /stop\n"
-    "/status — краткое состояние бота\n"
-    "/last [n] — последние реплики бота (по умолчанию 5, максимум 20)\n"
-    "/why [hours] — сводка причин молчания за N часов (по умолчанию 1)\n"
-    "/get [ключ|префикс] — параметры конфига; точный ключ — описание, тип и диапазон\n"
-    "/set <ключ> <значение> — изменить параметр без рестарта; списки — в YAML: [a, b]\n"
-    "/unset <ключ> — сбросить параметр к дефолту из yaml\n"
-    "/prompt [full] — текущий системный промпт\n"
-    "/rollback <версия> — откат промпта на версию\n"
-    "/ex last [n] — последние примеры few-shot\n"
-    "/ex rm [n] — удалить n-й пример few-shot с конца\n"
-    "/life <текст> — новость о себе: запомнить и сразу рассказать в чате\n"
-    "/life list | rm N | post N — события: список, удалить, повторить\n"
-    "/say <текст> — сказать в чат дословно\n"
-    "/ask <текст> — что ответил бы Фёдор на такое обращение; в чат ничего не уходит\n"
-    "/memory [list|rm N|run] — долгая память чата: пересказы по неделям\n"
-    "/diary [rm N] — факты о себе за неделю (дневник дня): список, удалить\n"
-    "/jokes [rm N] — шутки чата, которые он помнит: список, удалить\n"
-    "/people [rm N] — незакрытые истории людей для «ну как там?»: список, удалить\n"
-    "/words [show|on|off|rm <имя>] — словари словечек; загрузка — файл с подписью /words\n"
-    "/changelog [owner|<версия>] — что нового: блок для чата или для владельца\n"
-    "/help — эта справка"
-)
-
-# Общий текст использования — и для голого /life, и для /life rm|post без валидного N.
-_LIFE_USAGE = "Использование: /life <текст> | list | rm N | post N"
-
-# /memory без подкоманды = /memory list; остальное — подсказка при кривом вводе.
-_MEMORY_USAGE = "Использование: /memory [list | rm N | run]"
 # Сколько пересказов показывать в /memory list (ответ всё равно режется до 3500 символов).
 _MEMORY_LIST_LIMIT = 20
 # Сколько символов свежесозданных пересказов показать в ответе на /memory run.
@@ -117,24 +76,15 @@ _MEMORY_RUN_PREVIEW_LEN = 1500
 # /status: окно метрики «про себя» в сутках (CLAUDE.md, "про себя через раз").
 _SELF_SHARE_DAYS = 3
 
-# /diary: подсказка при кривом вводе и окно списка (CLAUDE.md, "дневник дня": «за неделю»).
-_DIARY_USAGE = "Использование: /diary | /diary rm N"
+# /diary: окно списка (CLAUDE.md, "дневник дня": «за неделю»).
 _DIARY_LIST_DAYS = 7
 
-# /jokes и /people (CLAUDE.md, "шутки чата и истории людей"): подсказки и потолок списка
-# шуток (ответ всё равно режется до 3500 символов).
-_JOKES_USAGE = "Использование: /jokes | /jokes rm N"
-_PEOPLE_USAGE = "Использование: /people | /people rm N"
+# /jokes и /people (CLAUDE.md, "шутки чата и истории людей"): потолок списка шуток
+# (ответ всё равно режется до 3500 символов).
 _JOKES_LIST_LIMIT = 1000
 
-# /words (CLAUDE.md, "словечки из словаря"): подсказка, потолок файла словаря и превью.
-_WORDS_USAGE = (
-    "Использование: /words | /words show|on|off|rm <имя>. "
-    "Загрузить словарь: отправь YAML-файл с подписью /words "
-    "(name, about, words: [{word, meaning, example, forms}])."
-)
+# /words (CLAUDE.md, "словечки из словаря"): потолок файла словаря.
 _WORDS_MAX_FILE_BYTES = 512 * 1024
-_WORDS_TOO_BIG = f"Файл больше {_WORDS_MAX_FILE_BYTES // 1024} КБ, словарь не загружен."
 
 
 class _MessageRowLike(Protocol):
@@ -364,6 +314,15 @@ async def _reply(message: Message, text: str) -> None:
     await message.answer(_truncate(text), parse_mode=None)
 
 
+def _catalog(deps: _CommandsDeps) -> Catalog:
+    """Owner-UI texts of the pack's locale; a deps without a persona reads the engine's English."""
+    return deps.persona.catalog if deps.persona is not None else engine_catalog()
+
+
+def _t(deps: _CommandsDeps, key: str, /, **params: object) -> str:
+    return _catalog(deps).t(key, **params)
+
+
 def _is_owner(user: User | None, deps: _CommandsDeps) -> bool:
     return (
         user is not None
@@ -447,7 +406,7 @@ async def _cmd_ex_add(message: Message, deps: _CommandsDeps, now: int) -> None:
     if trigger_msg is not None and trigger_msg.display_name and trigger_msg.text:
         name, user_text = trigger_msg.display_name, trigger_msg.text
     else:
-        name, user_text = "Чат", "(без обращения)"
+        name, user_text = _t(deps, "commands.ex_add_name"), _t(deps, "commands.ex_add_user")
 
     await deps.prompt_store.add_example(name=name, user=user_text, text=bot_reply.text, now=now)
     logger.info("ex add: %r -> %r", user_text, bot_reply.text)
@@ -457,7 +416,7 @@ async def _cmd_panic(message: Message, deps: _CommandsDeps, now: int, user: User
     await deps.db.set_state("panic", "1")
     await deps.db.audit_stop("panic", user.id, now)
     logger.info("panic set")
-    await _reply(message, "Паника. Бот молчит до /resume.")
+    await _reply(message, _t(deps, "commands.panic_done"))
 
 
 async def _cmd_resume(message: Message, deps: _CommandsDeps, now: int, user: User) -> None:
@@ -486,15 +445,16 @@ async def _cmd_resume(message: Message, deps: _CommandsDeps, now: int, user: Use
         cleared.append("stop")
     if circuit_was_open:
         streak = streak_before if streak_before is not None else "?"
-        cleared.append(f"предохранитель LLM (было {streak} ошибок подряд)")
+        cleared.append(_t(deps, "commands.resume_item_circuit", streak=streak))
 
-    text = "Продолжаем."
     if cleared:
-        text += f" Снято: {', '.join(cleared)}."
+        text = _t(deps, "commands.resume_cleared", items=", ".join(cleared))
+    else:
+        text = _t(deps, "commands.resume_done")
     await _reply(message, text)
 
 
-def _llm_last_refusal(raw: str | None, now: int, tz: str) -> str:
+def _llm_last_refusal(deps: _CommandsDeps, raw: str | None, now: int, tz: str) -> str:
     """«402 в 13:28 26.10» за последние сутки, иначе «нет за сутки». «Ошибок подряд»
     этого не покажет: 22–26.10 дешёвые модели проходили и сбрасывали серию, пока
     основная получала 402 на каждый вызов."""
@@ -502,10 +462,10 @@ def _llm_last_refusal(raw: str | None, now: int, tz: str) -> str:
         at_raw, status = (raw or "").split("|", 1)
         at = int(at_raw)
     except ValueError:
-        return "нет за сутки"
+        return _t(deps, "status.refusal_none")
     if now - at >= 86400:
-        return "нет за сутки"
-    return f"{status} в {local_dt(at, tz).strftime('%H:%M %d.%m')}"
+        return _t(deps, "status.refusal_none")
+    return _t(deps, "status.refusal", status=status, time=local_dt(at, tz).strftime("%H:%M %d.%m"))
 
 
 async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
@@ -517,18 +477,22 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
     # Ключ stop_until после истечения никто не удаляет (гейт просто сравнивает его с now),
     # поэтому показываем дату только пока стоп действует — иначе /status врал бы про стоп,
     # которого уже нет (живой случай 16.09.2026).
-    stop_until = "нет"
+    stop_until = _t(deps, "status.none")
     if stop_until_raw is not None and int(stop_until_raw) > now:
         stop_until = local_dt(int(stop_until_raw), tz).strftime("%H:%M %d.%m")
 
     circuit_until_raw = await deps.db.get_state("llm_circuit_until")
-    circuit_state = "закрыт"
+    circuit_state = _t(deps, "status.circuit_closed")
     if circuit_until_raw is not None:
         circuit_until = int(circuit_until_raw)
         if circuit_until > now:
-            circuit_state = f"открыт до {local_dt(circuit_until, tz).strftime('%H:%M')}"
+            circuit_state = _t(
+                deps,
+                "status.circuit_open",
+                time=local_dt(circuit_until, tz).strftime("%H:%M"),
+            )
     llm_error_streak = await deps.db.get_state("llm_error_streak") or "0"
-    llm_last_refusal = _llm_last_refusal(await deps.db.get_state("llm_last_refusal"), now, tz)
+    llm_last_refusal = _llm_last_refusal(deps, await deps.db.get_state("llm_last_refusal"), now, tz)
 
     ambient = int(await deps.db.get_state(day_key("ambient_count", now, tz)) or "0")
     mention = int(await deps.db.get_state(day_key("mention_count", now, tz)) or "0")
@@ -547,8 +511,12 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
     midnight = day_start(now, tz)
     human_today = await deps.db.count_messages_today(deps.settings.allowed_chat_id, midnight)
     bot_today = await deps.db.count_bot_replies_today(midnight)
-    presence_line = (
-        f"presence: {bot_today}/{presence_cfg.allowance(human_today)} (people {human_today})"
+    presence_line = _t(
+        deps,
+        "status.presence",
+        bot=bot_today,
+        allowance=presence_cfg.allowance(human_today),
+        people=human_today,
     )
 
     # Метрика «про себя» (CLAUDE.md, "про себя через раз") — только смотреть, ничего не режет.
@@ -574,9 +542,9 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
     except ValueError:
         callback_last = None
     callback_text = (
-        f"последний {local_dt(callback_last, tz).strftime('%d.%m')}"
+        _t(deps, "status.callback_last", date=local_dt(callback_last, tz).strftime("%d.%m"))
         if callback_last is not None
-        else "нет"
+        else _t(deps, "status.none")
     )
 
     pending = len(await deps.db.load_pending())
@@ -588,9 +556,14 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
     memory_total = await deps.db.chat_memory_count()
     memory_end = await deps.db.last_chat_memory_end()
     memory_line = (
-        f"chat memory: {memory_total}, последний до {local_dt(memory_end, tz).strftime('%d.%m.%Y')}"
+        _t(
+            deps,
+            "status.memory",
+            total=memory_total,
+            date=local_dt(memory_end, tz).strftime("%d.%m.%Y"),
+        )
         if memory_end is not None
-        else "chat memory: нет"
+        else _t(deps, "status.memory_none")
     )
 
     hot_until_raw = await deps.db.get_state("hot_until")
@@ -600,12 +573,15 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
         hot_until = None
     if hot_until is not None and hot_until > now:
         hot_ambient_count = int(await deps.db.get_state("hot_ambient_count") or "0")
-        hot_line = (
-            f"hot window: до {local_dt(hot_until, tz).strftime('%H:%M')} "
-            f"({hot_ambient_count}/{cfg.behaviour.hot_window.ambient_cap})"
+        hot_line = _t(
+            deps,
+            "status.hot",
+            time=local_dt(hot_until, tz).strftime("%H:%M"),
+            count=hot_ambient_count,
+            cap=cfg.behaviour.hot_window.ambient_cap,
         )
     else:
-        hot_line = "hot window: нет"
+        hot_line = _t(deps, "status.hot_none")
 
     checkin_due_raw = await deps.db.get_state("checkin_due")
     try:
@@ -613,50 +589,93 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
     except ValueError:
         checkin_due = None
     checkin_line = (
-        f"checkin: due {local_dt(checkin_due, tz).strftime('%H:%M')}"
+        _t(deps, "status.checkin", time=local_dt(checkin_due, tz).strftime("%H:%M"))
         if checkin_due is not None
-        else "checkin: нет"
+        else _t(deps, "status.checkin_none")
     )
 
     # Погода (CLAUDE.md, "Интерфейсы: погода"): get() может сходить в сеть, если
     # кэш протух, — /status зовут редко, это нормально. Нет домашней точки
     # (координаты не заданы в .env) или клиент выключен -> «погода: нет».
-    weather_line = "погода: нет"
+    weather_line = _t(deps, "status.weather_none")
     weather_client = deps.weather
     snapshot = await weather_client.get() if weather_client is not None else None
     if snapshot is not None:
         now_desc = describe(snapshot.code_now, frag=deps.frag)
-        weather_line = (
-            f"погода: {format_temp(snapshot.temp_now)}"
-            f"{f', {now_desc}' if now_desc else ''}, "
-            f"обновлена {local_dt(snapshot.fetched_at, tz).strftime('%H:%M')}"
+        weather_line = _t(
+            deps,
+            "status.weather",
+            temp=format_temp(snapshot.temp_now),
+            desc=f", {now_desc}" if now_desc else "",
+            time=local_dt(snapshot.fetched_at, tz).strftime("%H:%M"),
         )
 
+    yes, no = _t(deps, "status.yes"), _t(deps, "status.no")
     lines = [
-        f"sotto v{__version__}",
-        f"Паника: {'да' if panic else 'нет'}",
-        f"Стоп до: {stop_until}",
-        f"Предохранитель LLM: {circuit_state}, ошибок подряд: {llm_error_streak}, "
-        f"последний отказ провайдера: {llm_last_refusal}",
-        f"Промпт: v{deps.prompt_store.prompt_version()}, "
-        f"few-shot: v{deps.prompt_store.few_shot_version()}",
-        f"Модели: main={cfg.llm.main_model or '-'}, judge={cfg.llm.judge_model or '-'}",
-        f"Shadow: {'да' if cfg.filters.shadow else 'нет'}",
-        f"Сегодня: ambient={ambient}, mention={mention}, "
-        f"llm_calls={llm_calls}, llm_spent=${llm_spent:.2f}, "
-        f"reactions={reactions}/{cfg.behaviour.reactions.daily_cap}"
-        f", semantic calls {reaction_calls}/{cfg.behaviour.reactions.semantic_daily_cap}, "
-        f"stickers={stickers}/{cfg.behaviour.stickers.daily_cap} "
-        f"({deps.sticker_catalog_enabled} в каталоге)",
-        f"Pending: {pending}",
-        f"Night queue: {night_queue}",
-        f"life events: {len(life_events)} ({life_unsent})",
+        _t(deps, "status.header", version=__version__),
+        _t(deps, "status.panic", value=yes if panic else no),
+        _t(deps, "status.stop_until", value=stop_until),
+        _t(
+            deps,
+            "status.circuit",
+            state=circuit_state,
+            streak=llm_error_streak,
+            refusal=llm_last_refusal,
+        ),
+        _t(
+            deps,
+            "status.prompt",
+            prompt=deps.prompt_store.prompt_version(),
+            few_shot=deps.prompt_store.few_shot_version(),
+        ),
+        _t(
+            deps,
+            "status.models",
+            main=cfg.llm.main_model or "-",
+            judge=cfg.llm.judge_model or "-",
+        ),
+        _t(deps, "status.shadow", value=yes if cfg.filters.shadow else no),
+        _t(
+            deps,
+            "status.today",
+            ambient=ambient,
+            mention=mention,
+            llm_calls=llm_calls,
+            llm_spent=llm_spent,
+            reactions=reactions,
+            reactions_cap=cfg.behaviour.reactions.daily_cap,
+            reaction_calls=reaction_calls,
+            semantic_cap=cfg.behaviour.reactions.semantic_daily_cap,
+            stickers=stickers,
+            stickers_cap=cfg.behaviour.stickers.daily_cap,
+            catalog=deps.sticker_catalog_enabled,
+        ),
+        _t(deps, "status.pending", count=pending),
+        _t(deps, "status.night_queue", count=night_queue),
+        _t(deps, "status.life_events", total=len(life_events), unsent=life_unsent),
         memory_line,
         hot_line,
-        f"followup calls: {followup_calls}/{cfg.behaviour.followup.daily_cap}",
-        f"vision: {vision_count}/{cfg.behaviour.vision.daily_cap}",
-        f"diary: {diary_today}, calls {diary_calls}/{cfg.behaviour.diary.daily_cap}",
-        f"jokes: {jokes_total}, people: {people_open}, callback: {callback_text}",
+        _t(
+            deps,
+            "status.followup",
+            calls=followup_calls,
+            cap=cfg.behaviour.followup.daily_cap,
+        ),
+        _t(deps, "status.vision", count=vision_count, cap=cfg.behaviour.vision.daily_cap),
+        _t(
+            deps,
+            "status.diary",
+            today=diary_today,
+            calls=diary_calls,
+            cap=cfg.behaviour.diary.daily_cap,
+        ),
+        _t(
+            deps,
+            "status.jokes",
+            jokes=jokes_total,
+            people=people_open,
+            callback=callback_text,
+        ),
         checkin_line,
         presence_line,
         self_line,
@@ -670,23 +689,29 @@ async def _vocab_status_line(deps: _CommandsDeps, cfg: Config, now: int) -> str:
     """«словечки: 1/2 словарей (100 слов), сегодня 1/2, последнее сырюка 16.10»."""
     store = deps.vocab_store
     if store is None:
-        return "словечки: нет"
+        return _t(deps, "status.vocab_none")
     tz = cfg.persona.timezone
     dicts = await store.dicts()
     enabled = sum(1 for row, _ in dicts if row.enabled)
     words = len(store.get().entries)
     today = int(await deps.db.get_state(day_key("vocab_count", now, tz)) or "0")
-    last = "—"
+    last = _t(deps, "status.vocab_last_none")
     last_raw = await deps.db.get_state("vocab_last")
     if last_raw is not None:
         at_raw, _, word = last_raw.partition("|")
         try:
             last = f"{word} {local_dt(int(at_raw), tz).strftime('%d.%m')}"
         except ValueError:
-            last = "—"
-    return (
-        f"словечки: {enabled}/{len(dicts)} словарей ({words} слов), "
-        f"сегодня {today}/{cfg.behaviour.vocab.daily_cap}, последнее {last}"
+            last = _t(deps, "status.vocab_last_none")
+    return _t(
+        deps,
+        "status.vocab",
+        enabled=enabled,
+        total=len(dicts),
+        words=words,
+        today=today,
+        cap=cfg.behaviour.vocab.daily_cap,
+        last=last,
     )
 
 
@@ -702,11 +727,19 @@ async def _cmd_last(message: Message, deps: _CommandsDeps, args: list[str]) -> N
     tz = deps.config_store.get().persona.timezone
     rows = await deps.db.last_bot_replies(n)
     lines = [
-        f"{local_dt(row.created_at, tz).strftime('%H:%M %d.%m')} | {row.trigger} | "
-        f"p{row.prompt_version}/f{row.few_shot_version} | +{row.delay_sec}s | {row.text}"
+        _t(
+            deps,
+            "commands.last_line",
+            time=local_dt(row.created_at, tz).strftime("%H:%M %d.%m"),
+            trigger=row.trigger,
+            prompt=row.prompt_version,
+            few_shot=row.few_shot_version,
+            delay=row.delay_sec,
+            text=row.text,
+        )
         for row in rows
     ]
-    await _reply(message, "\n".join(lines) if lines else "Пусто.")
+    await _reply(message, "\n".join(lines) if lines else _t(deps, "commands.empty"))
 
 
 async def _cmd_why(message: Message, deps: _CommandsDeps, now: int, args: list[str]) -> None:
@@ -720,19 +753,21 @@ async def _cmd_why(message: Message, deps: _CommandsDeps, now: int, args: list[s
 
     summary = await deps.db.filter_log_summary(now - hours * 3600)
     lines = [f"{reason} {count}" for reason, count in summary]
-    await _reply(message, "\n".join(lines) if lines else "Пусто.")
+    await _reply(message, "\n".join(lines) if lines else _t(deps, "commands.empty"))
 
 
-def _render_key_card(info: KeyInfo) -> str:
+def _render_key_card(deps: _CommandsDeps, info: KeyInfo) -> str:
     lines = [f"{info.key}: {info.value}"]
-    type_line = f"тип: {info.type_name}, {info.bounds}" if info.bounds else f"тип: {info.type_name}"
-    lines.append(type_line)
+    if info.bounds:
+        lines.append(_t(deps, "commands.key_type_bounds", type=info.type_name, bounds=info.bounds))
+    else:
+        lines.append(_t(deps, "commands.key_type", type=info.type_name))
     if info.description:
         lines.append(info.description)
     if info.overridden:
-        lines.append(f"переопределён, в yaml: {info.default}")
+        lines.append(_t(deps, "commands.key_overridden", default=info.default))
     if not info.settable:
-        lines.append("меняется только в config.yaml")
+        lines.append(_t(deps, "commands.key_yaml_only"))
     return "\n".join(lines)
 
 
@@ -741,7 +776,7 @@ async def _cmd_get(message: Message, deps: _CommandsDeps, args: list[str]) -> No
     if arg:
         info = deps.config_store.describe(arg)
         if info is not None:
-            await _reply(message, _render_key_card(info))
+            await _reply(message, _render_key_card(deps, info))
             return
 
     lines = [
@@ -750,9 +785,9 @@ async def _cmd_get(message: Message, deps: _CommandsDeps, args: list[str]) -> No
         if key.startswith(arg)
     ]
     if not lines:
-        await _reply(message, "Пусто.")
+        await _reply(message, _t(deps, "commands.empty"))
         return
-    lines.append(_GET_LIST_HINT)
+    lines.append(_t(deps, "commands.get_hint"))
     await _reply(message, "\n".join(lines))
 
 
@@ -760,34 +795,34 @@ async def _cmd_set(
     message: Message, deps: _CommandsDeps, now: int, admin_user_id: int, args: list[str]
 ) -> None:
     if len(args) < 2:
-        await _reply(
-            message, "Использование: /set <ключ> <значение>. Ключи: /get, описание: /get <ключ>"
-        )
+        await _reply(message, _t(deps, "commands.set_usage"))
         return
     key, value = args[0], " ".join(args[1:])
     old, new = await deps.config_store.set(key, value, admin_user_id, now)
-    await _reply(message, f"{key}: {old} → {new}")
+    await _reply(message, _t(deps, "commands.set_done", key=key, old=old, new=new))
 
 
 async def _cmd_unset(
     message: Message, deps: _CommandsDeps, now: int, admin_user_id: int, args: list[str]
 ) -> None:
     if not args:
-        await _reply(message, "Использование: /unset <ключ>")
+        await _reply(message, _t(deps, "commands.unset_usage"))
         return
     key = args[0]
     default = await deps.config_store.unset(key, admin_user_id, now)
     if default is None:
-        await _reply(message, f"{key}: не был переопределён")
+        await _reply(message, _t(deps, "commands.unset_not_overridden", key=key))
     else:
-        await _reply(message, f"{key}: сброшен к {default}")
+        await _reply(message, _t(deps, "commands.unset_done", key=key, default=default))
 
 
 async def _cmd_prompt(message: Message, deps: _CommandsDeps, args: list[str]) -> None:
     full = bool(args) and args[0].lower() == "full"
     body = deps.prompt_store.system_prompt()
     total = len(await deps.db.prompt_versions())
-    header = f"версия {deps.prompt_store.prompt_version()} (активная), всего {total}"
+    header = _t(
+        deps, "commands.prompt_header", version=deps.prompt_store.prompt_version(), total=total
+    )
 
     if full:
         text = f"{header}\n\n{body}"
@@ -801,17 +836,17 @@ async def _cmd_prompt(message: Message, deps: _CommandsDeps, args: list[str]) ->
 
 async def _cmd_rollback(message: Message, deps: _CommandsDeps, args: list[str]) -> None:
     if not args:
-        await _reply(message, "Использование: /rollback <версия>")
+        await _reply(message, _t(deps, "commands.rollback_usage"))
         return
     try:
         version = int(args[0])
     except ValueError:
-        await _reply(message, f"Ошибка: {args[0]!r} не похоже на номер версии")
+        await _reply(message, _t(deps, "commands.rollback_bad_number", arg=args[0]))
         return
     if await deps.prompt_store.rollback_prompt(version):
-        await _reply(message, f"промпт: версия {version}")
+        await _reply(message, _t(deps, "commands.rollback_done", version=version))
     else:
-        await _reply(message, f"Ошибка: версия {version} не найдена")
+        await _reply(message, _t(deps, "commands.rollback_not_found", version=version))
 
 
 async def _cmd_ex_last(message: Message, deps: _CommandsDeps, args: list[str]) -> None:
@@ -830,8 +865,10 @@ async def _cmd_ex_last(message: Message, deps: _CommandsDeps, args: list[str]) -
             ensure_ascii=False,
             separators=(", ", ": "),
         )
-        lines.append(f"{example.name}: {example.user} → {payload}")
-    await _reply(message, "\n".join(lines) if lines else "Пусто.")
+        lines.append(
+            _t(deps, "commands.ex_line", name=example.name, user=example.user, payload=payload)
+        )
+    await _reply(message, "\n".join(lines) if lines else _t(deps, "commands.empty"))
 
 
 async def _cmd_ex_rm(message: Message, deps: _CommandsDeps, now: int, args: list[str]) -> None:
@@ -843,7 +880,7 @@ async def _cmd_ex_rm(message: Message, deps: _CommandsDeps, now: int, args: list
             n = 1
     n = max(1, n)
     version = await deps.prompt_store.remove_example(n, now)
-    await _reply(message, f"few-shot: версия {version} (удалён пример {n} с конца)")
+    await _reply(message, _t(deps, "commands.ex_rm_done", version=version, n=n))
 
 
 def _parse_int(raw: str) -> int | None:
@@ -866,15 +903,15 @@ def _is_blocked(outcome: SendOutcome) -> bool:
     return outcome.reason in ("blocked:panic", "blocked:stop")
 
 
-def _life_outcome_text(outcome: SendOutcome) -> str:
+def _life_outcome_text(deps: _CommandsDeps, outcome: SendOutcome) -> str:
     """Общая часть ответа /life <текст> и /life post N после вызова announce_life."""
     if outcome.sent:
-        return f"Отправлено: {outcome.text}"
+        return _t(deps, "commands.life_sent", text=outcome.text)
     if _is_blocked(outcome):
-        return "Бот молчит (panic/stop) — /resume."
-    text = f"Не отправлено: {outcome.reason}"
+        return _t(deps, "commands.blocked")
+    text = _t(deps, "commands.life_not_sent", reason=outcome.reason)
     if outcome.text:
-        text += f"\nКандидат: {outcome.text}"
+        text += "\n" + _t(deps, "commands.candidate", text=outcome.text)
     return text
 
 
@@ -900,7 +937,7 @@ async def _cmd_life(
 
     text = normalize_text(_command_arg_text(raw_text, tokens))
     if not text:
-        await _reply(message, _LIFE_USAGE)
+        await _reply(message, _t(deps, "commands.life_usage"))
         return
 
     event_id = await deps.db.insert_life_event(text=text, created_at=now)
@@ -908,25 +945,38 @@ async def _cmd_life(
     logger.info("life add: #%s %r", event_id, text)
 
     if deps.responder is None:
-        await _reply(message, f"Записал #{event_id}. LLM не настроен, в чат не отправлено.")
+        await _reply(message, _t(deps, "commands.life_no_llm", id=event_id))
         return
 
     event = LifeEventRow(
         id=event_id, text=text, created_at=now, announced_at=None, announced_tg_message_id=None
     )
     outcome = await deps.responder.announce_life(event)
-    await _reply(message, f"Записал #{event_id}. {_life_outcome_text(outcome)}")
+    await _reply(
+        message,
+        _t(deps, "commands.life_saved", id=event_id, outcome=_life_outcome_text(deps, outcome)),
+    )
 
 
 async def _cmd_life_list(message: Message, deps: _CommandsDeps) -> None:
     tz = deps.config_store.get().persona.timezone
     events = await deps.db.life_events()
     if not events:
-        await _reply(message, "Событий нет.")
+        await _reply(message, _t(deps, "commands.life_none"))
         return
     lines = [
-        f"#{event.id} {local_dt(event.created_at, tz).strftime('%d.%m.%Y')} "
-        f"{'✓' if event.announced_at is not None else '—'} {event.text}"
+        _t(
+            deps,
+            "commands.life_line",
+            id=event.id,
+            date=local_dt(event.created_at, tz).strftime("%d.%m.%Y"),
+            mark=(
+                _t(deps, "commands.life_mark_sent")
+                if event.announced_at is not None
+                else _t(deps, "commands.dash")
+            ),
+            text=event.text,
+        )
         for event in events
     ]
     await _reply(message, "\n".join(lines))
@@ -937,16 +987,16 @@ async def _cmd_life_rm(
 ) -> None:
     event_id = _parse_int(args[1]) if len(args) > 1 else None
     if event_id is None:
-        await _reply(message, _LIFE_USAGE)
+        await _reply(message, _t(deps, "commands.life_usage"))
         return
     event = await deps.db.life_event(event_id)
     if event is None:
-        await _reply(message, f"Нет события #{event_id}.")
+        await _reply(message, _t(deps, "commands.life_not_found", id=event_id))
         return
     await deps.db.delete_life_event(event_id)
     await deps.db.audit_stop("life:rm", admin_user_id, now, event.text)
     logger.info("life rm: #%s %r", event_id, event.text)
-    await _reply(message, f"Событие #{event_id} удалено.")
+    await _reply(message, _t(deps, "commands.life_removed", id=event_id))
 
 
 async def _cmd_life_post(
@@ -954,21 +1004,21 @@ async def _cmd_life_post(
 ) -> None:
     event_id = _parse_int(args[1]) if len(args) > 1 else None
     if event_id is None:
-        await _reply(message, _LIFE_USAGE)
+        await _reply(message, _t(deps, "commands.life_usage"))
         return
     event = await deps.db.life_event(event_id)
     if event is None:
-        await _reply(message, f"Нет события #{event_id}.")
+        await _reply(message, _t(deps, "commands.life_not_found", id=event_id))
         return
     await deps.db.audit_stop("life:post", admin_user_id, now, event.text)
     logger.info("life post: #%s %r", event_id, event.text)
 
     if deps.responder is None:
-        await _reply(message, "LLM не настроен, в чат не отправлено.")
+        await _reply(message, _t(deps, "commands.life_post_no_llm"))
         return
 
     outcome = await deps.responder.announce_life(event)
-    await _reply(message, _life_outcome_text(outcome))
+    await _reply(message, _life_outcome_text(deps, outcome))
 
 
 async def _cmd_memory(
@@ -993,17 +1043,23 @@ async def _cmd_memory(
     if sub == "run":
         await _cmd_memory_run(message, deps, now, admin_user_id)
         return
-    await _reply(message, _MEMORY_USAGE)
+    await _reply(message, _t(deps, "commands.memory_usage"))
 
 
 async def _cmd_memory_list(message: Message, deps: _CommandsDeps) -> None:
     tz = deps.config_store.get().persona.timezone
     rows = await deps.db.chat_memories(_MEMORY_LIST_LIMIT)
     if not rows:
-        await _reply(message, "Памяти пока нет.")
+        await _reply(message, _t(deps, "commands.memory_none"))
         return
     blocks = [
-        f"#{row.id} {format_period(row.period_start, row.period_end, tz)}\n{row.text}"
+        _t(
+            deps,
+            "commands.memory_item",
+            id=row.id,
+            period=format_period(row.period_start, row.period_end, tz),
+            text=row.text,
+        )
         for row in rows
     ]
     await _reply(message, "\n\n".join(blocks))
@@ -1014,16 +1070,16 @@ async def _cmd_memory_rm(
 ) -> None:
     memory_id = _parse_int(args[1]) if len(args) > 1 else None
     if memory_id is None:
-        await _reply(message, _MEMORY_USAGE)
+        await _reply(message, _t(deps, "commands.memory_usage"))
         return
     row = await deps.db.chat_memory(memory_id)
     if row is None:
-        await _reply(message, f"Нет пересказа #{memory_id}.")
+        await _reply(message, _t(deps, "commands.memory_not_found", id=memory_id))
         return
     await deps.db.delete_chat_memory(memory_id)
     await deps.db.audit_stop("memory:rm", admin_user_id, now, row.text)
     logger.info("memory rm: #%s, символов %d", memory_id, len(row.text))
-    await _reply(message, f"Пересказ #{memory_id} удалён.")
+    await _reply(message, _t(deps, "commands.memory_removed", id=memory_id))
 
 
 async def _cmd_diary(
@@ -1037,30 +1093,36 @@ async def _cmd_diary(
         tz = deps.config_store.get().persona.timezone
         rows = await deps.db.self_facts_since(now - _DIARY_LIST_DAYS * 86400)
         if not rows:
-            await _reply(message, "Фактов нет.")
+            await _reply(message, _t(deps, "commands.diary_none"))
             return
         lines = [
-            f"#{row.id} {local_dt(row.created_at, tz).strftime('%d.%m %H:%M')} {row.text}"
+            _t(
+                deps,
+                "commands.diary_line",
+                id=row.id,
+                time=local_dt(row.created_at, tz).strftime("%d.%m %H:%M"),
+                text=row.text,
+            )
             for row in rows
         ]
         await _reply(message, "\n".join(lines))
         return
     if args[0].lower() != "rm":
-        await _reply(message, _DIARY_USAGE)
+        await _reply(message, _t(deps, "commands.diary_usage"))
         return
     fact_id = _parse_int(args[1]) if len(args) > 1 else None
     if fact_id is None:
-        await _reply(message, _DIARY_USAGE)
+        await _reply(message, _t(deps, "commands.diary_usage"))
         return
     rows = await deps.db.self_facts_since(0)
     fact = next((row for row in rows if row.id == fact_id), None)
     if fact is None:
-        await _reply(message, f"Нет факта #{fact_id}.")
+        await _reply(message, _t(deps, "commands.diary_not_found", id=fact_id))
         return
     await deps.db.delete_self_fact(fact_id)
     await deps.db.audit_stop("diary:rm", admin_user_id, now, fact.text)
     logger.info("diary rm: #%s", fact_id)
-    await _reply(message, f"Факт #{fact_id} удалён.")
+    await _reply(message, _t(deps, "commands.diary_removed", id=fact_id))
 
 
 async def _cmd_jokes(
@@ -1071,28 +1133,37 @@ async def _cmd_jokes(
     rows = await deps.db.jokes(_JOKES_LIST_LIMIT)
     if not args:
         if not rows:
-            await _reply(message, "Шуток пока нет.")
+            await _reply(message, _t(deps, "commands.jokes_none"))
             return
         tz = deps.config_store.get().persona.timezone
         lines = [
-            f"#{row.id} {row.text} (использована "
-            f"{local_dt(row.last_used_at, tz).strftime('%d.%m') if row.last_used_at else '—'})"
+            _t(
+                deps,
+                "commands.jokes_line",
+                id=row.id,
+                text=row.text,
+                used=(
+                    local_dt(row.last_used_at, tz).strftime("%d.%m")
+                    if row.last_used_at
+                    else _t(deps, "commands.dash")
+                ),
+            )
             for row in rows
         ]
         await _reply(message, "\n".join(lines))
         return
     joke_id = _parse_int(args[1]) if args[0].lower() == "rm" and len(args) > 1 else None
     if joke_id is None:
-        await _reply(message, _JOKES_USAGE)
+        await _reply(message, _t(deps, "commands.jokes_usage"))
         return
     joke = next((row for row in rows if row.id == joke_id), None)
     if joke is None:
-        await _reply(message, f"Нет шутки #{joke_id}.")
+        await _reply(message, _t(deps, "commands.jokes_not_found", id=joke_id))
         return
     await deps.db.delete_joke(joke_id)
     await deps.db.audit_stop("jokes:rm", admin_user_id, now, joke.text)
     logger.info("jokes rm: #%s", joke_id)
-    await _reply(message, f"Шутка #{joke_id} удалена.")
+    await _reply(message, _t(deps, "commands.jokes_removed", id=joke_id))
 
 
 async def _cmd_people(
@@ -1104,33 +1175,42 @@ async def _cmd_people(
     rows = await deps.db.people_threads_all()
     if not args:
         if not rows:
-            await _reply(message, "Историй пока нет.")
+            await _reply(message, _t(deps, "commands.people_none"))
             return
         tz = deps.config_store.get().persona.timezone
         lines = [
-            f"#{row.id} {row.display_name}: {row.text} ("
-            + (
-                f"спросил {local_dt(row.asked_at, tz).strftime('%d.%m')}"
-                if row.asked_at is not None
-                else "открыт"
+            _t(
+                deps,
+                "commands.people_line",
+                id=row.id,
+                name=row.display_name,
+                text=row.text,
+                state=(
+                    _t(
+                        deps,
+                        "commands.people_asked",
+                        date=local_dt(row.asked_at, tz).strftime("%d.%m"),
+                    )
+                    if row.asked_at is not None
+                    else _t(deps, "commands.people_open")
+                ),
             )
-            + ")"
             for row in rows
         ]
         await _reply(message, "\n".join(lines))
         return
     thread_id = _parse_int(args[1]) if args[0].lower() == "rm" and len(args) > 1 else None
     if thread_id is None:
-        await _reply(message, _PEOPLE_USAGE)
+        await _reply(message, _t(deps, "commands.people_usage"))
         return
     thread = next((row for row in rows if row.id == thread_id), None)
     if thread is None:
-        await _reply(message, f"Нет истории #{thread_id}.")
+        await _reply(message, _t(deps, "commands.people_not_found", id=thread_id))
         return
     await deps.db.delete_people_thread(thread_id)
     await deps.db.audit_stop("people:rm", admin_user_id, now, thread.text)
     logger.info("people rm: #%s", thread_id)
-    await _reply(message, f"История #{thread_id} удалена.")
+    await _reply(message, _t(deps, "commands.people_removed", id=thread_id))
 
 
 async def _cmd_memory_run(
@@ -1138,21 +1218,27 @@ async def _cmd_memory_run(
 ) -> None:
     """Принудительный прогон, вне run_window — чтобы не ждать до ночи."""
     if deps.memorizer is None:
-        await _reply(message, "LLM-часть выключена, пересказы недоступны.")
+        await _reply(message, _t(deps, "commands.memory_run_off"))
         return
     await deps.db.audit_stop("memory:run", admin_user_id, now)
     tz = deps.config_store.get().persona.timezone
     created = await deps.memorizer.run_due(now=now)
     logger.info("memory run: добавлено %d", len(created))
     if not created:
-        await _reply(message, "Нечего пересказывать.")
+        await _reply(message, _t(deps, "commands.memory_run_none"))
         return
     blocks = [
-        f"#{row.id} {format_period(row.period_start, row.period_end, tz)}\n{row.text}"
+        _t(
+            deps,
+            "commands.memory_item",
+            id=row.id,
+            period=format_period(row.period_start, row.period_end, tz),
+            text=row.text,
+        )
         for row in created
     ]
     preview = "\n\n".join(blocks)[:_MEMORY_RUN_PREVIEW_LEN]
-    await _reply(message, f"Добавлено пересказов: {len(created)}\n\n{preview}")
+    await _reply(message, _t(deps, "commands.memory_run_done", count=len(created), preview=preview))
 
 
 async def _cmd_say(
@@ -1165,44 +1251,48 @@ async def _cmd_say(
 ) -> None:
     text = _command_arg_text(raw_text, tokens)
     if not text:
-        await _reply(message, "Использование: /say <текст>")
+        await _reply(message, _t(deps, "commands.say_usage"))
         return
 
     await deps.db.audit_stop("say", admin_user_id, now, text)
     logger.info("say: %r", text)
 
     if deps.responder is None:
-        await _reply(message, "LLM-часть выключена, /say недоступен.")
+        await _reply(message, _t(deps, "commands.say_off"))
         return
 
     outcome = await deps.responder.say(text)
     if outcome.sent:
-        await _reply(message, "Отправлено.")
+        await _reply(message, _t(deps, "commands.say_sent"))
     else:
-        await _reply(message, "Бот молчит (panic/stop) — /resume.")
+        await _reply(message, _t(deps, "commands.blocked"))
 
 
-def _preview_text(outcome: PreviewOutcome) -> str:
+def _preview_text(deps: _CommandsDeps, outcome: PreviewOutcome) -> str:
     """Ответ на /ask: что ушло бы в чат, или почему промолчал бы."""
     if outcome.sent:
-        lines = [f"Ответил бы: {outcome.text}"]
+        lines = [_t(deps, "commands.ask_would_answer", text=outcome.text)]
         if outcome.reasons:
-            lines.append(f"Фильтр отметил, но пропустил (shadow): {', '.join(outcome.reasons)}")
+            lines.append(_t(deps, "commands.ask_shadow", reasons=", ".join(outcome.reasons)))
     elif outcome.reason == "llm:silent":
-        lines = ["Промолчал бы (модель решила не отвечать)."]
+        lines = [_t(deps, "commands.ask_silent")]
     elif outcome.reason.startswith("llm:"):
-        lines = [f"Не ответил бы: {outcome.reason}."]
+        lines = [_t(deps, "commands.ask_llm_error", reason=outcome.reason)]
         if outcome.text:
-            lines.append(f"Модель вернула: {outcome.text}")
+            lines.append(_t(deps, "commands.ask_model_returned", text=outcome.text))
     else:
         lines = [
-            f"Не ответил бы, срезал бы фильтр: {', '.join(outcome.reasons) or outcome.reason}."
+            _t(
+                deps,
+                "commands.ask_filtered",
+                reasons=", ".join(outcome.reasons) or outcome.reason,
+            )
         ]
         if outcome.text:
-            lines.append(f"Кандидат: {outcome.text}")
+            lines.append(_t(deps, "commands.candidate", text=outcome.text))
     if outcome.fixes:
-        lines.append(f"Правки: {', '.join(outcome.fixes)}")
-    lines.append("(в чат не отправлено)")
+        lines.append(_t(deps, "commands.ask_fixes", fixes=", ".join(outcome.fixes)))
+    lines.append(_t(deps, "commands.ask_not_sent"))
     return "\n".join(lines)
 
 
@@ -1213,10 +1303,10 @@ async def _cmd_ask(
     владелец обратился к нему в чате. Ничего не отправляет и не пишет."""
     text = normalize_text(_command_arg_text(raw_text, tokens))
     if not text:
-        await _reply(message, "Использование: /ask <текст>")
+        await _reply(message, _t(deps, "commands.ask_usage"))
         return
     if deps.responder is None:
-        await _reply(message, "LLM-часть выключена, /ask недоступен.")
+        await _reply(message, _t(deps, "commands.ask_off"))
         return
     # Имя — то, под которым владелец уже есть в контексте чата; не писал в чат —
     # имя из Telegram через тот же sanitize, что и для сообщений.
@@ -1226,15 +1316,15 @@ async def _cmd_ask(
     )
     logger.info("ask preview: %r", text)
     outcome = await deps.responder.preview(text, name, user.id)
-    await _reply(message, _preview_text(outcome))
+    await _reply(message, _preview_text(deps, outcome))
 
 
-def _plural_words(n: int) -> str:
-    if n % 10 == 1 and n % 100 != 11:
-        return f"{n} слово"
-    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
-        return f"{n} слова"
-    return f"{n} слов"
+def _plural_words(deps: _CommandsDeps, n: int) -> str:
+    return _catalog(deps).plural("commands.words_count", n)
+
+
+def _words_too_big(deps: _CommandsDeps) -> str:
+    return _t(deps, "commands.words_too_big", kb=_WORDS_MAX_FILE_BYTES // 1024)
 
 
 async def _cmd_words_upload(
@@ -1244,32 +1334,45 @@ async def _cmd_words_upload(
     document = message.document
     assert document is not None  # гарантирует вызывающий
     if document.file_size is not None and document.file_size > _WORDS_MAX_FILE_BYTES:
-        await _reply(message, _WORDS_TOO_BIG)
+        await _reply(message, _words_too_big(deps))
         return
     if deps.bot is None:
-        await _reply(message, "Бот не может скачать файл, словарь не загружен.")
+        await _reply(message, _t(deps, "commands.words_no_download"))
         return
     buffer = io.BytesIO()
     await deps.bot.download(document.file_id, destination=buffer)
     data = buffer.getvalue()
     if len(data) > _WORDS_MAX_FILE_BYTES:
-        await _reply(message, _WORDS_TOO_BIG)
+        await _reply(message, _words_too_big(deps))
         return
     try:
         raw = data.decode("utf-8-sig")
     except UnicodeDecodeError:
-        await _reply(message, "Файл не в UTF-8, словарь не загружен.")
+        await _reply(message, _t(deps, "commands.words_not_utf8"))
         return
     try:
         parsed = await store.put(raw, now)
     except ValueError as exc:
-        await _reply(message, f"Не разобрал файл: {exc}")
+        await _reply(message, _t(deps, "commands.words_parse_error", error=exc))
         return
     await deps.db.audit_stop("words:put", admin_user_id, now, parsed.name)
     logger.info("words put: %r, %d words", parsed.name, len(parsed.words))
     enabled = next((row.enabled for row, _ in await store.dicts() if row.name == parsed.name), True)
-    state = "включён" if enabled else "выключен (/words on, чтобы включить)"
-    await _reply(message, f"Словарь «{parsed.name}»: {_plural_words(len(parsed.words))}, {state}.")
+    state = _t(deps, "commands.words_state_on" if enabled else "commands.words_state_off_hint")
+    await _reply(
+        message,
+        _t(
+            deps,
+            "commands.words_loaded",
+            name=parsed.name,
+            words=_plural_words(deps, len(parsed.words)),
+            state=state,
+        ),
+    )
+
+
+def _words_usage(deps: _CommandsDeps) -> str:
+    return _t(deps, "commands.words_usage")
 
 
 def _resolve_dict_name(
@@ -1293,7 +1396,7 @@ async def _cmd_words(
     """/words — словари словечек (CLAUDE.md, "словечки из словаря")."""
     store = deps.vocab_store
     if store is None:
-        await _reply(message, "Словари словечек недоступны.")
+        await _reply(message, _t(deps, "commands.words_unavailable"))
         return
     if message.document is not None:
         await _cmd_words_upload(message, deps, store, now, admin_user_id)
@@ -1302,36 +1405,54 @@ async def _cmd_words(
     tz = deps.config_store.get().persona.timezone
     if not args:
         if not dicts:
-            await _reply(message, "Словарей нет.\n" + _WORDS_USAGE)
+            await _reply(message, _t(deps, "commands.words_none") + "\n" + _words_usage(deps))
             return
         lines = []
         for row, parsed in dicts:
-            size = _plural_words(len(parsed.words)) if parsed is not None else "не разбирается"
-            lines.append(
-                f"{row.name}: {size}, {'вкл' if row.enabled else 'выкл'}, "
-                f"{local_dt(row.updated_at, tz).strftime('%d.%m')}"
+            size = (
+                _plural_words(deps, len(parsed.words))
+                if parsed is not None
+                else _t(deps, "commands.words_unparsable")
             )
-        lines.append(_WORDS_USAGE)
+            lines.append(
+                _t(
+                    deps,
+                    "commands.words_line",
+                    name=row.name,
+                    size=size,
+                    state=_t(deps, "commands.words_on" if row.enabled else "commands.words_off"),
+                    date=local_dt(row.updated_at, tz).strftime("%d.%m"),
+                )
+            )
+        lines.append(_words_usage(deps))
         await _reply(message, "\n".join(lines))
         return
     sub_cmd = args[0].lower()
     name = " ".join(args[1:]).strip()
     if sub_cmd not in {"show", "on", "off", "rm"} or not name:
-        await _reply(message, _WORDS_USAGE)
+        await _reply(message, _words_usage(deps))
         return
     found = _resolve_dict_name(dicts, name)
     if found is None:
-        await _reply(message, f"Нет словаря «{name}».")
+        await _reply(message, _t(deps, "commands.words_no_dict", name=name))
         return
     row = found
     if sub_cmd == "show":
         parsed = next(p for r, p in dicts if r.name == row.name)
         if parsed is None:
-            await _reply(message, f"Словарь «{row.name}» не разбирается, загрузи его заново.")
+            await _reply(message, _t(deps, "commands.words_show_unparsable", name=row.name))
             return
-        header = f"{row.name}: {_plural_words(len(parsed.words))}"
+        words_text = _plural_words(deps, len(parsed.words))
         if parsed.about:
-            header += f" ({parsed.about})"
+            header = _t(
+                deps,
+                "commands.words_header_about",
+                name=row.name,
+                words=words_text,
+                about=parsed.about,
+            )
+        else:
+            header = _t(deps, "commands.words_header", name=row.name, words=words_text)
         lines = [header] + [f"{item.word}: {item.meaning}" for item in parsed.words]
         await _reply(message, "\n".join(lines))
         return
@@ -1339,29 +1460,35 @@ async def _cmd_words(
         await store.remove(row.name)
         await deps.db.audit_stop("words:rm", admin_user_id, now, row.name)
         logger.info("words rm: %r", row.name)
-        await _reply(message, f"Словарь «{row.name}» удалён.")
+        await _reply(message, _t(deps, "commands.words_removed", name=row.name))
         return
     enabled = sub_cmd == "on"
     await store.set_enabled(row.name, enabled)
     await deps.db.audit_stop(f"words:{sub_cmd}", admin_user_id, now, row.name)
     logger.info("words %s: %r", sub_cmd, row.name)
-    await _reply(message, f"Словарь «{row.name}» {'включён' if enabled else 'выключен'}.")
+    await _reply(
+        message,
+        _t(deps, "commands.words_enabled" if enabled else "commands.words_disabled", name=row.name),
+    )
 
 
 async def _cmd_changelog(message: Message, deps: _CommandsDeps, args: list[str]) -> None:
-    """/changelog [owner|<версия>] — релиз-ноты из CHANGELOG.md (CLAUDE.md, "версии и changelog").
+    """/changelog [owner|<версия>] — релиз-ноты (CLAUDE.md, "версии и changelog").
 
-    Текст — CHANGELOG.md пакета персоны (оба блока), прочитанный при старте: смена пакета
-    это рестарт. Файл chat_notes.md пока не разбирается (переход на него — отдельный шаг).
+    Блок для чата — `chat_notes.md` пакета, а без него (переходное время) блок «Для чата» из
+    CHANGELOG.md пакета; блок для владельца — из CHANGELOG.md пакета. Файлы читаются при старте:
+    смена пакета это рестарт.
     """
-    text = deps.persona.legacy_changelog if deps.persona is not None else ""
-
-    releases = parse_changelog(text) if text else []
-    if not releases:
-        await _reply(message, "CHANGELOG.md не найден или пуст.")
-        return
+    persona = deps.persona
+    chat_notes = persona.chat_notes if persona is not None else ""
+    legacy = persona.legacy_changelog if persona is not None else ""
 
     owner_view = bool(args) and args[0].lower() == "owner"
+    releases = owner_releases(legacy) if owner_view else chat_releases(chat_notes, legacy)
+    if not releases:
+        await _reply(message, _t(deps, "commands.changelog_missing"))
+        return
+
     found: Release | None
     if owner_view or not args:
         found = releases[0]
@@ -1370,12 +1497,21 @@ async def _cmd_changelog(message: Message, deps: _CommandsDeps, args: list[str])
         wanted = raw[1:] if raw.startswith("v") else raw
         found = next((r for r in releases if r.version == wanted), None)
         if found is None:
-            await _reply(message, f"Версии {args[0]} нет.")
+            await _reply(message, _t(deps, "commands.changelog_no_version", arg=args[0]))
             return
     release = found
 
     body = release.for_owner if owner_view else release.for_chat
-    await _reply(message, f"v{release.version} ({release.date})\n{body}")
+    await _reply(
+        message,
+        _t(
+            deps,
+            "commands.changelog_release",
+            version=release.version,
+            date=release.date,
+            body=body,
+        ),
+    )
 
 
 def build_commands_router(deps: _CommandsDeps) -> Router:
@@ -1477,13 +1613,12 @@ def build_commands_router(deps: _CommandsDeps) -> Router:
                     await _cmd_words(message, deps, now, admin_user_id, args)
                 elif cmd == "changelog":
                     await _cmd_changelog(message, deps, args)
-                elif cmd == "help":
-                    await _reply(message, _HELP_TEXT)
-                else:
-                    await _reply(message, _HELP_TEXT)
+                else:  # /help and any unknown command
+                    await _reply(message, _t(deps, "help.text"))
         except Exception as exc:
             logger.exception("command /%s failed", cmd)
             if is_owner_private:
-                await _reply(message, f"Ошибка: {exc}")
+                detail = exc.render(_catalog(deps)) if isinstance(exc, OwnerError) else str(exc)
+                await _reply(message, _t(deps, "errors.generic", message=detail))
 
     return router

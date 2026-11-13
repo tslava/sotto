@@ -1,0 +1,112 @@
+commands:
+  empty: Empty.
+  last_line: '{time} | {trigger} | p{prompt}/f{few_shot} | +{delay}s | {text}'
+  key_type_bounds: 'type: {type}, {bounds}'
+  key_type: 'type: {type}'
+  key_overridden: 'overridden, yaml value: {default}'
+  key_yaml_only: can only be changed in config.yaml
+  get_hint: '* - overridden with /set. Key description: /get <key>'
+  set_usage: 'Usage: /set <key> <value>. Keys: /get, description: /get <key>'
+  set_done: '{key}: {old} → {new}'
+  unset_usage: 'Usage: /unset <key>'
+  unset_not_overridden: '{key}: was not overridden'
+  unset_done: '{key}: reset to {default}'
+  prompt_header: version {version} (active), {total} in total
+  rollback_usage: 'Usage: /rollback <version>'
+  rollback_bad_number: 'Error: {arg!r} does not look like a version number'
+  rollback_done: 'prompt: version {version}'
+  rollback_not_found: 'Error: version {version} not found'
+  ex_line: '{name}: {user} → {payload}'
+  ex_rm_done: 'few-shot: version {version} (example {n} from the end removed)'
+  ex_add_name: Chat
+  ex_add_user: (no one addressed the bot)
+  panic_done: Panic. The bot stays silent until /resume.
+  resume_done: Resuming.
+  resume_cleared: 'Resuming. Cleared: {items}.'
+  resume_item_circuit: LLM circuit breaker ({streak} consecutive errors)
+  life_usage: 'Usage: /life <text> | list | rm N | post N'
+  life_no_llm: 'Saved #{id}. The LLM is not configured, nothing was sent to the chat.'
+  life_saved: 'Saved #{id}. {outcome}'
+  life_sent: 'Sent: {text}'
+  blocked: The bot is silent (panic/stop) - /resume.
+  life_not_sent: 'Not sent: {reason}'
+  candidate: 'Candidate: {text}'
+  life_none: No events.
+  life_line: '#{id} {date} {mark} {text}'
+  life_mark_sent: ✓
+  dash: '-'
+  life_not_found: 'No event #{id}.'
+  life_removed: 'Event #{id} deleted.'
+  life_post_no_llm: The LLM is not configured, nothing was sent to the chat.
+  memory_usage: 'Usage: /memory [list | rm N | run]'
+  memory_none: No memories yet.
+  memory_item: |-
+    #{id} {period}
+    {text}
+  memory_not_found: 'No summary #{id}.'
+  memory_removed: 'Summary #{id} deleted.'
+  memory_run_off: The LLM part is off, summaries are unavailable.
+  memory_run_none: Nothing to summarize.
+  memory_run_done: |-
+    Summaries added: {count}
+
+    {preview}
+  diary_usage: 'Usage: /diary | /diary rm N'
+  diary_none: No facts.
+  diary_line: '#{id} {time} {text}'
+  diary_not_found: 'No fact #{id}.'
+  diary_removed: 'Fact #{id} deleted.'
+  jokes_usage: 'Usage: /jokes | /jokes rm N'
+  jokes_none: No jokes yet.
+  jokes_line: '#{id} {text} (used {used})'
+  jokes_not_found: 'No joke #{id}.'
+  jokes_removed: 'Joke #{id} deleted.'
+  people_usage: 'Usage: /people | /people rm N'
+  people_none: No stories yet.
+  people_line: '#{id} {name}: {text} ({state})'
+  people_asked: asked {date}
+  people_open: open
+  people_not_found: 'No story #{id}.'
+  people_removed: 'Story #{id} deleted.'
+  say_usage: 'Usage: /say <text>'
+  say_off: The LLM part is off, /say is unavailable.
+  say_sent: Sent.
+  ask_usage: 'Usage: /ask <text>'
+  ask_off: The LLM part is off, /ask is unavailable.
+  ask_would_answer: 'Would answer: {text}'
+  ask_shadow: 'The filter flagged it but let it through (shadow): {reasons}'
+  ask_silent: Would stay silent (the model chose not to answer).
+  ask_llm_error: 'Would not answer: {reason}.'
+  ask_model_returned: 'The model returned: {text}'
+  ask_filtered: 'Would not answer, the filter would cut it: {reasons}.'
+  ask_fixes: 'Fixes: {fixes}'
+  ask_not_sent: (nothing was sent to the chat)
+  words_usage: 'Usage: /words | /words show|on|off|rm <name>. To upload a dictionary, send a YAML file captioned /words (name, about, words: [{{word, meaning, example, forms}}]).'
+  words_too_big: The file is larger than {kb} KB, the dictionary was not uploaded.
+  words_unavailable: Word dictionaries are unavailable.
+  words_no_download: The bot cannot download the file, the dictionary was not uploaded.
+  words_not_utf8: The file is not UTF-8, the dictionary was not uploaded.
+  words_parse_error: 'Could not parse the file: {error}'
+  words_loaded: 'Dictionary "{name}": {words}, {state}.'
+  words_state_on: enabled
+  words_state_off_hint: disabled (/words on to enable)
+  words_count:
+    one: '{n} word'
+    other: '{n} words'
+  words_none: No dictionaries.
+  words_line: '{name}: {size}, {state}, {date}'
+  words_unparsable: cannot be parsed
+  words_on: 'on'
+  words_off: 'off'
+  words_no_dict: No dictionary "{name}".
+  words_show_unparsable: Dictionary "{name}" cannot be parsed, upload it again.
+  words_header: '{name}: {words}'
+  words_header_about: '{name}: {words} ({about})'
+  words_removed: Dictionary "{name}" deleted.
+  words_enabled: Dictionary "{name}" enabled.
+  words_disabled: Dictionary "{name}" disabled.
+  changelog_missing: CHANGELOG.md not found or empty.
+  changelog_no_version: No version {arg}.
+  changelog_release: |-
+    v{version} ({date})
+    {body}

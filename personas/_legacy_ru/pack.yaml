@@ -10,3 +10,5 @@ ship:
   - places_manual.yaml
   - prompts/
   - CHANGELOG.md
+  - chat_notes.md
+  - locale/

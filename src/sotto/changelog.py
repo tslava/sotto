@@ -82,3 +82,40 @@ def parse_changelog(text: str) -> list[Release]:
 def latest_release(text: str) -> Release | None:
     releases = parse_changelog(text)
     return releases[0] if releases else None
+
+
+def parse_chat_notes(text: str) -> list[Release]:
+    """Release notes for the chat from a pack's ``chat_notes.md``, newest first.
+
+    Format: ``## [0.9.1] - 2026-11-05`` then free text up to the next ``## `` heading. The text
+    is the release's chat block (``for_chat``); ``for_owner`` stays empty, the owner block is the
+    engine's. Same heading regex as ``CHANGELOG.md`` (hyphen or em dash).
+    """
+    h2_starts = [m.start() for m in _ANY_H2_RE.finditer(text)]
+    releases: list[Release] = []
+    for match in _VERSION_HEADER_RE.finditer(text):
+        next_h2 = next((pos for pos in h2_starts if pos > match.start()), None)
+        body = text[match.end() : next_h2 if next_h2 is not None else len(text)]
+        releases.append(
+            Release(
+                version=match.group("version"),
+                date=match.group("date"),
+                for_chat=body.strip(),
+                for_owner="",
+            )
+        )
+    return releases
+
+
+def chat_releases(chat_notes: str, legacy_changelog: str) -> list[Release]:
+    """What ``/changelog`` and ``/changelog <version>`` show: the pack's ``chat_notes.md`` when it
+    has releases, otherwise the chat blocks of the pack's legacy ``CHANGELOG.md`` (transition)."""
+    return parse_chat_notes(chat_notes) or parse_changelog(legacy_changelog)
+
+
+def owner_releases(legacy_changelog: str) -> list[Release]:
+    """What ``/changelog owner`` shows: the owner blocks of the pack's legacy ``CHANGELOG.md``.
+
+    Until the engine's own English ``CHANGELOG.md`` takes over (PR-8) this is the only source.
+    """
+    return parse_changelog(legacy_changelog)

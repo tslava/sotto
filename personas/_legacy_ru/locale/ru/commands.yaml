@@ -1,0 +1,113 @@
+commands:
+  empty: Пусто.
+  last_line: '{time} | {trigger} | p{prompt}/f{few_shot} | +{delay}s | {text}'
+  key_type_bounds: 'тип: {type}, {bounds}'
+  key_type: 'тип: {type}'
+  key_overridden: 'переопределён, в yaml: {default}'
+  key_yaml_only: меняется только в config.yaml
+  get_hint: '* — переопределено через /set. Описание ключа: /get <ключ>'
+  set_usage: 'Использование: /set <ключ> <значение>. Ключи: /get, описание: /get <ключ>'
+  set_done: '{key}: {old} → {new}'
+  unset_usage: 'Использование: /unset <ключ>'
+  unset_not_overridden: '{key}: не был переопределён'
+  unset_done: '{key}: сброшен к {default}'
+  prompt_header: версия {version} (активная), всего {total}
+  rollback_usage: 'Использование: /rollback <версия>'
+  rollback_bad_number: 'Ошибка: {arg!r} не похоже на номер версии'
+  rollback_done: 'промпт: версия {version}'
+  rollback_not_found: 'Ошибка: версия {version} не найдена'
+  ex_line: '{name}: {user} → {payload}'
+  ex_rm_done: 'few-shot: версия {version} (удалён пример {n} с конца)'
+  ex_add_name: Чат
+  ex_add_user: (без обращения)
+  panic_done: Паника. Бот молчит до /resume.
+  resume_done: Продолжаем.
+  resume_cleared: 'Продолжаем. Снято: {items}.'
+  resume_item_circuit: предохранитель LLM (было {streak} ошибок подряд)
+  life_usage: 'Использование: /life <текст> | list | rm N | post N'
+  life_no_llm: 'Записал #{id}. LLM не настроен, в чат не отправлено.'
+  life_saved: 'Записал #{id}. {outcome}'
+  life_sent: 'Отправлено: {text}'
+  blocked: Бот молчит (panic/stop) — /resume.
+  life_not_sent: 'Не отправлено: {reason}'
+  candidate: 'Кандидат: {text}'
+  life_none: Событий нет.
+  life_line: '#{id} {date} {mark} {text}'
+  life_mark_sent: ✓
+  dash: —
+  life_not_found: 'Нет события #{id}.'
+  life_removed: 'Событие #{id} удалено.'
+  life_post_no_llm: LLM не настроен, в чат не отправлено.
+  memory_usage: 'Использование: /memory [list | rm N | run]'
+  memory_none: Памяти пока нет.
+  memory_item: |-
+    #{id} {period}
+    {text}
+  memory_not_found: 'Нет пересказа #{id}.'
+  memory_removed: 'Пересказ #{id} удалён.'
+  memory_run_off: LLM-часть выключена, пересказы недоступны.
+  memory_run_none: Нечего пересказывать.
+  memory_run_done: |-
+    Добавлено пересказов: {count}
+
+    {preview}
+  diary_usage: 'Использование: /diary | /diary rm N'
+  diary_none: Фактов нет.
+  diary_line: '#{id} {time} {text}'
+  diary_not_found: 'Нет факта #{id}.'
+  diary_removed: 'Факт #{id} удалён.'
+  jokes_usage: 'Использование: /jokes | /jokes rm N'
+  jokes_none: Шуток пока нет.
+  jokes_line: '#{id} {text} (использована {used})'
+  jokes_not_found: 'Нет шутки #{id}.'
+  jokes_removed: 'Шутка #{id} удалена.'
+  people_usage: 'Использование: /people | /people rm N'
+  people_none: Историй пока нет.
+  people_line: '#{id} {name}: {text} ({state})'
+  people_asked: спросил {date}
+  people_open: открыт
+  people_not_found: 'Нет истории #{id}.'
+  people_removed: 'История #{id} удалена.'
+  say_usage: 'Использование: /say <текст>'
+  say_off: LLM-часть выключена, /say недоступен.
+  say_sent: Отправлено.
+  ask_usage: 'Использование: /ask <текст>'
+  ask_off: LLM-часть выключена, /ask недоступен.
+  ask_would_answer: 'Ответил бы: {text}'
+  ask_shadow: 'Фильтр отметил, но пропустил (shadow): {reasons}'
+  ask_silent: Промолчал бы (модель решила не отвечать).
+  ask_llm_error: 'Не ответил бы: {reason}.'
+  ask_model_returned: 'Модель вернула: {text}'
+  ask_filtered: 'Не ответил бы, срезал бы фильтр: {reasons}.'
+  ask_fixes: 'Правки: {fixes}'
+  ask_not_sent: (в чат не отправлено)
+  words_usage: 'Использование: /words | /words show|on|off|rm <имя>. Загрузить словарь: отправь YAML-файл с подписью /words (name, about, words: [{{word, meaning, example, forms}}]).'
+  words_too_big: Файл больше {kb} КБ, словарь не загружен.
+  words_unavailable: Словари словечек недоступны.
+  words_no_download: Бот не может скачать файл, словарь не загружен.
+  words_not_utf8: Файл не в UTF-8, словарь не загружен.
+  words_parse_error: 'Не разобрал файл: {error}'
+  words_loaded: 'Словарь «{name}»: {words}, {state}.'
+  words_state_on: включён
+  words_state_off_hint: выключен (/words on, чтобы включить)
+  words_count:
+    one: '{n} слово'
+    few: '{n} слова'
+    many: '{n} слов'
+  words_none: Словарей нет.
+  words_line: '{name}: {size}, {state}, {date}'
+  words_unparsable: не разбирается
+  words_on: вкл
+  words_off: выкл
+  words_no_dict: Нет словаря «{name}».
+  words_show_unparsable: Словарь «{name}» не разбирается, загрузи его заново.
+  words_header: '{name}: {words}'
+  words_header_about: '{name}: {words} ({about})'
+  words_removed: Словарь «{name}» удалён.
+  words_enabled: Словарь «{name}» включён.
+  words_disabled: Словарь «{name}» выключен.
+  changelog_missing: CHANGELOG.md не найден или пуст.
+  changelog_no_version: Версии {arg} нет.
+  changelog_release: |-
+    v{version} ({date})
+    {body}

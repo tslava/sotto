@@ -23,6 +23,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from sotto.config_models import Config
+from sotto.i18n import Catalog, engine_catalog
 from sotto.persona import Persona
 
 logger = logging.getLogger(__name__)
@@ -31,10 +32,8 @@ logger = logging.getLogger(__name__)
 _TRANSIENT_STATUSES = frozenset({408, 429})
 _MESSAGE_LIMIT = 200
 _RETRY_AFTER_FAILURE_SEC = 3600
-_HINTS = {
-    401: "ключ OpenRouter не принят, проверь OPENROUTER_API_KEY",
-    402: "кончились кредиты, пополни на openrouter.ai/settings/credits",
-}
+# Statuses with their own hint text in the catalog (``alerts.hint_<status>``).
+_HINT_STATUSES = frozenset({401, 402})
 
 
 def is_refusal(status: int) -> bool:
@@ -42,15 +41,21 @@ def is_refusal(status: int) -> bool:
     return 400 <= status < 500 and status not in _TRANSIENT_STATUSES
 
 
-def render_alert(*, status: int, model: str, message: str, interval_hours: int) -> str:
-    hint = _HINTS.get(status, "запрос отклонён")
-    lines = [f"OpenRouter отказал: {status}, {hint}.", f"Модель: {model}."]
+def render_alert(
+    *,
+    status: int,
+    model: str,
+    message: str,
+    interval_hours: int,
+    catalog: Catalog | None = None,
+) -> str:
+    """The owner message about a provider refusal, in the pack's locale (English without one)."""
+    cat = catalog if catalog is not None else engine_catalog()
+    hint = cat.t(f"alerts.hint_{status}" if status in _HINT_STATUSES else "alerts.hint_default")
+    lines = [cat.t("alerts.refused", status=status, hint=hint), cat.t("alerts.model", model=model)]
     if message:
-        lines.append(f"Ответ: {message[:_MESSAGE_LIMIT]}")
-    lines.append(
-        f"Пока это не исправить, бот молчит там, где нужна эта модель. "
-        f"Следующее такое сообщение не раньше чем через {interval_hours} ч."
-    )
+        lines.append(cat.t("alerts.reply", message=message[:_MESSAGE_LIMIT]))
+    lines.append(cat.t("alerts.tail", hours=interval_hours))
     return "\n".join(lines)
 
 
@@ -75,7 +80,7 @@ class OwnerAlerter:
         clock: Callable[[], int] = lambda: int(time.time()),
         persona: Persona | None = None,
     ) -> None:
-        self._persona = persona  # пока не используется: тексты тревог переедут в каталог пакета
+        self._catalog = persona.catalog if persona is not None else None
         self._bot = bot
         self._db = db
         self._admin_user_id = admin_user_id
@@ -102,6 +107,7 @@ class OwnerAlerter:
             model=model,
             message=message,
             interval_hours=cfg.alert_interval_hours,
+            catalog=self._catalog,
         )
         task = asyncio.ensure_future(self._send(key, text, status=status, model=model))
         self._tasks.add(task)

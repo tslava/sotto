@@ -1,0 +1,5 @@
+errors:
+  generic: 'Error: {message}'
+  set_persona: persona can only be changed in config.yaml
+  set_unknown_section: 'unknown section: {key!r}'
+  ex_rm_range: 'index {index} is out of range: there are {total} examples'

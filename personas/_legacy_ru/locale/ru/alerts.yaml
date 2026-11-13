@@ -1,0 +1,8 @@
+alerts:
+  refused: 'OpenRouter отказал: {status}, {hint}.'
+  hint_401: ключ OpenRouter не принят, проверь OPENROUTER_API_KEY
+  hint_402: кончились кредиты, пополни на openrouter.ai/settings/credits
+  hint_default: запрос отклонён
+  model: 'Модель: {model}.'
+  reply: 'Ответ: {message}'
+  tail: Пока это не исправить, бот молчит там, где нужна эта модель. Следующее такое сообщение не раньше чем через {hours} ч.

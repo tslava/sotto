@@ -1,0 +1,36 @@
+status:
+  header: sotto v{version}
+  'yes': да
+  'no': нет
+  none: нет
+  panic: 'Паника: {value}'
+  stop_until: 'Стоп до: {value}'
+  circuit: 'Предохранитель LLM: {state}, ошибок подряд: {streak}, последний отказ провайдера: {refusal}'
+  circuit_closed: закрыт
+  circuit_open: открыт до {time}
+  refusal_none: нет за сутки
+  refusal: '{status} в {time}'
+  prompt: 'Промпт: v{prompt}, few-shot: v{few_shot}'
+  models: 'Модели: main={main}, judge={judge}'
+  shadow: 'Shadow: {value}'
+  today: 'Сегодня: ambient={ambient}, mention={mention}, llm_calls={llm_calls}, llm_spent=${llm_spent:.2f}, reactions={reactions}/{reactions_cap}, semantic calls {reaction_calls}/{semantic_cap}, stickers={stickers}/{stickers_cap} ({catalog} в каталоге)'
+  pending: 'Pending: {count}'
+  night_queue: 'Night queue: {count}'
+  life_events: 'life events: {total} ({unsent})'
+  memory: 'chat memory: {total}, последний до {date}'
+  memory_none: 'chat memory: нет'
+  hot: 'hot window: до {time} ({count}/{cap})'
+  hot_none: 'hot window: нет'
+  followup: 'followup calls: {calls}/{cap}'
+  vision: 'vision: {count}/{cap}'
+  diary: 'diary: {today}, calls {calls}/{cap}'
+  jokes: 'jokes: {jokes}, people: {people}, callback: {callback}'
+  callback_last: последний {date}
+  checkin: 'checkin: due {time}'
+  checkin_none: 'checkin: нет'
+  presence: 'presence: {bot}/{allowance} (people {people})'
+  vocab: 'словечки: {enabled}/{total} словарей ({words} слов), сегодня {today}/{cap}, последнее {last}'
+  vocab_none: 'словечки: нет'
+  vocab_last_none: —
+  weather: 'погода: {temp}{desc}, обновлена {time}'
+  weather_none: 'погода: нет'

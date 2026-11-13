@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from sotto.db import Database
+from sotto.errors import OwnerError
 from sotto.persona import Persona, load_persona
 from sotto.stores import ConfigStore, PromptStore, build_seed_plan, decide_seed
 from tests.packs import LEGACY_PACK
@@ -83,8 +84,9 @@ async def test_set_invalid_value_raises_and_does_not_write_override(tmp_path: Pa
 async def test_set_persona_key_raises_without_writing(tmp_path: Path) -> None:
     store, db = await _make_config_store(tmp_path)
     try:
-        with pytest.raises(ValueError, match="persona"):
+        with pytest.raises(OwnerError, match="persona") as info:
             await store.set("persona.name", "Вася", changed_by=1, now=1000)
+        assert info.value.code == "set_persona"
 
         assert await db.get_overrides() == {}
     finally:
@@ -94,8 +96,12 @@ async def test_set_persona_key_raises_without_writing(tmp_path: Path) -> None:
 async def test_set_unknown_section_raises(tmp_path: Path) -> None:
     store, db = await _make_config_store(tmp_path)
     try:
-        with pytest.raises(ValueError):
+        with pytest.raises(OwnerError) as info:
             await store.set("secret.token", "x", changed_by=1, now=1000)
+        assert (info.value.code, info.value.params) == (
+            "set_unknown_section",
+            {"key": "secret.token"},
+        )
 
         assert await db.get_overrides() == {}
     finally:
@@ -431,8 +437,9 @@ async def test_remove_example_out_of_range_raises_and_keeps_version(tmp_path: Pa
         await store.load()
         assert store.few_shot_version() == 1
 
-        with pytest.raises(ValueError):
+        with pytest.raises(OwnerError) as info:
             await store.remove_example(99, now=1000)
+        assert (info.value.code, info.value.params) == ("ex_rm_range", {"index": 99, "total": 2})
 
         assert store.few_shot_version() == 1
         assert len(store.examples()) == 2
