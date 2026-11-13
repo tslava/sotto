@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Первичная настройка VPS под trolobot. Идемпотентен — можно перезапускать.
-# Запускать один раз владельцем под sudo на самом хосте:
+# First-time setup of the VPS for trolobot. Idempotent: safe to re-run.
+# Run once by the owner under sudo on the host itself:
 #
 #   sudo bash deploy/setup-host.sh \
 #     --pubkey-file /path/to/deploy_key.pub \
 #     [--compose-path /path/to/docker-compose.yml] \
 #     [--repo tslava/trolobot] [--ref main]
 #
-# Без --compose-path docker-compose.yml скачивается с GitHub raw по ветке --ref.
-# Без --pubkey-file authorized_keys для деплой-ключа не трогается — придётся
-# добавить строку руками (скрипт печатает готовый шаблон).
+# Without --compose-path, docker-compose.yml is downloaded from GitHub raw at branch --ref.
+# Without --pubkey-file, authorized_keys is left alone for the deploy key: add the
+# line by hand (the script prints a ready template).
 set -euo pipefail
 
 APP_DIR="/opt/trolobot"
@@ -23,7 +23,7 @@ PUBKEY_FILE=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { echo "[setup-host] $*"; }
-warn() { echo "[setup-host] ВНИМАНИЕ: $*" >&2; }
+warn() { echo "[setup-host] WARNING: $*" >&2; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -31,20 +31,20 @@ while [ $# -gt 0 ]; do
     --pubkey-file) PUBKEY_FILE="$2"; shift 2 ;;
     --repo) REPO="$2"; shift 2 ;;
     --ref) REF="$2"; shift 2 ;;
-    *) echo "неизвестный аргумент: $1" >&2; exit 1 ;;
+    *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "запускать под sudo/root" >&2
+  echo "run under sudo/root" >&2
   exit 1
 fi
 
 # ---- 1. Docker + compose plugin ---------------------------------------------
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-  log "docker уже установлен, пропускаю"
+  log "docker is already installed, skipping"
 else
-  log "устанавливаю docker из официального репозитория"
+  log "installing docker from the official repository"
   apt-get update -y
   apt-get install -y ca-certificates curl gnupg
   install -m 0755 -d /etc/apt/keyrings
@@ -61,17 +61,17 @@ EOF
   apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
 
-# ---- 2. Пользователь bot ------------------------------------------------------
+# ---- 2. User bot ------------------------------------------------------------
 if id -u "$BOT_USER" >/dev/null 2>&1; then
-  log "пользователь $BOT_USER уже существует, пропускаю"
+  log "user $BOT_USER already exists, skipping"
 else
-  log "создаю пользователя $BOT_USER (без пароля, домашний каталог)"
+  log "creating user $BOT_USER (no password, home directory)"
   useradd --create-home --shell /bin/bash "$BOT_USER"
-  passwd -l "$BOT_USER" >/dev/null   # блокируем пароль — только SSH-ключ
+  passwd -l "$BOT_USER" >/dev/null   # lock the password: SSH key only
 fi
 usermod -aG docker "$BOT_USER"
 
-# ---- 3. /opt/trolobot и data --------------------------------------------------
+# ---- 3. /opt/trolobot and data -------------------------------------------------
 mkdir -p "$APP_DIR"
 chown "$BOT_USER:$BOT_USER" "$APP_DIR"
 chmod 750 "$APP_DIR"
@@ -86,35 +86,35 @@ chmod 750 "$APP_DIR/backups"
 
 # ---- 4. docker-compose.yml ----------------------------------------------------
 if [ -f "$APP_DIR/docker-compose.yml" ]; then
-  log "$APP_DIR/docker-compose.yml уже есть, не перезаписываю (удалите файл, чтобы обновить из источника)"
+  log "$APP_DIR/docker-compose.yml already exists, not overwriting (delete the file to refresh it from the source)"
 elif [ -n "$COMPOSE_PATH" ]; then
-  log "копирую docker-compose.yml из $COMPOSE_PATH"
+  log "copying docker-compose.yml from $COMPOSE_PATH"
   cp "$COMPOSE_PATH" "$APP_DIR/docker-compose.yml"
 else
-  log "скачиваю docker-compose.yml из github.com/${REPO}@${REF}"
+  log "downloading docker-compose.yml from github.com/${REPO}@${REF}"
   curl -fsSL "https://raw.githubusercontent.com/${REPO}/${REF}/docker-compose.yml" \
     -o "$APP_DIR/docker-compose.yml"
 fi
 chown "$BOT_USER:$BOT_USER" "$APP_DIR/docker-compose.yml"
 
 # ---- 5. deploy.sh / deploy-only.sh --------------------------------------------
-# deploy.sh на хосте не хранится: CI гонит его каждый раз через stdin
-# (`ssh ... "bash -s -- <tag>" < deploy/deploy.sh`), поэтому хост всегда
-# исполняет актуальную версию из репозитория. На хосте нужен только
-# forced-command обвязчик deploy-only.sh.
+# deploy.sh is not stored on the host: CI pipes it through stdin every time
+# (`ssh ... "bash -s -- <tag>" < deploy/deploy.sh`), so the host always runs
+# the current version from the repository. The host only needs the
+# forced-command wrapper deploy-only.sh.
 if [ -f "$SCRIPT_DIR/deploy-only.sh" ]; then
   cp "$SCRIPT_DIR/deploy-only.sh" "$APP_DIR/deploy-only.sh"
 else
-  log "скачиваю deploy-only.sh из github.com/${REPO}@${REF}"
+  log "downloading deploy-only.sh from github.com/${REPO}@${REF}"
   curl -fsSL "https://raw.githubusercontent.com/${REPO}/${REF}/deploy/deploy-only.sh" \
     -o "$APP_DIR/deploy-only.sh"
 fi
 chown "$BOT_USER:$BOT_USER" "$APP_DIR/deploy-only.sh"
 chmod 750 "$APP_DIR/deploy-only.sh"
 
-# ---- 6. .env (секреты приложения) ---------------------------------------------
+# ---- 6. .env (application secrets) ---------------------------------------------
 if [ -f "$APP_DIR/.env" ]; then
-  log "$APP_DIR/.env уже есть, не трогаю"
+  log "$APP_DIR/.env already exists, leaving it alone"
 else
   ENV_EXAMPLE=""
   if [ -f "$SCRIPT_DIR/../.env.example" ]; then
@@ -128,12 +128,12 @@ else
   fi
   chown "$BOT_USER:$BOT_USER" "$APP_DIR/.env"
   chmod 600 "$APP_DIR/.env"
-  warn "$APP_DIR/.env создан пустым из .env.example — ЗАПОЛНИТЕ его руками (BOT_TOKEN, OPENROUTER_API_KEY, ...) перед первым запуском"
+  warn "$APP_DIR/.env created empty from .env.example: FILL IT IN by hand (BOT_TOKEN, OPENROUTER_API_KEY, ...) before the first start"
 fi
 
-# ---- 7. deploy.env (IMAGE_TAG / GHCR_OWNER, не секрет) ------------------------
+# ---- 7. deploy.env (IMAGE_TAG / GHCR_OWNER, not a secret) ----------------------
 if [ -f "$APP_DIR/deploy.env" ]; then
-  log "$APP_DIR/deploy.env уже есть, не трогаю"
+  log "$APP_DIR/deploy.env already exists, leaving it alone"
 else
   GHCR_OWNER="$(echo "$REPO" | cut -d/ -f1)"
   cat >"$APP_DIR/deploy.env" <<EOF
@@ -144,7 +144,7 @@ EOF
   chmod 644 "$APP_DIR/deploy.env"
 fi
 
-# ---- 8. SSH-ключ деплоя (authorized_keys с forced command) -------------------
+# ---- 8. Deploy SSH key (authorized_keys with a forced command) ---------------
 BOT_HOME="$(getent passwd "$BOT_USER" | cut -d: -f6)"
 SSH_DIR="$BOT_HOME/.ssh"
 AUTH_KEYS="$SSH_DIR/authorized_keys"
@@ -157,26 +157,26 @@ if [ -n "$PUBKEY_FILE" ]; then
   PUBKEY="$(cat "$PUBKEY_FILE")"
   RESTRICTED_LINE="command=\"$APP_DIR/deploy-only.sh\",no-port-forwarding,no-agent-forwarding,no-pty ${PUBKEY}"
   if grep -qF "${PUBKEY#* }" "$AUTH_KEYS" 2>/dev/null; then
-    log "публичный ключ уже есть в $AUTH_KEYS, пропускаю"
+    log "the public key is already in $AUTH_KEYS, skipping"
   else
     echo "$RESTRICTED_LINE" >>"$AUTH_KEYS"
-    log "добавил ограниченный ключ деплоя в $AUTH_KEYS"
+    log "added the restricted deploy key to $AUTH_KEYS"
   fi
 else
-  warn "не передан --pubkey-file — добавьте вручную строку в $AUTH_KEYS:"
-  echo "  command=\"$APP_DIR/deploy-only.sh\",no-port-forwarding,no-agent-forwarding,no-pty <содержимое deploy-ключа.pub>"
+  warn "--pubkey-file not given: add this line to $AUTH_KEYS by hand:"
+  echo "  command=\"$APP_DIR/deploy-only.sh\",no-port-forwarding,no-agent-forwarding,no-pty <contents of the deploy key .pub>"
 fi
 chown -R "$BOT_USER:$BOT_USER" "$SSH_DIR"
 
-# ---- 9. ufw: только SSH наружу -------------------------------------------------
+# ---- 9. ufw: only SSH from outside ----------------------------------------------
 if ! command -v ufw >/dev/null 2>&1; then
   apt-get install -y ufw
 fi
 if ufw status | grep -q "^Status: active"; then
-  # Файрвол уже настроен владельцем (на хосте могут жить другие сервисы,
-  # например гейтвей на 443) — правила не трогаем, только гарантируем SSH.
+  # The firewall is already set up by the owner (the host may run other services,
+  # for example a gateway on 443): leave the rules alone, only make sure SSH is allowed.
   ufw allow OpenSSH >/dev/null
-  log "ufw уже активен — существующие правила сохранены, SSH разрешён:"
+  log "ufw is already active: existing rules kept, SSH allowed:"
   ufw status numbered | sed 's/^/    /'
 else
   ufw allow OpenSSH >/dev/null
@@ -185,25 +185,25 @@ else
   log "ufw: allow OpenSSH, default deny incoming, enabled"
 fi
 
-# ---- 10. sshd: проверка, без изменений (не сломать доступ владельца) ---------
+# ---- 10. sshd: check only, no changes (do not break the owner's access) ------
 SSHD_EFFECTIVE="$(sshd -T 2>/dev/null || true)"
 PASS_AUTH="$(echo "$SSHD_EFFECTIVE" | awk '/^passwordauthentication/{print $2}')"
 ROOT_LOGIN="$(echo "$SSHD_EFFECTIVE" | awk '/^permitrootlogin/{print $2}')"
 if [ "$PASS_AUTH" = "yes" ]; then
-  warn "sshd: PasswordAuthentication всё ещё yes. Если вы (владелец) заходите по паролю," \
-       "заведите себе ключевой доступ, а затем выставьте 'PasswordAuthentication no' в /etc/ssh/sshd_config" \
-       "и перезапустите sshd — этот скрипт это НЕ делает сам, чтобы не отрезать вам доступ."
+  warn "sshd: PasswordAuthentication is still yes. If you (the owner) log in with a password," \
+       "set up key access for yourself first, then set 'PasswordAuthentication no' in /etc/ssh/sshd_config" \
+       "and restart sshd; this script does NOT do it, so it cannot cut off your access."
 fi
 if [ "$ROOT_LOGIN" != "prohibit-password" ] && [ "$ROOT_LOGIN" != "no" ]; then
-  warn "sshd: PermitRootLogin=${ROOT_LOGIN:-unknown}. Рекомендуется 'PermitRootLogin prohibit-password' в /etc/ssh/sshd_config."
+  warn "sshd: PermitRootLogin=${ROOT_LOGIN:-unknown}. Recommended: 'PermitRootLogin prohibit-password' in /etc/ssh/sshd_config."
 fi
 
-# ---- 11. docker login в ghcr.io (для приватного пакета) ----------------------
-log "если пакет ghcr.io/${REPO} приватный, залогиньте пользователя $BOT_USER в ghcr.io:"
-echo "  sudo -u $BOT_USER docker login ghcr.io -u <github-username> --password-stdin <<< \"<PAT с правом read:packages>\""
-echo "  (либо сделайте пакет публичным в настройках GHCR — тогда логин не нужен)"
+# ---- 11. docker login to ghcr.io (for a private package) ---------------------
+log "if the package ghcr.io/${REPO} is private, log user $BOT_USER in to ghcr.io:"
+echo "  sudo -u $BOT_USER docker login ghcr.io -u <github-username> --password-stdin <<< \"<PAT with read:packages>\""
+echo "  (or make the package public in the GHCR settings; then no login is needed)"
 
-# ---- 12. еженедельный бэкап bot.db --------------------------------------------
+# ---- 12. weekly backup of bot.db -----------------------------------------------
 if ! command -v sqlite3 >/dev/null 2>&1; then
   apt-get install -y sqlite3
 fi
@@ -214,7 +214,7 @@ cat >"$BACKUP_SCRIPT" <<'EOF'
 set -euo pipefail
 cd /opt/trolobot
 sqlite3 data/bot.db ".backup backups/bot-$(date +%F).db"
-# храним последние 8 копий
+# keep the last 8 copies
 ls -1t backups/bot-*.db 2>/dev/null | tail -n +9 | xargs -r rm -f
 EOF
 chown "$BOT_USER:$BOT_USER" "$BACKUP_SCRIPT"
@@ -224,10 +224,10 @@ CRON_MARKER="# trolobot weekly backup"
 CRON_LINE="0 3 * * 0 $BACKUP_SCRIPT >>/opt/trolobot/backups/backup.log 2>&1 $CRON_MARKER"
 EXISTING_CRON="$(crontab -u "$BOT_USER" -l 2>/dev/null || true)"
 if echo "$EXISTING_CRON" | grep -qF "$CRON_MARKER"; then
-  log "cron-бэкап уже настроен, пропускаю"
+  log "cron backup already set up, skipping"
 else
   { echo "$EXISTING_CRON"; echo "$CRON_LINE"; } | grep -v '^$' | crontab -u "$BOT_USER" -
-  log "добавил еженедельный cron-бэкап (вс 03:00) от имени $BOT_USER"
+  log "added a weekly cron backup (Sun 03:00) as $BOT_USER"
 fi
 
-log "готово. Дальше руками: заполнить $APP_DIR/.env, при приватном пакете — docker login, затем push в main."
+log "done. Next, by hand: fill in $APP_DIR/.env, docker login if the package is private, then push to main."
