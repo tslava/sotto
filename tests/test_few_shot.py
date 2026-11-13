@@ -1,12 +1,12 @@
-"""few_shot.yaml: загрузка и рендер в формат промпта."""
+"""few_shot.yaml: loading and rendering into the prompt format."""
 
 import pytest
 from pydantic import ValidationError
 
 from sotto.few_shot import FewShot, load_few_shot, render_few_shot
-from tests.packs import LEGACY_PACK
+from tests.packs import DEMO_PACK
 
-FEW_SHOT_PATH = LEGACY_PACK / "few_shot.yaml"
+FEW_SHOT_PATH = DEMO_PACK / "few_shot.yaml"
 
 
 def test_load_real_few_shot_without_errors() -> None:
@@ -14,7 +14,7 @@ def test_load_real_few_shot_without_errors() -> None:
 
     assert len(items) == 21
     assert all(isinstance(item, FewShot) for item in items)
-    # CHARACTER.md раздел 5: «обязательно 5-7 штук с speak: false».
+    # 5-7 examples must have speak: false, so that silence stays a normal answer.
     assert 5 <= sum(1 for item in items if item.speak is False) <= 7
     assert any(item.speak is True for item in items)
 
@@ -22,23 +22,23 @@ def test_load_real_few_shot_without_errors() -> None:
 def test_render_two_examples_matches_expected_format() -> None:
     items = [
         FewShot(
-            name="Гена",
-            user="опять совещание перенесли, второй раз за неделю",
+            name="Theo",
+            user="they moved the meeting again, second time this week",
             speak=True,
             text=(
-                "У нас в девяносто девятом тоже откладывали. Дважды. "
-                "Потом смену отменили, и вопрос снялся."
+                "Back in the nineties they put it off, too. Twice. "
+                "Then the depot shut and that was that."
             ),
         ),
-        FewShot(name="Юля", user="всем хорошего дня", speak=False),
+        FewShot(name="Jo", user="good morning everyone", speak=False),
     ]
 
     expected = (
-        "Гена: опять совещание перенесли, второй раз за неделю\n"
-        '{"speak": true, "text": "У нас в девяносто девятом тоже откладывали. Дважды. '
-        'Потом смену отменили, и вопрос снялся."}'
+        "Theo: they moved the meeting again, second time this week\n"
+        '{"speak": true, "text": "Back in the nineties they put it off, too. Twice. '
+        'Then the depot shut and that was that."}'
         "\n\n"
-        "Юля: всем хорошего дня\n"
+        "Jo: good morning everyone\n"
         '{"speak": false, "text": ""}'
     )
 
@@ -52,4 +52,4 @@ def test_speak_true_requires_non_empty_text() -> None:
 
 def test_speak_false_requires_empty_text() -> None:
     with pytest.raises(ValidationError):
-        FewShot(name="X", user="y", speak=False, text="что-то")
+        FewShot(name="X", user="y", speak=False, text="something")

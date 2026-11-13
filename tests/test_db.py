@@ -1702,8 +1702,8 @@ def _schema_sql_v1() -> str:
     schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
     # PR-8: the life_events/chat_memory blocks must match the Russian comments still in schema.sql
     life_events_block = (
-        '-- События жизни персонажа (/life, CLAUDE.md "события жизни") — память, не\n'
-        "-- переписка: retention.py её не трогает, чистит только /life rm.\n"
+        '-- События жизни персонажа (/life, CLAUDE.md "события жизни") — память, не\n'  # PR-8: schema.sql  # noqa: E501
+        "-- переписка: retention.py её не трогает, чистит только /life rm.\n"  # PR-8: schema.sql  # noqa: E501
         "CREATE TABLE life_events (\n"
         "    id INTEGER PRIMARY KEY,\n"
         "    text TEXT NOT NULL,\n"
@@ -1745,7 +1745,7 @@ def _schema_sql_v4() -> str:
     for the 4 -> 5 migration test."""
     schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
     start = schema_sql.index(
-        "-- Шутки чата и истории людей"
+        "-- Шутки чата и истории людей"  # PR-8: schema.sql
     )  # PR-8: schema.sql comments are still Russian
     end = schema_sql.index("CREATE INDEX idx_messages_chat_created")
     old_schema_sql = schema_sql[:start] + schema_sql[end:]
@@ -1780,14 +1780,14 @@ def _strip_self_facts(schema_sql: str) -> str:
 def _strip_chat_memory(schema_sql: str) -> str:
     # PR-8: must match the Russian comments still in schema.sql
     chat_memory_block = (
-        '-- Долгая память чата (CLAUDE.md, "долгая память чата") — пересказ прошедших\n'
-        "-- разговоров по периодам. Живёт дольше самих сообщений: retention.py чистит её\n"
-        "-- по своему сроку (behaviour.chat_memory.keep_days), а не по message_retention_days.\n"
+        '-- Долгая память чата (CLAUDE.md, "долгая память чата") — пересказ прошедших\n'  # PR-8: schema.sql  # noqa: E501
+        "-- разговоров по периодам. Живёт дольше самих сообщений: retention.py чистит её\n"  # PR-8: schema.sql  # noqa: E501
+        "-- по своему сроку (behaviour.chat_memory.keep_days), а не по message_retention_days.\n"  # PR-8: schema.sql  # noqa: E501
         "CREATE TABLE chat_memory (\n"
         "    id INTEGER PRIMARY KEY,\n"
-        "    period_start INTEGER NOT NULL,   -- unix, включительно\n"
-        "    period_end INTEGER NOT NULL,     -- unix, исключительно\n"
-        "    text TEXT NOT NULL,              -- пересказ, несколько строк\n"
+        "    period_start INTEGER NOT NULL,   -- unix, включительно\n"  # PR-8: schema.sql  # noqa: E501
+        "    period_end INTEGER NOT NULL,     -- unix, исключительно\n"  # PR-8: schema.sql  # noqa: E501
+        "    text TEXT NOT NULL,              -- пересказ, несколько строк\n"  # PR-8: schema.sql  # noqa: E501
         "    created_at INTEGER NOT NULL\n"
         ");\n\n"
     )

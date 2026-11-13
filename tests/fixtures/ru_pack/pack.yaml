@@ -1,0 +1,9 @@
+format: 1
+name: ru_fixture
+language: ru
+ship:
+  - pack.yaml
+  - config.yaml
+  - fragments.yaml
+  - few_shot.yaml
+  - prompts/

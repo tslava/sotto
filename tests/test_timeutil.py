@@ -1,8 +1,8 @@
-"""Тесты для sotto.timeutil: in_window, day_key/week_key, seconds_until.
+"""Tests for sotto.timeutil: in_window, day_key/week_key, seconds_until.
 
-Всё время — unix seconds (int), таймзона — persona.timezone (Europe/Warsaw по дефолту,
-с летним/зимним переходом в 2026 году: 29 марта 01:00->03:00 UTC+1->+2,
-25 октября 03:00->02:00 UTC+2->+1).
+All times are unix seconds (int); the time zone is persona.timezone (Europe/Warsaw here, with
+the 2026 summer/winter switches: 29 March 01:00->03:00 UTC+1->+2, 25 October 03:00->02:00
+UTC+2->+1).
 """
 
 from datetime import datetime
@@ -44,7 +44,7 @@ def test_in_window_boundaries(
 
 
 THROUGH_MIDNIGHT_CASES = [
-    # окно ["23:00", "06:00") — через полночь
+    # window ["23:00", "06:00") crosses midnight
     ("late_evening_in", 23, 30, True),
     ("start_inclusive", 23, 0, True),
     ("early_morning_in", 3, 0, True),
@@ -71,32 +71,32 @@ def test_in_window_empty_window_always_false() -> None:
 
 
 def test_in_window_full_day_when_start_before_end_covers_whole_range() -> None:
-    # окно ["00:00", "23:59"] — почти весь день, проверяет что интерпретация "start<end" верна
+    # window ["00:00", "23:59"] is almost the whole day; checks the "start<end" reading
     window = ("00:00", "23:59")
     assert in_window(_ts(2026, 9, 10, 0, 0), TZ, window) is True
     assert in_window(_ts(2026, 9, 10, 23, 58), TZ, window) is True
     assert in_window(_ts(2026, 9, 10, 23, 59), TZ, window) is False
 
 
-# --- day_key через переход на летнее/зимнее время -----------------------------------------
+# --- day_key across the summer/winter switch -----------------------------------------
 
 
 def test_day_key_stable_across_spring_forward() -> None:
-    # 2026-03-29: в Europe/Warsaw 02:00 CET перескакивает на 03:00 CEST (час "пропадает"),
-    # но календарный день не должен ломаться в обе стороны перехода.
-    before = _ts(2026, 3, 29, 1, 30)  # 01:30 CET, ещё до перехода
-    after = _ts(2026, 3, 29, 1, 30) + 3600  # +1 час astronomического времени -> 03:30 CEST
+    # 2026-03-29: in Europe/Warsaw 02:00 CET jumps to 03:00 CEST (an hour "disappears"),
+    # but the calendar day must not break on either side of the switch.
+    before = _ts(2026, 3, 29, 1, 30)  # 01:30 CET, before the switch
+    after = _ts(2026, 3, 29, 1, 30) + 3600  # +1 hour of real time -> 03:30 CEST
     assert day_key("ambient_count", before, TZ) == "ambient_count:2026-03-29"
     assert day_key("ambient_count", after, TZ) == "ambient_count:2026-03-29"
 
 
 def test_day_key_stable_across_fall_back() -> None:
-    # 2026-10-25: 03:00 CEST откатывается на 02:00 CET, час 02:00-03:00 существует дважды.
-    # Оба прохода этого часа должны давать один и тот же ключ дня.
+    # 2026-10-25: 03:00 CEST falls back to 02:00 CET, the hour 02:00-03:00 exists twice.
+    # Both passes through that hour must give the same day key.
     utc_zone = ZoneInfo("UTC")
-    first_pass = _ts(2026, 10, 25, 0, 30, tz=utc_zone)  # 02:30 CEST (первый проход)
-    second_pass = first_pass + 3600  # 02:30 CET (второй проход, после перевода стрелок)
-    third_pass = first_pass + 2 * 3600  # 03:30 CET, уже точно после перехода
+    first_pass = _ts(2026, 10, 25, 0, 30, tz=utc_zone)  # 02:30 CEST (first pass)
+    second_pass = first_pass + 3600  # 02:30 CET (second pass, after the clocks went back)
+    third_pass = first_pass + 2 * 3600  # 03:30 CET, definitely after the switch
 
     key_first = day_key("ambient_count", first_pass, TZ)
     key_second = day_key("ambient_count", second_pass, TZ)
@@ -108,19 +108,19 @@ def test_day_key_stable_across_fall_back() -> None:
 
 
 def test_day_key_changes_at_local_midnight_not_utc_midnight() -> None:
-    # 23:30 в Варшаве (UTC+2 летом) — ещё локально тот же день, хотя в UTC уже за полночь.
+    # 23:30 local time (UTC+2 in summer) is still the same local day, though past midnight in UTC.
     ts = _ts(2026, 9, 10, 23, 30)
     assert day_key("x", ts, TZ) == "x:2026-09-10"
     ts_next = _ts(2026, 9, 11, 0, 30)
     assert day_key("x", ts_next, TZ) == "x:2026-09-11"
 
 
-# --- week_key на границе года (ISO week) ------------------------------------------------
+# --- week_key at the year boundary (ISO week) ------------------------------------------------
 
 
 def test_week_key_year_boundary_iso_week_53() -> None:
-    # По ISO 8601 неделя может "перетекать" в следующий календарный год:
-    # 2026-12-31 (четверг) и 2027-01-01 (пятница) обе принадлежат ISO-неделе 2026-W53.
+    # By ISO 8601 a week may "spill" into the next calendar year:
+    # 2026-12-31 (Thursday) and 2027-01-01 (Friday) both belong to ISO week 2026-W53.
     dec31 = _ts(2026, 12, 31, 12, 0)
     jan1 = _ts(2027, 1, 1, 12, 0)
     assert week_key("spontaneous", dec31, TZ) == "spontaneous:2026-W53"
@@ -128,7 +128,7 @@ def test_week_key_year_boundary_iso_week_53() -> None:
 
 
 def test_week_key_ordinary_week() -> None:
-    ts = _ts(2026, 9, 10, 12, 0)  # четверг
+    ts = _ts(2026, 9, 10, 12, 0)  # Thursday
     assert week_key("spontaneous", ts, TZ) == "spontaneous:2026-W37"
 
 
@@ -142,7 +142,7 @@ def test_seconds_until_later_today() -> None:
 
 def test_seconds_until_already_passed_rolls_to_tomorrow() -> None:
     now_ts = _ts(2026, 9, 10, 10, 0)
-    # 08:00 сегодня уже прошло -> ждём 08:00 завтра: 14 часов до полуночи + 8 часов = 22 часа
+    # 08:00 has passed today -> wait for 08:00 tomorrow: 14 hours to midnight + 8 hours = 22
     assert seconds_until(now_ts, TZ, "08:00") == 22 * 3600
 
 

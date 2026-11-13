@@ -137,22 +137,6 @@ def test_render_alert_defaults_to_the_english_catalog() -> None:
     ]
 
 
-# Stays Russian: pins that a pack locale overrides the engine catalog (legacy ru locale).
-async def test_alert_text_comes_from_the_persona_locale(legacy_pack: Persona) -> None:
-    bot, store = FakeBot(), FakeStore()
-    alerter = OwnerAlerter(
-        bot=bot,
-        db=store,
-        admin_user_id=ADMIN_ID,
-        cfg_getter=Config,
-        clock=lambda: NOW,
-        persona=legacy_pack,
-    )
-    await alerter.provider_refused(status=402, model="m", message="no credits")
-    await asyncio.sleep(0.05)
-    assert "кончились кредиты" in bot.sent[0][1]
-
-
 async def test_refusal_sends_once_per_interval_per_status() -> None:
     bot, store, clock = FakeBot(), FakeStore(), Clock()
     alerter = _alerter(bot, store, clock=clock)

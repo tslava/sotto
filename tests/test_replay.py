@@ -17,12 +17,10 @@ import pytest
 
 from sotto import replay as replay_module
 from sotto.db import Database
-from sotto.fragments import load_valid_fragments
 from sotto.gate_types import GateMessage, StateChange, Trigger
 from sotto.replay import ReplayState, run_replay
+from tests.demo import DEMO_FRAG
 from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
 
 TZ = "Europe/London"
 
@@ -350,9 +348,10 @@ def test_run_replay_generate_prints_reply_and_verdict(
     assert "gus hello how are you" in report
     assert "Happens, pal." in report
     assert "| pass" in report
-    assert (
-        "вызовов=1, отправлено бы=1" in report
-    )  # PR-8: hardcoded Russian label in src/sotto/replay.py
+    calls_line = (
+        "вызовов=1, отправлено бы=1"  # PR-8: hardcoded Russian label in src/sotto/replay.py
+    )
+    assert calls_line in report
     assert "потрачено $=0.0007" in report  # PR-8: hardcoded Russian label in src/sotto/replay.py
 
 
@@ -485,9 +484,8 @@ def test_run_replay_generate_max_calls_counts_real_network_calls(
 
     assert call_count <= 4
     assert "вызовов=" in report  # PR-8: hardcoded Russian label in src/sotto/replay.py
-    reported_calls = int(
-        report.split("вызовов=")[1].split(",")[0]
-    )  # PR-8: hardcoded Russian label in src/sotto/replay.py
+    calls_label = "вызовов="  # PR-8: hardcoded Russian label in src/sotto/replay.py
+    reported_calls = int(report.split(calls_label)[1].split(",")[0])
     assert reported_calls == call_count
     assert reported_calls <= 4
 

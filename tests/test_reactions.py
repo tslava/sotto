@@ -20,12 +20,9 @@ from aiogram.methods import SendMessage
 from aiogram.types import ReactionTypeEmoji
 from pydantic import ValidationError
 
-from sotto.config import load_config
 from sotto.config_models import TELEGRAM_REACTIONS, Config, ReactionsConfig
 from sotto.db import Database, MessageRow
-from sotto.fragments import load_valid_fragments
 from sotto.llm import LLMClient
-from sotto.persona import load_persona
 from sotto.reactions import (
     REACT_REASONS,
     REPLY_UNAVAILABLE,
@@ -39,14 +36,8 @@ from sotto.reactions import (
     react,
 )
 from sotto.timeutil import day_key
+from tests.demo import DEMO_FRAG, demo_config
 from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
-
-
-def demo_config() -> Config:
-    return load_config(load_persona(DEMO_PACK).config_layers())
-
 
 LOCAL = ZoneInfo("Europe/London")
 TZ = "Europe/London"

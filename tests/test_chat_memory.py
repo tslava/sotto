@@ -19,18 +19,12 @@ import httpx
 import pytest
 
 from sotto.chat_memory import ChatMemorizer, format_period, render_chat_memory
-from sotto.config import load_config
 from sotto.config_models import Config
 from sotto.db import ChatMemoryRow, Database
-from sotto.fragments import load_valid_fragments
-from sotto.lang import get_language
 from sotto.llm import LLMClient
 from sotto.patterns import Patterns
-from sotto.persona import load_persona
+from tests.demo import DEMO_FRAG, EN, demo_config
 from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
-EN = get_language("en")
 
 LOCAL = ZoneInfo("Europe/London")
 CHAT_ID = -100123
@@ -44,7 +38,7 @@ def _ts(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> int:
 
 
 def _config() -> Config:
-    cfg = load_config(load_persona(DEMO_PACK).config_layers())
+    cfg = demo_config()
     cfg.llm.main_model = "test/model"
     return cfg
 

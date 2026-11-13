@@ -19,10 +19,9 @@ from sotto.config_models import (
     ReplyDelayBucket,
 )
 from sotto.lang import default_config_layer
-from tests.packs import DEMO_PACK, LEGACY_PACK, RU
+from tests.packs import DEMO_PACK
 
 CONFIG_PATH = DEMO_PACK / "config.yaml"
-LEGACY_CONFIG_PATH = LEGACY_PACK / "config.yaml"
 
 
 def test_load_real_config_without_errors() -> None:
@@ -36,18 +35,6 @@ def test_load_real_config_without_errors() -> None:
     assert "Tesco" in cfg.filters.places_whitelist
 
 
-# Stays Russian: the legacy pack's config (tests/lang).
-def test_load_legacy_pack_config_without_errors() -> None:
-    cfg = load_config(LEGACY_CONFIG_PATH)
-
-    assert isinstance(cfg, Config)
-    assert cfg.persona.name == "Фёдор"
-    assert cfg.persona.display_name == "Отец Фёдор"
-    assert cfg.behaviour.daily_cap == 3
-    assert cfg.filters.shadow is True
-    assert "Lidl" in cfg.filters.places_whitelist
-
-
 def test_load_real_config_filters_pattern_lists() -> None:
     cfg = load_config(CONFIG_PATH)
 
@@ -57,24 +44,6 @@ def test_load_real_config_filters_pattern_lists() -> None:
     assert "certainly!" in cfg.filters.assistant_markers
     assert "The Lantern Room" in cfg.filters.known_places
     assert cfg.filters.polish_words == []
-
-
-# Stays Russian: the legacy pack's Russian pattern lists (tests/lang).
-def test_load_legacy_pack_filters_pattern_lists() -> None:
-    cfg = load_config(LEGACY_CONFIG_PATH)
-
-    # The generic marker lists live in the language module; the pack spells them out too.
-    for key, expected in RU.default_filters().items():
-        assert getattr(cfg.filters, key) == expected, key
-
-    assert r"\bсектор газа" in cfg.filters.topic_stop
-    assert r"\bпис\b" in cfg.filters.topic_stop
-    assert r"\b\d{1,2}[:.]\d{2}\b" in cfg.filters.logistics
-    assert "конечно!" in cfg.filters.assistant_markers
-    assert "ZORZA" in cfg.filters.known_places
-    assert "Klubokawiarnia ZORZA" in cfg.filters.known_places
-    assert "działka" in cfg.filters.polish_words
-    assert "urząd" in cfg.filters.polish_words
 
 
 def test_load_real_config_motifs_and_story_defaults_match() -> None:
@@ -91,15 +60,6 @@ def test_load_real_config_motifs_and_story_defaults_match() -> None:
     assert "clocks" in cfg.filters.motifs
     assert r"\bthe shed\b" in cfg.filters.motifs["shed"]
     assert r"\bI remember\b" in cfg.filters.story_markers
-
-
-# Stays Russian: the legacy pack's Russian motifs and story markers (tests/lang).
-def test_legacy_pack_motifs_and_story_markers() -> None:
-    cfg = load_config(LEGACY_CONFIG_PATH)
-
-    assert "жена" in cfg.filters.motifs
-    assert r"\bгараж" in cfg.filters.motifs["гараж"]
-    assert r"\bкак-то раз\b" in cfg.filters.story_markers
 
 
 def test_invalid_regex_in_motifs_raises_with_pattern_and_label() -> None:
@@ -134,15 +94,6 @@ def test_load_real_config_carries_the_places_queries() -> None:
     assert PlacesConfig().queries == []
     assert "pub Kettle Hill Brindlemoor" in cfg.places.queries
     assert "restaurant Fenwick Green" in cfg.places.queries
-
-
-# Stays Russian-pack data: the legacy pack's own place queries (tests/lang).
-def test_load_legacy_pack_carries_the_places_queries() -> None:
-    cfg = load_config(LEGACY_CONFIG_PATH)
-
-    assert PlacesConfig().queries == []
-    assert "restauracja Bórnik" in cfg.places.queries
-    assert "Leszczykowo bar" in cfg.places.queries
 
 
 def test_config_builds_with_defaults_without_yaml() -> None:
@@ -542,7 +493,7 @@ def test_a_layer_file_must_be_a_mapping(tmp_path: Path) -> None:
         load_config([path])
 
 
-def test_the_legacy_pack_config_is_identical_via_path_and_via_layers() -> None:
+def test_the_demo_pack_config_is_identical_via_path_and_via_layers() -> None:
     assert load_config(CONFIG_PATH) == load_config([CONFIG_PATH])
 
 
@@ -581,21 +532,6 @@ def test_bare_config_has_neutral_persona_and_empty_pack_lists() -> None:
     assert cfg.filters.enforce_stages == ["dedup", "style"]
 
 
-# Stays Russian: the Russian language layer (tests/lang).
-def test_language_layer_sits_below_the_pack_config(tmp_path: Path) -> None:
-    layer = default_config_layer(RU)
-    pack = tmp_path / "config.yaml"
-    pack.write_text("filters:\n  model_talk: [only-this]\n", encoding="utf-8")
-
-    cfg = load_config([layer, pack])
-
-    # a key the pack defines replaces the language's list (no merge) ...
-    assert cfg.filters.model_talk == ["only-this"]
-    # ... and a key it omits falls back to the language
-    assert cfg.filters.injection_markers == RU.default_filters()["injection_markers"]
-    assert cfg.filters.topic_stop == []
-
-
 def test_persona_layers_are_language_defaults_then_the_pack_file() -> None:
     from sotto.persona import load_persona
 
@@ -623,7 +559,7 @@ def test_engine_defaults_carry_no_persona_specific_values() -> None:
     import re
 
     dumped = json.dumps(Config().model_dump(mode="json"), ensure_ascii=False)
-    assert not re.search("[А-Яа-яЁё]", dumped)
+    assert not re.search("[\u0400-\u04ff]", dumped)
     cfg = Config()
     assert cfg.persona.district == ""
     assert cfg.places.queries == []

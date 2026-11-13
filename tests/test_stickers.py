@@ -15,7 +15,6 @@ import pytest
 import yaml
 
 from sotto.config_models import Config, StickersConfig
-from sotto.fragments import load_valid_fragments
 from sotto.llm import LLMClient
 from sotto.stickers import (
     Sticker,
@@ -27,9 +26,9 @@ from sotto.stickers import (
     render_sticker_menu,
     sticker_allowed,
 )
+from tests.demo import DEMO_FRAG
 from tests.packs import DEMO_PACK
 
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
 STICKER_PROMPT_PATH = DEMO_PACK / "prompts/sticker.txt"
 NOW = 1_768_003_200
 

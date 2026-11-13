@@ -17,12 +17,9 @@ import pytest
 from sotto.config_models import Config
 from sotto.db import SelfFactRow
 from sotto.diary import DiaryExtractor, render_diary
-from sotto.fragments import load_valid_fragments
 from sotto.llm import LLMClient
 from sotto.timeutil import day_key
-from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
+from tests.demo import DEMO_FRAG
 
 LOCAL = ZoneInfo("Europe/London")
 TZ = "Europe/London"

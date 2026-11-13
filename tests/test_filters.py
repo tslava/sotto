@@ -1,22 +1,11 @@
-"""Тесты выходного фильтра (этап 4): слои 1-2 и сборка в check_output.
+"""Output filter (layers 1-2 and check_output assembly) on the English demo pack.
 
-Табличные тесты через pytest.mark.parametrize. Основная таблица прогоняет вход
-через check_output (без судьи) и проверяет либо полный pass, либо что ожидаемая
-причина есть среди verdict.reasons (кейсы, где по конструкции текста может
-сработать больше одной причины сразу — фильтр это допускает, реального вреда
-персонажу от лишнего срабатывания нет, ретраев всё равно нет).
-
-Таблица собирает кейсы из приёмки этапа 4 (PLAN.md, "таблица тестов по голосу")
-и часть таблицы из 16 инъекций CLAUDE.md, которая проверяется именно на уровне
-выходного фильтра (эхо, утечка промпта, маркеры модели, стоп-лист на выходе,
-телефон, латиница) — остальные строки этой таблицы (санитизация имени, гейт 5a,
-подстановка слотов, разделители, судья) проверяются в sanitize/gate/prompt/judge,
-не здесь.
+A table drives the text through ``check_output`` (no judge) and expects either a full pass or
+a given reason among ``verdict.reasons``. The Russian-specific checks (foreign-script venue and
+Latin filters, Cyrillic folding, Russian lists) live in ``tests/lang/test_ru_filters.py``.
 """
 
 from __future__ import annotations
-
-from dataclasses import replace
 
 import pytest
 
@@ -24,14 +13,9 @@ from sotto.config_models import Config
 from sotto.db import MessageRow
 from sotto.few_shot import load_few_shot
 from sotto.filters import FilterContext, FilterVerdict, check_output
-from sotto.lang import get_language
-from tests.packs import LEGACY_FRAG, LEGACY_PACK, RU, legacy_config, parse_ru_vocab, ru_vocab
+from tests.demo import DEMO_FRAG, DEMO_PACK, EN, demo_config
 
-SYSTEM_PROMPT = (LEGACY_PACK / "prompts" / "system.txt").read_text(encoding="utf-8")
-
-# --------------------------------------------------------------------------- #
-# Хелперы
-# --------------------------------------------------------------------------- #
+SYSTEM_PROMPT = (DEMO_PACK / "prompts" / "system.txt").read_text(encoding="utf-8")
 
 
 def _row(display_name: str, text: str, *, is_bot: bool = False, created_at: int = 1) -> MessageRow:
@@ -62,8 +46,8 @@ def _ctx(
     now: int = 0,
 ) -> FilterContext:
     return FilterContext(
-        lang=RU,
-        cfg=cfg if cfg is not None else legacy_config(),
+        lang=EN,
+        cfg=cfg if cfg is not None else demo_config(),
         recent_replies=recent_replies or [],
         context_rows=context_rows or [],
         places_names=places_names or [],
@@ -73,361 +57,218 @@ def _ctx(
         system_prompt=system_prompt,
         trigger_text=trigger_text,
         now=now,
-        frag=LEGACY_FRAG,
+        frag=DEMO_FRAG,
     )
 
 
 _DEFAULT_CTX = _ctx()
 
-_PROMPT_WITH_SLOT = (
-    "Ты живёшь своей жизнью параллельно и иногда сообщаешь об этом чату. Примеры: {few_shot}"
-)
-
-# --------------------------------------------------------------------------- #
-# Основная таблица: (id, text, ctx, expected_reason_or_None)
-#
-# expected_reason_or_None:
-#   None  -> ожидается полный pass (ok=True, reason="pass", reasons=())
-#   str   -> ожидается ok=False и эта причина среди verdict.reasons
-# --------------------------------------------------------------------------- #
-
+# (id, text, ctx, expected_reason_or_None): None means a full pass, a string means ok=False
+# with that reason among verdict.reasons.
 CASES: list[tuple[str, str, FilterContext, str | None]] = [
-    # --- голос: длина / разметка / эмодзи / предложения (приёмка, таблица голоса) ---
-    ("voice_pass_pivo", "Кофе хороший, я не спорю.", _DEFAULT_CTX, None),
-    # regex:sentences: фрагмент между [.!?…] считается предложением только от 3 слов
-    # (CLAUDE.md, "Интерфейсы этапа 4") — рубленая байка из коротких фраз проходит,
-    # лекция из трёх полноценных предложений — нет.
+    # --- voice: length / markup / emoji / sentences ---
+    ("voice_pass_coffee", "The coffee is fine, I will not argue.", _DEFAULT_CTX, None),
     (
-        "sentences_three_long_cut",
-        "Сегодня ездил в магазин рано утром. Купил хлеба и молока там. "
-        "Вечером буду жарить яичницу.",
+        "sentences_three_full_cut",
+        "I drove to the shop early this morning. I bought bread and milk there. "
+        "In the evening I will fry some eggs.",
         _DEFAULT_CTX,
         "regex:sentences",
     ),
+    # a fragment counts as a sentence from 3 words: a chopped tale passes
     (
-        "sentences_short_fragments_pass",
-        "У нас в девяносто девятом тоже откладывали. Дважды. "
-        "Потом смену отменили, и вопрос снялся.",
+        "sentences_chopped_tale_pass",
+        "Back in the nineties they put it off, too. Twice. Then the depot shut and that was that.",
         _DEFAULT_CTX,
         None,
     ),
-    ("sentences_two_short_pass", "Бот, бот. Чай будешь?", _DEFAULT_CTX, None),
+    ("sentences_two_short_pass", "Right, right. Tea then?", _DEFAULT_CTX, None),
     (
-        "markdown_list",
-        "Вот план:\n- сходи в магазин\n- купи хлеб",
+        "markdown_bullet",
+        "Here is the plan:\n- go to the shop\n- buy bread",
         _DEFAULT_CTX,
         "regex:markdown",
     ),
+    ("markdown_numbered", "1. First thing\n2. Second thing", _DEFAULT_CTX, "regex:markdown"),
+    ("markdown_bold", "This is **really** important, trust me.", _DEFAULT_CTX, "regex:markdown"),
+    ("markdown_header", "# Important: do not open the door.", _DEFAULT_CTX, "regex:markdown"),
+    ("markdown_codeblock", "```some code``` do not open it.", _DEFAULT_CTX, "regex:markdown"),
+    ("emoji", "Hello everyone today 🚀 fine.", _DEFAULT_CTX, "regex:emoji"),
+    ("length_301", "y" * 301, _DEFAULT_CTX, "regex:length"),
+    ("length_boundary_300_pass", "y" * 300, _DEFAULT_CTX, None),
+    # --- allowed emoji ---
+    ("emoji_allowed_end_pass", "It happens 🙂", _DEFAULT_CTX, None),
+    ("emoji_allowed_after_dot_pass", "It happens. 👍", _DEFAULT_CTX, None),
+    ("emoji_allowed_thumbsup_skin_tone_pass", "It happens 👍🏻", _DEFAULT_CTX, None),
+    ("emoji_count_two_cut", "It happens 🙂🙂", _DEFAULT_CTX, "style:emoji_count"),
+    ("emoji_start_pass", "🙂 It happens", _DEFAULT_CTX, None),
+    ("emoji_disallowed_cut", "It happens 🚀", _DEFAULT_CTX, "regex:emoji"),
     (
-        "markdown_numbered",
-        "1. Первое дело\n2. Второе дело",
-        _DEFAULT_CTX,
-        "regex:markdown",
-    ),
-    ("markdown_bold", "Это **очень** важно поверь мне.", _DEFAULT_CTX, "regex:markdown"),
-    ("markdown_header", "# Важно: не открывай дверь чужим.", _DEFAULT_CTX, "regex:markdown"),
-    ("markdown_codeblock", "```тут код``` не открывай.", _DEFAULT_CTX, "regex:markdown"),
-    # 🚀 вне filters.allowed_emoji -> по-прежнему режется, даже не в конце реплики
-    ("emoji", "Привет всем сегодня 🚀 хорошо.", _DEFAULT_CTX, "regex:emoji"),
-    ("length_301", "ы" * 301, _DEFAULT_CTX, "regex:length"),
-    ("length_boundary_300_pass", "ы" * 300, _DEFAULT_CTX, None),
-    # --- разрешённые эмодзи (решение владельца, CHARACTER.md раздел 3/4) ---
-    ("emoji_allowed_end_pass", "Бывает 🙂", _DEFAULT_CTX, None),
-    ("emoji_allowed_after_dot_pass", "Бывает. 💩", _DEFAULT_CTX, None),
-    ("emoji_allowed_thumbsup_skin_tone_pass", "Бывает 👍🏻", _DEFAULT_CTX, None),
-    ("emoji_count_two_cut", "Бывает 🙂🙂", _DEFAULT_CTX, "style:emoji_count"),
-    # style:emoji_position удалено (владелец: эмодзи не обязано быть в конце,
-    # postprocess.py правит частоту/количество до фильтра, а не позицию).
-    ("emoji_start_pass", "🙂 Бывает", _DEFAULT_CTX, None),
-    ("emoji_disallowed_cut", "Бывает 🚀", _DEFAULT_CTX, "regex:emoji"),
-    (
-        "emoji_freq_within_window_cut",
-        "Бывает 🙂",
-        _ctx(recent_replies=["Все по домам.", "Бывает.", "Ладно.", "Зря 😂"]),
+        "emoji_freq_recent_emoji_cut",
+        "It happens 🙂",
+        _ctx(recent_replies=["Everyone went home.", "It happens.", "Fine.", "Pity 😂"]),
         "style:emoji_freq",
     ),
     (
-        "emoji_freq_fifth_back_pass",
-        "Бывает 🙂",
+        "emoji_freq_old_emoji_pass",
+        "It happens 🙂",
         _ctx(
             recent_replies=[
-                "Зря 😂",
-                "Все по домам разошлись.",
-                "Ладно, я в гараже.",
-                "Купил торф для рассады.",
-                "Спокойной ночи всем.",
+                "Pity 😂",
+                "Everyone went home.",
+                "Fine, I am in the shed.",
+                "Bought peat for the seedlings.",
+                "Good night all.",
             ]
         ),
         None,
     ),
-    ("emoji_none_no_style_triggers", "Бывает, с кем не случается.", _DEFAULT_CTX, None),
-    # --- начинается с имени ---
+    ("emoji_none_no_style_triggers", "It happens, to everyone.", _DEFAULT_CTX, None),
+    # --- starts with a name ---
     (
-        "starts_name_participant",
-        "Гена, ты не прав.",
-        _ctx(participant_names=["Гена"]),
+        "starts_name_participant_cut",
+        "Dana, you are wrong.",
+        _ctx(participant_names=["Dana"]),
         "regex:starts_name",
     ),
     (
-        "starts_name_bot",
-        "Федя, ты как обычно опоздал.",
-        _ctx(bot_names=["Федя"]),
+        "starts_name_bot_name_cut",
+        "Gus, you are late as usual.",
+        _ctx(bot_names=["Gus"]),
         "regex:starts_name",
     ),
     (
-        "starts_name_pass",
-        "Ну ты даёшь, вот это да.",
-        _ctx(participant_names=["Гена"]),
+        "starts_name_not_first_word_pass",
+        "Well you do go on, that is something.",
+        _ctx(participant_names=["Dana"]),
         None,
     ),
-    # --- телефон ---
-    ("phone_with_plus", "Вот его номер +48 512 345 678, звони давай.", _DEFAULT_CTX, "regex:phone"),
+    # --- phone ---
     (
-        "phone_no_plus",
-        "Возьми 5123456789, запиши куда-то.",
+        "phone_with_plus",
+        "Here is his number +44 7700 900 123, go ahead and call.",
         _DEFAULT_CTX,
         "regex:phone",
     ),
-    ("phone_pass_year", "Было это в 2020 году, ещё до переезда.", _DEFAULT_CTX, None),
-    # --- выдуманные заведения ---
-    ("venue_bar_nowy", "Сходите в Bar Nowy сегодня вечером.", _DEFAULT_CTX, "regex:venue"),
+    ("phone_pass_year", "That was in 2020, before the move.", _DEFAULT_CTX, None),
+    # --- topic stop list on output ---
     (
-        "venue_zorza_whitelisted",
-        "Сходите в ZORZA сегодня.",
-        _ctx(places_names=["ZORZA"]),
-        None,
-    ),
-    ("venue_lidl_whitelist", "Заходил в Lidl за хлебом.", _DEFAULT_CTX, None),
-    ("venue_olx_whitelist", "Продал колёса на OLX вчера.", _DEFAULT_CTX, None),
-    (
-        "venue_dzialka_lowercase_pass",
-        "На działka был весь день, помидоры зреют.",
-        _DEFAULT_CTX,
-        None,
-    ),
-    # --- known_places / polish_words (CLAUDE.md, правки этапа 4) ---
-    (
-        "venue_known_place_zorza_empty_places_names_pass",
-        "Сходите в ZORZA на Рожицах.",
-        _DEFAULT_CTX,  # places_names пуст — ZORZA из filters.known_places
-        None,
-    ),
-    (
-        "venue_polish_word_dzialka_capitalized_pass",
-        "Działka заросла совсем.",
-        _DEFAULT_CTX,
-        None,
-    ),
-    (
-        "venue_polish_word_urzad_capitalized_pass",
-        "Ходили в Urząd с соседом.",
-        _DEFAULT_CTX,
-        None,
-    ),
-    (
-        "latin_polish_words_two_in_row_pass",
-        "Мне przegląd zrobiony, машина в порядке.",
-        _DEFAULT_CTX,
-        None,
-    ),
-    (
-        "venue_unknown_bar_still_cut",
-        "Bar Nowy — новое место, я туда ни ногой.",
-        _DEFAULT_CTX,
-        "regex:venue",
-    ),
-    # --- латиница ---
-    ("latin_english", "Sure, let me help with that.", _DEFAULT_CTX, "regex:latin"),
-    ("latin_single_word_pass", "Заказал item вчера, всё пришло.", _DEFAULT_CTX, None),
-    # --- стоп-лист тем на выходе ---
-    (
-        "topic_output_russia",
-        "Ладно проехали, но вот в России сейчас всё сложно.",
+        "topic_stop_cut",
+        "All right, moving on, but the elections are a mess.",
         _DEFAULT_CTX,
         "regex:topic",
     ),
-    ("topic_pass_torf", "Купил торф для рассады на выходных.", _DEFAULT_CTX, None),
-    # --- замьюченные ---
+    ("topic_pass_peat", "Bought peat for the seedlings at the weekend.", _DEFAULT_CTX, None),
+    # --- muted ---
     (
-        "muted_name",
-        "Гена опять всех подначивает, вот умора.",
-        _ctx(muted_names=["Гена"]),
+        "muted_name_cut",
+        "Theo is winding everyone up again, what a laugh.",
+        _ctx(muted_names=["Theo"]),
         "regex:muted_name",
     ),
     (
-        "muted_name_pass",
-        "Все разошлись по домам довольно быстро.",
-        _ctx(muted_names=["Гена"]),
+        "muted_name_absent_pass",
+        "Everyone went home rather quickly.",
+        _ctx(muted_names=["Theo"]),
         None,
     ),
-    # --- эхо ---
+    # --- echo ---
     (
-        "echo_4_words",
-        "Я знаю нормального электрика в городе, но сам не звонил.",
-        _ctx(context_rows=[_row("Юля", "подскажите нормального электрика в городе")]),
+        "echo_four_words_cut",
+        "I know a decent electrician in town, but I never called him.",
+        _ctx(context_rows=[_row("Jo", "can anyone recommend a decent electrician in town")]),
         "regex:echo",
     ),
     (
-        "echo_3_words_pass",
-        "Я тоже нормального электрика в поисках, но не нашёл.",
-        _ctx(context_rows=[_row("Юля", "нормального электрика в городе ищу")]),
+        "echo_three_words_pass",
+        "I am also looking for a decent electrician, no luck.",
+        _ctx(context_rows=[_row("Jo", "a decent electrician in town wanted")]),
         None,
     ),
-    # --- утечка промпта: только инструктивная часть ("- ..." и строки с "JSON"),
-    # не биография (CLAUDE.md, правки этапа 4) ---
+    # --- model talk, assistant markers, grumpy ---
     (
-        "prompt_leak_bio_paraphrase_pass",
-        # Перефраз биографии ("Пьёшь мало, одно пиво за вечер...", prompts/system.txt) —
-        # не булет и не про JSON, поэтому не считается утечкой, даже пересказанная
-        # почти дословно.
-        "Пьёшь мало, одно пиво за вечер, и хватит.",
-        _ctx(system_prompt=SYSTEM_PROMPT),
-        None,
-    ),
-    (
-        "prompt_leak_bullet_six_words_cut",
-        # 6 слов подряд из булета "- Не даёшь советов по делу и не объясняешь...".
-        "Не даёшь советов по делу и точка.",
-        _ctx(system_prompt=SYSTEM_PROMPT),
-        "regex:prompt_leak",
-    ),
-    (
-        "prompt_leak_synthetic_slot_pass",
-        "Ну и ладно, у меня свои дела сегодня.",
-        _ctx(system_prompt=_PROMPT_WITH_SLOT),
-        None,
-    ),
-    # --- маркеры модели ---
-    (
-        "model_talk",
-        "Я тебе отвечаю как языковая модель, без затей.",
+        "model_talk_cut",
+        "I am answering you as a language model, no frills.",
         _DEFAULT_CTX,
         "regex:model_talk",
     ),
-    ("model_talk_pass", "Я тебе отвечу, но не сегодня.", _DEFAULT_CTX, None),
-    # --- дубликаты (слой 2, Жаккар) ---
+    ("model_talk_pass", "I will answer you, but not today.", _DEFAULT_CTX, None),
     (
-        "jaccard_duplicate",
-        "Знаю, он по телефону не разговаривает, его ловить надо, такой персонаж.",
+        "style_assistant",
+        "Certainly! You will sort it out yourself.",
+        _DEFAULT_CTX,
+        "style:assistant",
+    ),
+    ("style_assistant_pass", "I would not, but it is your call.", _DEFAULT_CTX, None),
+    (
+        "style_grumpy_told_you",
+        "It was on my sister's side. I told you that already.",
+        _DEFAULT_CTX,
+        "style:grumpy",
+    ),
+    (
+        "style_grumpy_nobody_cares",
+        "I will not name the place, nobody cares anyway",
+        _DEFAULT_CTX,
+        "style:grumpy",
+    ),
+    (
+        "style_grumpy_warm_pass",
+        "Married thirty years. My sister is still surprised.",
+        _DEFAULT_CTX,
+        None,
+    ),
+    # --- dedup, layer 2 (Jaccard) ---
+    (
+        "dedup_jaccard_cut",
+        "Right, he does not talk on the phone, you have to catch him, that sort of character.",
         _ctx(
             recent_replies=[
-                "Знаю. Он по телефону не разговаривает, его ловить надо, такой человек."
+                "Right. He does not talk on the phone, you have to catch him, that sort of man."
             ]
         ),
         "dedup:jaccard",
     ),
     (
-        "jaccard_low_similarity_pass",
-        "Даже не знаю, что сказать, но человек он в целом неплохой.",
+        "dedup_jaccard_different_pass",
+        "I could not say, but he is a decent sort on the whole.",
         _ctx(
             recent_replies=[
-                "Знаю. Он по телефону не разговаривает, его ловить надо, такой человек."
+                "Right. He does not talk on the phone, you have to catch him, that sort of man."
             ]
         ),
         None,
     ),
+    ("dedup_exact_short_cut", "It happens.", _ctx(recent_replies=["It happens."]), "dedup:jaccard"),
+    ("dedup_short_different_pass", "Pity.", _ctx(recent_replies=["It happens."]), None),
+    # --- self echo ---
     (
-        "jaccard_exact_short_duplicate",
-        "Бывает.",
-        _ctx(recent_replies=["Бывает."]),
-        "dedup:jaccard",
-    ),
-    (
-        "jaccard_short_different_pass",
-        "Зря.",
-        _ctx(recent_replies=["Бывает."]),
-        None,
-    ),
-    # --- частота польского (слой 2) ---
-    (
-        "polish_freq_rule_b",
-        "Ездил на przegląd машины, всё нормально.",
-        _ctx(
-            recent_replies=[
-                "Все по домам разошлись.",
-                "Бывает.",
-                "На działka был, помидоры пошли.",
-                "Ладно, я в гараже.",
-            ]
-        ),
-        "dedup:polish_freq",
-    ),
-    (
-        "polish_freq_fifth_back_pass",
-        "Ездил на przegląd машины, всё нормально.",
-        _ctx(
-            recent_replies=[
-                "На działka был, помидоры пошли.",
-                "Все по домам разошлись.",
-                "Бывает.",
-                "Ладно, я в гараже.",
-                "Спокойной ночи всем.",
-            ]
-        ),
-        None,
-    ),
-    # --- самоповтор байки (слой 2, dedup:self_echo, CLAUDE.md правки этапа 4) ---
-    (
-        "self_echo_reworded_anekdote_cut",
-        "я его дома пью, одну бутылку",
-        _ctx(recent_replies=["пью одно пиво за вечер, дома, одну бутылку"]),
+        "self_echo_repeated_gram_cut",
+        "went fishing early yesterday morning",
+        _ctx(recent_replies=["went fishing early yesterday morning too"]),
         "dedup:self_echo",
     ),
     (
-        "self_echo_stopwords_only_pass",
-        "И не то что я против, просто устал.",
-        _ctx(recent_replies=["Ну и не то что тут скажешь."]),
+        "self_echo_stopwords_pass",
+        "It is not that, so I said.",
+        _ctx(recent_replies=["Yes, it is not that, no."]),
         None,
     ),
+    # --- question twice, exclaim ---
     (
-        "self_echo_three_common_words_pass",
-        "рыбу ловил утром вчера",
-        _ctx(recent_replies=["рыбу ловил утром сегодня"]),
-        None,
-    ),
-    # --- маркеры ассистента и стиль ---
-    ("style_assistant", "Конечно! Дальше сам разберёшься.", _DEFAULT_CTX, "style:assistant"),
-    ("style_assistant_pass", "Не советую, но дело твое.", _DEFAULT_CTX, None),
-    # --- маркеры сухости/раздражения (style:grumpy, CHARACTER.md раздел 3, warm-tone) ---
-    (
-        "style_grumpy_ya_zhe_napisal",
-        "На жене. Тридцать лет уже, я же написал.",
-        _DEFAULT_CTX,
-        "style:grumpy",
-    ),
-    (
-        "style_grumpy_nikomu_ne_interesno",
-        "Название говорить не буду, никому не интересно",
-        _DEFAULT_CTX,
-        "style:grumpy",
-    ),
-    (
-        "style_grumpy_pass",
-        "Женат, тридцать лет. Жена до сих пор удивляется.",
-        _DEFAULT_CTX,
-        None,
-    ),
-    # --- пивные бренды из polish_words не режутся venue/latin (CHARACTER.md раздел 1/4) ---
-    (
-        "venue_lech_latin_polish_word_pass",
-        "Пью Lech, он подешевле.",
-        _DEFAULT_CTX,
-        None,
-    ),
-    (
-        "style_question_x2",
-        "А ты как думаешь?",
-        _ctx(recent_replies=["Ты серьёзно?"]),
+        "question_x2_cut",
+        "What do you think?",
+        _ctx(recent_replies=["Are you serious?"]),
         "style:question_x2",
     ),
     (
-        "style_question_x2_pass",
-        "А ты как думаешь?",
-        _ctx(recent_replies=["Бывает."]),
+        "question_after_statement_pass",
+        "What do you think?",
+        _ctx(recent_replies=["It happens."]),
         None,
     ),
-    ("style_exclaim", "Ну ты даёшь!! Вот это да.", _DEFAULT_CTX, "style:exclaim"),
-    ("style_exclaim_pass", "Ну и ладно!", _DEFAULT_CTX, None),
+    ("style_exclaim", "Well you do go on!! Fancy that.", _DEFAULT_CTX, "style:exclaim"),
+    ("style_exclaim_pass", "Oh well, never mind!", _DEFAULT_CTX, None),
 ]
 
 
@@ -444,23 +285,15 @@ async def test_check_output_table(
         assert verdict.reason == verdict.reasons[0]
 
 
-# --------------------------------------------------------------------------- #
-# reasons содержит все сработавшие причины сразу
-# --------------------------------------------------------------------------- #
-
-
 async def test_check_output_collects_all_matching_reasons() -> None:
-    # 🚀 вне filters.allowed_emoji -> regex:emoji по-прежнему срабатывает.
-    text = "- Сделай так\n- И вот так тоже 🚀"
+    text = "- Do it this way\n- And this way too 🚀"
     verdict = await check_output(text, _DEFAULT_CTX)
     assert verdict.ok is False
     assert verdict.reasons == ("regex:markdown", "regex:emoji")
     assert verdict.reason == "regex:markdown"
 
 
-# --------------------------------------------------------------------------- #
-# check_output + судья (слой 3)
-# --------------------------------------------------------------------------- #
+# --- the judge layer ---
 
 
 class _FakeJudge:
@@ -475,17 +308,16 @@ class _FakeJudge:
 
 async def test_judge_called_when_layers_clean() -> None:
     judge = _FakeJudge([])
-    verdict = await check_output("Кофе хороший, я не спорю.", _DEFAULT_CTX, judge=judge)
+    verdict = await check_output("The coffee is fine, I will not argue.", _DEFAULT_CTX, judge=judge)
     assert judge.called is True
     assert verdict.ok is True
 
 
 async def test_judge_not_called_when_dirty_and_shadow_false() -> None:
-    cfg = legacy_config()
+    cfg = demo_config()
     cfg.filters.shadow = False
-    ctx = _ctx(cfg=cfg)
     judge = _FakeJudge(["judge:risky"])
-    verdict = await check_output("ы" * 301, ctx, judge=judge)
+    verdict = await check_output("y" * 301, _ctx(cfg=cfg), judge=judge)
     assert judge.called is False
     assert verdict.ok is False
     assert verdict.reason == "regex:length"
@@ -493,34 +325,26 @@ async def test_judge_not_called_when_dirty_and_shadow_false() -> None:
 
 
 async def test_judge_called_and_reasons_added_when_dirty_and_shadow_true() -> None:
-    cfg = legacy_config()
+    cfg = demo_config()
     cfg.filters.shadow = True
-    ctx = _ctx(cfg=cfg)
     judge = _FakeJudge(["judge:risky"])
-    verdict = await check_output("ы" * 301, ctx, judge=judge)
+    verdict = await check_output("y" * 301, _ctx(cfg=cfg), judge=judge)
     assert judge.called is True
     assert verdict.ok is False
     assert verdict.reason == "regex:length"
     assert "judge:risky" in verdict.reasons
 
 
-# --------------------------------------------------------------------------- #
-# Обратная совместимость: старый 4-полевой вызов FilterContext (responder.py
-# пока собирает контекст только из cfg/recent_replies/context_rows/places_names,
-# остальные поля обновит другой агент вместе с responder.py).
-# --------------------------------------------------------------------------- #
-
-
-async def test_filter_context_accepts_legacy_four_field_call() -> None:
+async def test_filter_context_accepts_the_four_field_call() -> None:
     ctx = FilterContext(
-        cfg=legacy_config(),
+        cfg=demo_config(),
         recent_replies=[],
         context_rows=[],
         places_names=[],
-        frag=LEGACY_FRAG,
-        lang=RU,
+        frag=DEMO_FRAG,
+        lang=EN,
     )
-    verdict = await check_output("Кофе хороший, я не спорю.", ctx)
+    verdict = await check_output("The coffee is fine, I will not argue.", ctx)
     assert verdict.ok is True
     assert ctx.participant_names == []
     assert ctx.bot_names == []
@@ -531,19 +355,29 @@ async def test_filter_context_accepts_legacy_four_field_call() -> None:
     assert ctx.now == 0
 
 
-# --------------------------------------------------------------------------- #
-# Регрессия слоя 1-2: ни один канонический пример few_shot.yaml со speak=true не
-# должен резаться выходным фильтром. Если новая правка правила ловит собственные
-# примеры голоса персонажа — правило слишком грубое (CLAUDE.md, правки этапа 4).
-# --------------------------------------------------------------------------- #
+# --- prompt leak: only the instruction part counts, not the biography ---
+
+
+async def test_prompt_leak_biography_paraphrase_passes() -> None:
+    prompt = "- You never give advice about the job and you never explain how things work.\n"
+    ctx = _ctx(system_prompt=prompt + "You drink little, one pint of something cheap and brown.")
+    verdict = await check_output("You drink little, one pint of something cheap, enough.", ctx)
+    assert "regex:prompt_leak" not in verdict.reasons
+
+
+async def test_prompt_leak_instruction_bullet_is_cut() -> None:
+    prompt = "- You never give advice about the job and you never explain how things work.\n"
+    ctx = _ctx(system_prompt=prompt)
+    verdict = await check_output("You never give advice about the job, full stop.", ctx)
+    assert "regex:prompt_leak" in verdict.reasons
 
 
 async def test_all_few_shot_speak_true_examples_pass_check_output() -> None:
-    items = load_few_shot(LEGACY_PACK / "few_shot.yaml")
+    items = load_few_shot(DEMO_PACK / "few_shot.yaml")
     speak_items = [item for item in items if item.speak]
-    assert speak_items, "few_shot.yaml должен содержать хотя бы один пример speak=true"
+    assert speak_items, "few_shot.yaml needs at least one speak=true example"
 
-    cfg = legacy_config()
+    cfg = demo_config()
     participant_names = [item.name for item in items]
     bot_names = [cfg.persona.name, cfg.persona.display_name, *cfg.persona.name_triggers]
 
@@ -560,185 +394,90 @@ async def test_all_few_shot_speak_true_examples_pass_check_output() -> None:
         if not verdict.ok:
             failures.append(f"{item.name!r}: {item.text!r} -> {verdict.reasons}")
 
-    assert not failures, "few_shot.yaml примеры срезаны выходным фильтром:\n" + "\n".join(failures)
+    assert not failures, "few_shot.yaml examples cut by the output filter:\n" + "\n".join(failures)
 
 
-# --------------------------------------------------------------------------- #
-# Реквизит и байки: dedup:motif / style:story_quota (CLAUDE.md, "меньше
-# и разнообразнее", мера 5). Страховка к слоту {avoid}: если модель всё равно
-# притащила мотив из свежих реплик или байку сверх квоты — режем.
-# --------------------------------------------------------------------------- #
-
-
-_VOCAB_YAML = """
-name: x
-words:
-  - {word: сырюка, meaning: слякоть}
-  - {word: зюфа, meaning: садись}
-"""
-_VOCAB = ru_vocab([parse_ru_vocab(_VOCAB_YAML)])
-
-
-@pytest.mark.parametrize(
-    ("over_quota", "trigger_text", "text", "cut"),
-    [
-        (True, "", "На улице сырюка.", True),
-        (False, "", "На улице сырюка.", False),
-        # Словечко из вопроса собеседника — ответ с ним проходит.
-        (True, "Федь, что такое сырюка?", "Сырюка это слякоть.", False),
-        # Но другое словечко сверх лимита — всё равно срез.
-        (True, "Федь, что такое сырюка?", "Сырюка это слякоть, зюфа домой.", True),
-        (True, "", "Без словечек.", False),
-    ],
-)
-async def test_dedup_vocab(over_quota: bool, trigger_text: str, text: str, cut: bool) -> None:
-    ctx = replace(_ctx(trigger_text=trigger_text), vocab=_VOCAB, vocab_over_quota=over_quota)
-    verdict = await check_output(text, ctx)
-    assert ("dedup:vocab" in verdict.reasons) is cut
-
-
-async def test_dedup_vocab_silent_without_vocab() -> None:
-    ctx = replace(_ctx(), vocab=None, vocab_over_quota=True)
-    verdict = await check_output("На улице сырюка.", ctx)
-    assert "dedup:vocab" not in verdict.reasons
+# --- motifs and stories ---
 
 
 async def test_dedup_motif_cuts_repeated_prop() -> None:
-    ctx = _ctx(recent_replies=["Жена сказала, что хватит.", "Тихо прошли."])
-
-    verdict = await check_output("Опять жена ругается.", ctx)
-
-    assert verdict.ok is False
+    ctx = _ctx(recent_replies=["The clocks again, my sister says enough.", "We went quiet."])
+    verdict = await check_output("Another clock came in this morning.", ctx)
     assert "dedup:motif" in verdict.reasons
 
 
 async def test_dedup_motif_allows_other_prop() -> None:
-    ctx = _ctx(recent_replies=["Жена сказала, что хватит."])
-
-    verdict = await check_output("Помидоры пошли, куда их столько.", ctx)
-
-    assert verdict.ok is True
+    ctx = _ctx(recent_replies=["The clocks again, my sister says enough."])
+    verdict = await check_output("The tomatoes are coming on, too many of them.", ctx)
+    assert "dedup:motif" not in verdict.reasons
 
 
 async def test_dedup_motif_ignores_replies_outside_window() -> None:
-    """motif_recent_window=3: мотив из четвёртой с конца реплики уже не режет."""
-    cfg = legacy_config()
-    assert cfg.filters.motif_recent_window == 3
+    cfg = demo_config()
+    cfg.filters.motif_recent_window = 3
     ctx = _ctx(
         cfg=cfg,
-        recent_replies=["Гараж закрыт.", "Тихо прошли.", "Ключи нашлись.", "Свитер достал."],
+        recent_replies=[
+            "The tuba is loud.",
+            "We went quiet.",
+            "The keys turned up.",
+            "Got a jumper.",
+        ],
     )
-
-    verdict = await check_output("В гараже опять холодно.", ctx)
-
-    assert verdict.ok is True
+    verdict = await check_output("The tuba needs a polish again.", ctx)
+    assert "dedup:motif" not in verdict.reasons
 
 
 async def test_dedup_motif_disabled_by_zero_window() -> None:
-    cfg = legacy_config()
+    cfg = demo_config()
     cfg.filters.motif_recent_window = 0
-    ctx = _ctx(cfg=cfg, recent_replies=["Гараж закрыт."])
-
-    verdict = await check_output("В гараже опять холодно.", ctx)
-
-    assert verdict.ok is True
+    ctx = _ctx(cfg=cfg, recent_replies=["The tuba is loud."])
+    verdict = await check_output("The tuba needs a polish again.", ctx)
+    assert "dedup:motif" not in verdict.reasons
 
 
 async def test_style_story_quota_cuts_second_story_in_window() -> None:
-    ctx = _ctx(recent_replies=["Помню, тогда так же было."])
-
-    verdict = await check_output("Как-то раз мы это уже проходили.", ctx)
-
-    assert verdict.ok is False
+    ctx = _ctx(recent_replies=["I remember it being just the same."])
+    verdict = await check_output("One time we went through all this already.", ctx)
     assert "style:story_quota" in verdict.reasons
 
 
 async def test_style_story_quota_allows_short_answer_without_marker() -> None:
-    ctx = _ctx(recent_replies=["Помню, тогда так же было."])
-
-    verdict = await check_output("Регулярно. Просто перестал расстраиваться.", ctx)
-
-    assert verdict.ok is True
+    ctx = _ctx(recent_replies=["I remember it being just the same."])
+    verdict = await check_output("Regularly. I just stopped getting upset.", ctx)
+    assert "style:story_quota" not in verdict.reasons
 
 
 async def test_style_story_quota_allows_first_story_in_window() -> None:
-    ctx = _ctx(recent_replies=["Тихо прошли.", "Ключи нашлись."])
-
-    verdict = await check_output("Как-то раз мы это уже проходили.", ctx)
-
-    assert verdict.ok is True
+    ctx = _ctx(recent_replies=["We went quiet.", "The keys turned up."])
+    verdict = await check_output("One time we went through all this already.", ctx)
+    assert "style:story_quota" not in verdict.reasons
 
 
 async def test_style_story_quota_zero_max_cuts_any_story() -> None:
-    cfg = legacy_config()
+    cfg = demo_config()
     cfg.filters.story_max = 0
-    ctx = _ctx(cfg=cfg, recent_replies=[])
-
-    verdict = await check_output("Как-то раз мы это уже проходили.", ctx)
-
-    assert verdict.ok is False
+    verdict = await check_output("One time we went through all this already.", _ctx(cfg=cfg))
     assert "style:story_quota" in verdict.reasons
 
 
 async def test_motifs_and_stories_ignore_sticker_records() -> None:
-    """Записи стикеров в recent_replies не считаются ни мотивом, ни байкой."""
-    ctx = _ctx(recent_replies=["[стикер #2] Жена сказала", "[стикер #3] помню такое"])
-
-    verdict = await check_output("В гараже жена помню как-то раз ругалась.", ctx)
-
+    ctx = _ctx(recent_replies=["[sticker #2] The clocks again", "[sticker #3] I remember that"])
+    verdict = await check_output("In the shed the clocks, I remember, once ticked.", ctx)
     assert "dedup:motif" not in verdict.reasons
     assert "style:story_quota" not in verdict.reasons
 
 
-# --- the language decides which script checks exist (PR-4) --------------------------------
-
-
-def _cfg_with(**filters: object) -> Config:
-    cfg = legacy_config()
-    return cfg.model_copy(update={"filters": cfg.filters.model_copy(update=filters)})
-
-
 async def test_english_has_no_foreign_script_checks() -> None:
-    en_ctx = FilterContext(
-        lang=get_language("en"),
-        cfg=legacy_config(),
-        recent_replies=["Tabela wystarczy"],
-        context_rows=[],
-        places_names=[],
-        frag=LEGACY_FRAG,
-    )
-
-    verdict = await check_output("Szalony Warsztat dobry", en_ctx)
-
+    ctx = _ctx(recent_replies=["Some Foreign Words"])
+    verdict = await check_output("Szalony Warsztat dobry", ctx)
     assert not any(r in verdict.reasons for r in ("regex:venue", "regex:latin"))
     assert "dedup:polish_freq" not in verdict.reasons
 
 
 async def test_missing_patterns_and_lang_fall_back_to_english() -> None:
     ctx = FilterContext(
-        cfg=Config(), recent_replies=[], context_rows=[], places_names=[], frag=LEGACY_FRAG
+        cfg=Config(), recent_replies=[], context_rows=[], places_names=[], frag=DEMO_FRAG
     )
-
     verdict = await check_output("Szalony Warsztat dobry", ctx)
-
     assert verdict.ok
-
-
-async def test_latin_extra_letters_extend_the_foreign_alphabet() -> None:
-    text = "Złoty Młyn znowu"
-    plain = _ctx(cfg=_cfg_with(latin_extra_letters="", districts=[], polish_words=[]))
-    extended = _ctx(cfg=_cfg_with(latin_extra_letters="ŁłŻż", districts=[], polish_words=[]))
-
-    # without the extra letters «Z» + «oty» is not one word, with them «Złoty» is a venue word
-    assert "regex:venue" in (await check_output(text, extended)).reasons
-    assert "regex:venue" not in (await check_output(text, plain)).reasons
-
-
-async def test_districts_from_config_are_whitelisted() -> None:
-    cfg = _cfg_with(districts=["Nordhaven"], known_places=[], polish_words=[], places_whitelist=[])
-    cut = _cfg_with(districts=[], known_places=[], polish_words=[], places_whitelist=[])
-
-    assert (
-        "regex:venue" not in (await check_output("Живу в Nordhaven давно", _ctx(cfg=cfg))).reasons
-    )
-    assert "regex:venue" in (await check_output("Живу в Nordhaven давно", _ctx(cfg=cut))).reasons

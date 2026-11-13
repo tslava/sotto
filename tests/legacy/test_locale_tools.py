@@ -1,4 +1,7 @@
-"""tools/split_changelog.py and tools/extract_locale.py (plan 04, PR-5a)."""
+"""tools/split_changelog.py and tools/extract_locale.py (plan 04, PR-5a).
+
+Migration proof: removed together with ``personas/_legacy_ru`` in PR-9.
+"""
 
 from __future__ import annotations
 

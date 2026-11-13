@@ -16,7 +16,6 @@ import httpx
 import pytest
 
 from sotto.config_models import Config, VisionConfig
-from sotto.fragments import load_valid_fragments
 from sotto.llm import LLMClient
 from sotto.timeutil import day_key
 from sotto.vision import (
@@ -25,9 +24,8 @@ from sotto.vision import (
     pick_photo_size,
     should_describe,
 )
+from tests.demo import DEMO_FRAG
 from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
 
 NOW = 1_768_003_200  # see tests/test_llm.py
 VISION_PROMPT_PATH = DEMO_PACK / "prompts/vision.txt"

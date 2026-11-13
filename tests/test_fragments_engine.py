@@ -1,7 +1,7 @@
 """The engine takes its wording from the pack's fragments, not from its own constants.
 
 Each test swaps one fragment leaf for a synthetic one and checks that the rendered text, the
-persisted placeholder or the derived regex follows. The legacy fragments are the control.
+persisted placeholder or the derived regex follows. The demo fragments are the control.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ from sotto.weather import (
     render_weather,
     render_weather_place,
 )
-from tests.packs import LEGACY_PACK, RU, frag_with, legacy_config, ru_vocab
+from tests.demo import DEMO_PACK, EN, demo_config, demo_frag_with, en_vocab
 
 NOW = 1_767_268_800  # 2026-01-01 12:00 UTC
 
@@ -77,7 +77,7 @@ NOW = 1_767_268_800  # 2026-01-01 12:00 UTC
 
 
 def test_participant_fallback_follows_the_pack() -> None:
-    frag = frag_with(placeholders__participant="Guest {n}")
+    frag = demo_frag_with(placeholders__participant="Guest {n}")
 
     assert sanitize_display_name("", 5, set(), frag=frag) == f"Guest {stable_n(5)}"
     assert sanitize_display_name("Bob", 5, {"bob"}, frag=frag) == f"Guest {stable_n(5)}"
@@ -99,7 +99,7 @@ def test_participant_fallback_follows_the_pack() -> None:
     ],
 )
 def test_media_placeholders_follow_the_pack(field: str, key: str) -> None:
-    frag = frag_with(**{f"placeholders__{key}": f"<{key}>"})
+    frag = demo_frag_with(**{f"placeholders__{key}": f"<{key}>"})
     names = ("sticker", "photo", "voice", "audio", "video", "video_note", "animation", "document")
     message = SimpleNamespace(**{name: (object() if name == field else None) for name in names})
 
@@ -110,7 +110,7 @@ def test_media_placeholders_follow_the_pack(field: str, key: str) -> None:
 def test_export_parser_uses_the_pack_placeholders(tmp_path: Any) -> None:
     import json
 
-    frag = frag_with(
+    frag = demo_frag_with(
         placeholders__photo="<p>",
         placeholders__sticker="<s>",
         placeholders__voice="<v>",
@@ -146,14 +146,14 @@ def test_export_parser_uses_the_pack_placeholders(tmp_path: Any) -> None:
 
 
 def test_photo_text_follows_the_pack() -> None:
-    frag = frag_with(placeholders__photo="<p>", placeholders__photo_with_desc="<p: {desc}>")
+    frag = demo_frag_with(placeholders__photo="<p>", placeholders__photo_with_desc="<p: {desc}>")
 
     assert photo_text(None, "", frag=frag) == "<p>"
     assert photo_text("a cat", "hello", frag=frag) == "<p: a cat> hello"
 
 
 def test_sticker_tag_regex_and_prefix_are_derived_from_the_pack() -> None:
-    frag = frag_with(placeholders__sticker_tag="<<sticker {id}>>")
+    frag = demo_frag_with(placeholders__sticker_tag="<<sticker {id}>>")
 
     pattern = sticker_tag_re(frag)
 
@@ -167,7 +167,7 @@ def test_sticker_tag_regex_and_prefix_are_derived_from_the_pack() -> None:
 
 
 def test_sticker_records_are_skipped_by_prefix_in_motifs_postprocess_and_vocab() -> None:
-    frag = frag_with(placeholders__sticker_tag="<<sticker {id}>>")
+    frag = demo_frag_with(placeholders__sticker_tag="<<sticker {id}>>")
     marker = [re.compile("wife")]
     replies = ["<<sticker 1>> wife here", "nothing"]
 
@@ -189,7 +189,7 @@ def test_sticker_records_are_skipped_by_prefix_in_motifs_postprocess_and_vocab()
     )
     assert fixed.fixes == ("fix:emoji_freq",)
 
-    vocab = ru_vocab([VocabDict(name="d", words=[VocabWord(word="zork", meaning="m")])])
+    vocab = en_vocab([VocabDict(name="d", words=[VocabWord(word="zork", meaning="m")])])
     vocab_cfg = VocabConfig(probability=1.0, recent_window=3)
     kwargs = {"cfg": vocab_cfg, "vocab": vocab, "count_today": 0, "rng": random.Random(1)}
     assert offer_allowed(recent_replies=["<<sticker 1>> zork"], frag=frag, **kwargs)
@@ -204,7 +204,7 @@ def test_sticker_records_are_skipped_by_prefix_in_motifs_postprocess_and_vocab()
 
 
 def test_situations_follow_the_pack() -> None:
-    frag = frag_with(
+    frag = demo_frag_with(
         situations__addressed_single="S1 {name}={text}",
         situations__addressed_multi_header="MH",
         situations__addressed_multi_footer="MF",
@@ -232,7 +232,7 @@ def test_situations_follow_the_pack() -> None:
 
 
 def test_build_messages_uses_pack_scaffolding() -> None:
-    frag = frag_with(
+    frag = demo_frag_with(
         prompt__data_notice="DATA",
         prompt__recent_replies_label="RECENT",
         prompt__context_marker="CTX",
@@ -277,7 +277,7 @@ def test_build_messages_uses_pack_scaffolding() -> None:
 
 
 def test_block_headers_follow_the_pack() -> None:
-    frag = frag_with(
+    frag = demo_frag_with(
         render__life_header="LH",
         render__jokes_header="JH: ",
         render__chat_memory_header="MH",
@@ -304,14 +304,14 @@ def test_block_headers_follow_the_pack() -> None:
 
 def test_diary_weekday_names_come_from_the_pack() -> None:
     names = ["d1", "d2", "d3", "d4", "d5", "d6", "d7"]
-    frag = frag_with(render__weekdays=names, render__diary_week_header="W: ")
+    frag = demo_frag_with(render__weekdays=names, render__diary_week_header="W: ")
     day = SelfFactRow(1, "x", None, NOW)  # 2026-01-01 is a Thursday
 
     assert render_diary([], [day], "UTC", frag=frag) == "W: d4 x."
 
 
 def test_motif_avoid_and_self_share_follow_the_pack() -> None:
-    frag = frag_with(
+    frag = demo_frag_with(
         render__avoid_template="AVOID {items}",
         render__avoid_no_story="NOSTORY",
         render__accusative={"wife": "WIFE-ACC"},
@@ -328,7 +328,7 @@ def test_motif_avoid_and_self_share_follow_the_pack() -> None:
 
 
 def test_vocab_headers_follow_the_pack() -> None:
-    frag = frag_with(
+    frag = demo_frag_with(
         vocab__offer_header="OH",
         vocab__offer_tail=": OT ",
         vocab__request_header="RH",
@@ -337,7 +337,7 @@ def test_vocab_headers_follow_the_pack() -> None:
         render__quote_open="<",
         render__quote_close=">",
     )
-    vocab = ru_vocab(
+    vocab = en_vocab(
         [
             VocabDict(
                 name="d",
@@ -358,7 +358,7 @@ def test_vocab_headers_follow_the_pack() -> None:
 
 
 def test_places_blocks_follow_the_pack() -> None:
-    frag = frag_with(
+    frag = demo_frag_with(
         prompt__places_none="NONE",
         render__places_block_header="BLOCK",
         render__places_menu_header="MENU",
@@ -380,7 +380,7 @@ def test_places_blocks_follow_the_pack() -> None:
 
 
 def test_sticker_menu_uses_pack_quotes() -> None:
-    frag = frag_with(render__quote_open="<", render__quote_close=">")
+    frag = demo_frag_with(render__quote_open="<", render__quote_close=">")
     stickers = [
         Sticker(id=1, file_id="f", text="hey", when="greeting"),
         Sticker(id=2, file_id="g", text="bye"),
@@ -410,7 +410,7 @@ def _weather(**changes: Any) -> Weather:
 
 
 def test_weather_pieces_and_wmo_follow_the_pack() -> None:
-    frag = frag_with(
+    frag = demo_frag_with(
         weather__home_prefix="HOME: ",
         weather__now_word="now ",
         weather__and_word=" & ",
@@ -458,7 +458,7 @@ async def test_geocoder_language_and_home_country_come_from_config() -> None:
             200, json={"results": [{**results, "latitude": 1.5, "longitude": 2.5}]}
         )
 
-    base = legacy_config()
+    base = demo_config()
     weather = base.behaviour.weather.model_copy(
         update={
             "geocode_language": "xx",
@@ -502,15 +502,15 @@ def test_select_places_uses_configured_districts_and_keywords() -> None:
     ]
     rng = random.Random(3)
 
-    by_district = select_places(rows, cfg, "something around nord please", rng, lang=RU)
+    by_district = select_places(rows, cfg, "something around nord please", rng, lang=EN)
     assert sorted(row.place_id for row in by_district) == ["loud", "n1"]
-    quiet = select_places(rows, cfg, "somewhere to hush", rng, lang=RU)
+    quiet = select_places(rows, cfg, "somewhere to hush", rng, lang=EN)
     assert sorted(row.place_id for row in quiet) == ["far", "n1", "s1"]
-    outskirts = select_places(rows, cfg, "the countryside", rng, lang=RU)
+    outskirts = select_places(rows, cfg, "the countryside", rng, lang=EN)
     assert [row.place_id for row in outskirts] == ["far"]
-    assert len(select_places(rows, cfg, "anything", rng, lang=RU)) == 4
-    # the default keywords are no longer built into the engine
-    assert len(select_places(rows, cfg, "тихо", rng, lang=RU)) == 4
+    assert len(select_places(rows, cfg, "anything", rng, lang=EN)) == 4
+    # the default keywords are no longer built into the engine (here: the Russian word for quiet)
+    assert len(select_places(rows, cfg, "\u0442\u0438\u0445\u043e", rng, lang=EN)) == 4
 
 
 def test_pick_district_uses_configured_names_and_default() -> None:
@@ -568,14 +568,14 @@ class _FakeLLM:
 
 
 def _cfg(**judge: Any) -> Config:
-    base = legacy_config()
+    base = demo_config()
     return base.model_copy(
         update={"llm": base.llm.model_copy(update={"judge_model": "a/b", "main_model": "a/b"})}
     )
 
 
 async def test_judge_followup_and_reaction_use_the_pack_markers() -> None:
-    frag = frag_with(
+    frag = demo_frag_with(
         prompt__no_target="NO TARGET",
         placeholders__context_empty="NO CONTEXT",
         placeholders__recent_replies_empty="NO REPLIES",
@@ -620,7 +620,7 @@ async def test_judge_followup_and_reaction_use_the_pack_markers() -> None:
 
 
 async def test_vision_caption_placeholder_comes_from_the_pack() -> None:
-    frag = frag_with(placeholders__no_caption="NO CAPTION")
+    frag = demo_frag_with(placeholders__no_caption="NO CAPTION")
     llm = _FakeLLM(text="a cat")
     describer = VisionDescriber(llm, _cfg, "caption={caption}", frag=frag)
 
@@ -629,15 +629,15 @@ async def test_vision_caption_placeholder_comes_from_the_pack() -> None:
 
 
 async def test_offline_tool_prompts_come_from_the_pack() -> None:
-    frag = frag_with(
+    frag = demo_frag_with(
         tools__places_fact_prompt="FACT PROMPT",
         tools__places_reviews_preamble="PREAMBLE",
         tools__sticker_ocr_prompt="OCR PROMPT",
     )
-    llm = _FakeLLM(text="calm")
+    llm = _FakeLLM(text="calm 123")  # digits make it an invalid fact
 
     assert (
-        await compress_fact("some reviews", llm=llm, model="a/b", now=NOW, frag=frag, lang=RU) == ""
+        await compress_fact("some reviews", llm=llm, model="a/b", now=NOW, frag=frag, lang=EN) == ""
     )
     messages = llm.requests[-1]
     assert messages[0]["content"] == "FACT PROMPT"
@@ -654,8 +654,8 @@ async def test_offline_tool_prompts_come_from_the_pack() -> None:
 # -- the pack carries what moved out of code -----------------------------------------
 
 
-def test_legacy_pack_config_holds_the_values_that_left_the_code() -> None:
-    raw = yaml.safe_load((LEGACY_PACK / "config.yaml").read_text(encoding="utf-8"))
+def test_demo_pack_config_holds_the_values_that_left_the_code() -> None:
+    raw = yaml.safe_load((DEMO_PACK / "config.yaml").read_text(encoding="utf-8"))
     weather = raw["behaviour"]["weather"]
     places = raw["places"]
 
@@ -669,9 +669,9 @@ def test_legacy_pack_config_holds_the_values_that_left_the_code() -> None:
         "quiet_keywords",
         "outskirts_keywords",
     } <= set(places)
-    cfg = load_config([LEGACY_PACK / "config.yaml"])
-    assert cfg.places.search_center == (51.5, 18.0)
-    assert cfg.behaviour.weather.home_country_codes == ["PL"]
+    cfg = load_config([DEMO_PACK / "config.yaml"])
+    assert cfg.places.search_center == (52.0, -1.5)
+    assert cfg.behaviour.weather.home_country_codes == ["GB"]
 
 
 def test_new_config_keys_validate() -> None:

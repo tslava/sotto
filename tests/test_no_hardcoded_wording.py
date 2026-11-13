@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "sotto"
-CYRILLIC = re.compile("[А-Яа-яЁё]")
+CYRILLIC = re.compile("[\u0400-\u04ff]")
 UPPER_NAME = re.compile(r"^_*[A-Z][A-Z0-9_]*$")
 
 # Modules PR-3 took the wording out of.
@@ -83,6 +83,10 @@ def test_language_logic_allowlist_has_no_stale_entries() -> None:
 
 def test_the_check_sees_a_planted_constant(tmp_path: Path) -> None:
     sample = tmp_path / "sample.py"
-    sample.write_text('_PLANTED = ("a " "привет")\nplain = "привет"\nOK = "x"\n', encoding="utf-8")
+    sample.write_text(
+        '_PLANTED = ("a " "\u043f\u0440\u0438\u0432\u0435\u0442")\n'
+        'plain = "\u043f\u0440\u0438\u0432\u0435\u0442"\nOK = "x"\n',
+        encoding="utf-8",
+    )
 
     assert _cyrillic_constants(sample) == ["_PLANTED"]

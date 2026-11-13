@@ -29,7 +29,9 @@ from tests.test_commands import (
     _user,
 )
 
-_CYRILLIC = re.compile("[А-Яа-яЁё]")
+_CYRILLIC = re.compile("[\u0400-\u04ff]")
+_CHAT = "### Для чата"  # PR-8: changelog.py keys on the Russian block headers
+_OWNER = "### Для владельца"  # PR-8: same
 
 
 @pytest.fixture
@@ -238,8 +240,7 @@ async def test_changelog_in_english(setup, sent: list[str]) -> None:  # type: ig
             "## [1.0.0] - 2026-01-01\n\nFresh news\n\n## [0.9.0] - 2025-12-01\n\nOlder news\n"
         ),
         legacy_changelog=(
-            "## [1.0.0] - 2026-01-01\n\n### Для чата\n\nignored\n\n"
-            "### Для владельца\n\nOwner text\n"
+            f"## [1.0.0] - 2026-01-01\n\n{_CHAT}\n\nignored\n\n{_OWNER}\n\nOwner text\n"
         ),
     )
     await _run(handler, "/changelog")

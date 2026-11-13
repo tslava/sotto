@@ -6,7 +6,6 @@ Pure functions, no I/O, like the module itself.
 from __future__ import annotations
 
 from sotto.config_models import FiltersConfig
-from sotto.fragments import load_valid_fragments
 from sotto.postprocess import (
     Fixed,
     keep_first_emoji,
@@ -14,9 +13,7 @@ from sotto.postprocess import (
     soften,
     strip_emoji,
 )
-from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
+from tests.demo import DEMO_FRAG
 
 # --------------------------------------------------------------------------- #
 # normalize_dashes

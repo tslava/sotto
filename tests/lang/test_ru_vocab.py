@@ -11,7 +11,7 @@ import random
 import pytest
 
 from sotto.vocab import Vocab, pick_offer
-from tests.packs import LEGACY_FRAG, parse_ru_vocab, ru_vocab
+from tests.packs import RU_FRAG, parse_ru_vocab, ru_vocab
 
 SIBERIAN = """
 name: дворовые
@@ -178,6 +178,6 @@ def test_reflexive_and_plain_verb_with_same_stem_do_not_collide(order: str) -> N
     assert _words(vocab, "зюзились по рынку") == ["зюзиться"]
     assert _words(vocab, "зюзил в моторах") == ["зюзить"]
     offer = pick_offer(
-        vocab, recent_replies=["Зюзился там вчера"], size=5, rng=random.Random(0), frag=LEGACY_FRAG
+        vocab, recent_replies=["Зюзился там вчера"], size=5, rng=random.Random(0), frag=RU_FRAG
     )
     assert [entry.word for entry in offer] == ["зюзить"]

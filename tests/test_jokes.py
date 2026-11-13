@@ -3,13 +3,8 @@
 from __future__ import annotations
 
 from sotto.db import JokeRow
-from sotto.fragments import load_valid_fragments
 from sotto.jokes import joke_used, render_jokes
-from sotto.lang import get_language
-from tests.packs import DEMO_PACK, RU
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
-EN = get_language("en")
+from tests.demo import DEMO_FRAG, EN
 
 DAY = 86400
 NOW = 100 * DAY
@@ -114,5 +109,3 @@ def test_joke_used_empty_inputs() -> None:
 def test_joke_used_folds_with_the_language() -> None:
     assert joke_used("Again Mike's screws in the wall", "again Mike's screws", EN)
     assert not joke_used("screws Mike's again", "again Mike's screws", EN)
-    # stays for tests/lang: Russian yo-folding
-    assert joke_used("Ёлка зелёная", "елка", RU)

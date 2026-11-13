@@ -2,18 +2,12 @@
 
 from __future__ import annotations
 
-from sotto.config_models import Config
 from sotto.db import Database, PlaceRow
 from sotto.gate_types import Trigger
-from sotto.llm import LLMClient
-from sotto.patterns import Patterns
-from sotto.responder import Responder
 from sotto.stickers import Sticker
 from sotto.timeutil import day_key
 from tests.demo import DEMO_FRAG
-from tests.packs import LEGACY_FRAG, RU, legacy_config
 from tests.responder.helpers import (
-    BOT_USERNAME,
     DAY_NOW,
     PLACES_NONE,
     FakeBot,
@@ -215,82 +209,6 @@ async def test_places_request_with_empty_places_table_uses_places_none_and_marks
 
         last = await db.last_bot_replies(1)
         assert last[0].trigger == "places"
-    finally:
-        await responder.shutdown()
-        await llm.aclose()
-
-
-def _russian_responder(
-    db: Database, llm: LLMClient, bot: FakeBot, clock: FakeClock
-) -> tuple[Config, Responder]:
-    """Responder on the legacy Russian pack: the venue filter (Latin words inside Russian
-    text) only exists for languages that have a foreign script."""
-    cfg = legacy_config()
-    cfg.llm.main_model = "test/model"
-    cfg.filters.shadow = False
-    responder = _make_responder(db, cfg, llm, bot, clock)
-    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, BOT_USERNAME, RU)
-    responder.patterns_getter = lambda: patterns
-    responder.frag = LEGACY_FRAG
-    return cfg, responder
-
-
-# stays for tests/lang: regex:venue only exists for a language with a foreign script (Russian)
-async def test_filter_context_places_names_passes_real_place_through_venue_regex(
-    db: Database,
-) -> None:
-    """FilterContext.places_names is always filled from db.places_names(): a real venue from
-    the table is not cut by regex:venue, even when the trigger is not about places."""
-    cfg = legacy_config()
-    llm, _calls = _make_llm(cfg, db, lambda _req: _ok_response("Был вчера в Zielony Kot."))
-    bot = FakeBot()
-    clock = FakeClock(DAY_NOW)
-    _cfg, responder = _russian_responder(db, llm, bot, clock)
-
-    # "Zielony Kot" is deliberately in neither filters.known_places nor
-    # filters.places_whitelist by default: this checks places_names specifically.
-    await db.upsert_place(_place_row("p1", "Zielony Kot"))
-
-    try:
-        await _drive(
-            clock,
-            responder._respond(
-                trigger=Trigger.AMBIENT, trigger_msg_id=13, user_id=None, situation="", delay_sec=0
-            ),
-        )
-
-        assert len(bot.sent) == 1
-        assert bot.sent[0][1] == "Был вчера в Zielony Kot."
-    finally:
-        await responder.shutdown()
-        await llm.aclose()
-
-
-# stays for tests/lang: regex:venue only exists for a language with a foreign script (Russian)
-async def test_filter_context_places_names_still_cuts_fabricated_venue(
-    db: Database,
-) -> None:
-    """A made-up venue (not from places, not from known_places/whitelist) is cut by
-    regex:venue even though places_names is now a non-empty list."""
-    cfg = legacy_config()
-    llm, _calls = _make_llm(cfg, db, lambda _req: _ok_response("Был вчера в Fikcyjny Bar."))
-    bot = FakeBot()
-    clock = FakeClock(DAY_NOW)
-    _cfg, responder = _russian_responder(db, llm, bot, clock)
-
-    await db.upsert_place(_place_row("p1", "Zielony Kot"))
-
-    try:
-        await _drive(
-            clock,
-            responder._respond(
-                trigger=Trigger.AMBIENT, trigger_msg_id=14, user_id=None, situation="", delay_sec=0
-            ),
-        )
-
-        assert bot.sent == []
-        logs = await db.filter_log_summary(DAY_NOW - 10)
-        assert any(reason == "regex:venue" for reason, _count in logs)
     finally:
         await responder.shutdown()
         await llm.aclose()

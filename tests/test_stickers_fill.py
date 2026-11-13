@@ -12,7 +12,6 @@ from typing import Any
 import pytest
 import yaml
 
-from sotto.fragments import load_valid_fragments
 from sotto.persona import load_persona
 from sotto.settings import Settings
 from sotto.stickers import Sticker, StickerCatalog, load_catalog
@@ -25,9 +24,8 @@ from sotto.stickers_fill import (
 from sotto.stickers_fill import (
     run as run_fill,
 )
+from tests.demo import DEMO_FRAG
 from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
 
 NOW = 1_768_003_200
 
@@ -197,9 +195,8 @@ async def test_missing_sticker_is_disabled_not_removed(caplog: pytest.LogCapture
     assert sticker.id == 3
     assert sticker.file_id == "GONE"
     assert sticker.enabled is False
-    assert any(
-        "пропал" in record.message for record in caplog.records
-    )  # PR-8: warning text is hard-coded Russian in src/
+    gone_word = "пропал"  # PR-8: warning text is hard-coded Russian in src/
+    assert any(gone_word in record.message for record in caplog.records)
 
 
 async def test_new_ids_continue_after_max_existing_id() -> None:

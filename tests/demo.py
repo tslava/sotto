@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Sequence
-from pathlib import Path
 
 from sotto.config import load_config
 from sotto.config_models import Config
@@ -12,9 +11,7 @@ from sotto.fragments import Fragments, load_valid_fragments
 from sotto.lang import get_language
 from sotto.persona import load_persona
 from sotto.vocab import Vocab, VocabDict, parse_vocab
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DEMO_PACK = REPO_ROOT / "personas" / "demo"
+from tests.packs import DEMO_PACK
 
 # Fragments of the demo pack: what tests pass as ``frag=`` to the engine functions.
 DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")

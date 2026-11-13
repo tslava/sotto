@@ -19,7 +19,6 @@ import httpx
 import pytest
 import yaml
 
-from sotto.config import load_config
 from sotto.db import Database
 from sotto.llm import LLMResult
 from sotto.persona import load_persona
@@ -39,10 +38,11 @@ from sotto.places_fill import (
     run as run_fill,
 )
 from sotto.settings import Settings
+from tests.demo import demo_config
 from tests.packs import DEMO_PACK
 
 REAL_MANUAL_PATH = DEMO_PACK / "places_manual.yaml"
-DEMO_PLACES_CFG = load_config(load_persona(DEMO_PACK).config_layers()).places
+DEMO_PLACES_CFG = demo_config().places
 API_KEY = "gp-test-key"
 
 

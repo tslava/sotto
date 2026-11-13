@@ -12,12 +12,12 @@ from sotto.llm import LLMClient, LLMError, LLMResult
 from sotto.timeutil import day_key
 
 API_KEY = "sk-super-secret-key-do-not-log"
-NOW = 1_768_003_200  # 2026-01-10 00:00 UTC -> Europe/Warsaw дата тоже 2026-01-10
+NOW = 1_768_003_200  # 2026-01-10 00:00 UTC -> the Europe/Warsaw date is also 2026-01-10
 URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 class FakeStore:
-    """In-memory подделка Database, реализует протокол _StateStore структурно."""
+    """An in-memory stand-in for Database; implements the _StateStore protocol structurally."""
 
     def __init__(self) -> None:
         self.state: dict[str, str] = {}
@@ -55,7 +55,7 @@ def _counting_handler(inner: Handler) -> tuple[Handler, list[httpx.Request]]:
 
 
 def _ok_response(
-    *, content: str = "Привет", cost: float | None = 0.001, prompt: int = 50, completion: int = 20
+    *, content: str = "Hello", cost: float | None = 0.001, prompt: int = 50, completion: int = 20
 ) -> httpx.Response:
     body: dict[str, object] = {
         "choices": [{"message": {"content": content}}],
@@ -70,13 +70,13 @@ def _client(handler: Handler, cfg: Config, store: FakeStore, api_key: str = API_
     return LLMClient(api_key=api_key, cfg_getter=lambda: cfg, db=store, http=http)
 
 
-MESSAGES = [{"role": "system", "content": "ты Фёдор"}, {"role": "user", "content": "привет"}]
+MESSAGES = [{"role": "system", "content": "you are Gus"}, {"role": "user", "content": "hello"}]
 
 
 async def test_successful_call_returns_result_and_updates_state() -> None:
     cfg = Config()
     store = FakeStore()
-    handler, calls = _counting_handler(lambda _req: _ok_response(content="  Привет!  "))
+    handler, calls = _counting_handler(lambda _req: _ok_response(content="  Hello!  "))
     client = _client(handler, cfg, store)
     try:
         result = await client.call(MESSAGES, model="openrouter/foo", max_tokens=100, now=NOW)
@@ -84,7 +84,7 @@ async def test_successful_call_returns_result_and_updates_state() -> None:
         await client.aclose()
 
     assert result == LLMResult(
-        text="Привет!", cost_usd=0.001, prompt_tokens=50, completion_tokens=20
+        text="Hello!", cost_usd=0.001, prompt_tokens=50, completion_tokens=20
     )
 
     calls_key = day_key("llm_calls", NOW, cfg.persona.timezone)
@@ -123,11 +123,11 @@ async def test_timeout_sets_error_streak_to_one() -> None:
     assert excinfo.value.reason == "llm:timeout"
     assert store.state["llm_error_streak"] == "1"
     calls_key = day_key("llm_calls", NOW, cfg.persona.timezone)
-    assert store.state[calls_key] == "1"  # инкрементится даже если запрос упал
+    assert store.state[calls_key] == "1"  # incremented even if the request failed
 
 
 async def test_five_errors_open_circuit_and_sixth_call_skips_network() -> None:
-    cfg = Config()  # circuit_errors=5, circuit_pause_min=30 по дефолту
+    cfg = Config()  # circuit_errors=5, circuit_pause_min=30 by default
     store = FakeStore()
     handler, calls = _counting_handler(lambda _req: httpx.Response(500, text="boom"))
     client = _client(handler, cfg, store)
@@ -145,7 +145,7 @@ async def test_five_errors_open_circuit_and_sixth_call_skips_network() -> None:
         with pytest.raises(LLMError) as excinfo:
             await client.call(MESSAGES, model="m", max_tokens=50, now=NOW + 1)
         assert excinfo.value.reason == "llm:circuit_open"
-        # Счётчик запросов транспорта не растёт: 6-й вызов не ушёл в сеть.
+        # The transport request counter does not grow: the 6th call never went to the network.
         assert len(calls) == 5
     finally:
         await client.aclose()
@@ -166,8 +166,8 @@ async def test_calls_cap_blocks_before_request() -> None:
         await client.aclose()
 
     assert excinfo.value.reason == "llm:calls_cap"
-    assert store.state[calls_key] == "1"  # не выросло
-    assert len(calls) == 0  # запроса не было
+    assert store.state[calls_key] == "1"  # did not grow
+    assert len(calls) == 0  # no request was made
 
 
 async def test_budget_blocks_before_request() -> None:
@@ -236,8 +236,8 @@ async def test_missing_usage_cost_with_zero_tokens_falls_back_to_zero() -> None:
 
 
 async def test_missing_usage_cost_uses_price_fallback() -> None:
-    """Провайдер вернул usage (токены), но без cost — используется fallback-цена
-    из cfg.llm.price_in_usd_per_1m/price_out_usd_per_1m."""
+    """The provider returned usage (tokens) but no cost: the fallback price from
+    cfg.llm.price_in_usd_per_1m/price_out_usd_per_1m is used."""
     cfg = Config()
     cfg.llm.price_in_usd_per_1m = 5.0
     cfg.llm.price_out_usd_per_1m = 25.0
@@ -245,8 +245,8 @@ async def test_missing_usage_cost_uses_price_fallback() -> None:
 
     def handler(_request: httpx.Request) -> httpx.Response:
         body = {
-            "choices": [{"message": {"content": "Привет"}}],
-            "usage": {"prompt_tokens": 1000, "completion_tokens": 200},  # без "cost"
+            "choices": [{"message": {"content": "Hello"}}],
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 200},  # no "cost"
         }
         return httpx.Response(200, json=body)
 
@@ -265,7 +265,7 @@ async def test_missing_usage_cost_uses_price_fallback() -> None:
 
 
 async def test_present_usage_cost_ignores_price_fallback() -> None:
-    """Если провайдер вернул usage.cost — fallback-цены не используются вовсе."""
+    """If the provider returned usage.cost, the fallback prices are not used at all."""
     cfg = Config()
     cfg.llm.price_in_usd_per_1m = 999.0
     cfg.llm.price_out_usd_per_1m = 999.0
@@ -283,8 +283,8 @@ async def test_present_usage_cost_ignores_price_fallback() -> None:
 
 
 async def test_timeout_is_read_from_config_on_every_call() -> None:
-    """cfg.llm.timeout_sec передаётся в каждый POST заново — /set меняет таймаут
-    без рестарта и без пересоздания http-клиента."""
+    """cfg.llm.timeout_sec is passed to every POST anew: /set changes the timeout
+    without a restart and without recreating the http client."""
     cfg = Config()
     cfg.llm.timeout_sec = 5
     store = FakeStore()
@@ -323,7 +323,7 @@ async def test_empty_content_raises_llm_empty_without_touching_streak() -> None:
     assert excinfo.value.reason == "llm:empty"
     assert "llm_error_streak" not in store.state
     calls_key = day_key("llm_calls", NOW, cfg.persona.timezone)
-    assert store.state[calls_key] == "1"  # попытка всё равно засчитана
+    assert store.state[calls_key] == "1"  # the attempt is counted anyway
 
 
 async def test_api_key_never_appears_in_logs(caplog: pytest.LogCaptureFixture) -> None:
@@ -364,24 +364,24 @@ async def test_creates_own_http_client_when_none_injected() -> None:
     store = FakeStore()
     client = LLMClient(api_key=API_KEY, cfg_getter=lambda: cfg, db=store)
     try:
-        pass  # конструктор не упал и не потребовал http — этого достаточно
+        pass  # the constructor did not fail and did not need http: that is enough
     finally:
         await client.aclose()
 
 
 async def test_call_delegates_to_call_raw_and_counts_budget() -> None:
-    """``call`` — тонкая обёртка над ``call_raw`` (CLAUDE.md, "Интерфейсы: стикеры"):
-    тот же запрос, тот же учёт llm_calls/llm_spent_usd."""
+    """``call`` is a thin wrapper over ``call_raw``: the same request and the same
+    llm_calls/llm_spent_usd accounting."""
     cfg = Config()
     store = FakeStore()
-    handler, calls = _counting_handler(lambda _req: _ok_response(content="Привет!"))
+    handler, calls = _counting_handler(lambda _req: _ok_response(content="Hello!"))
     client = _client(handler, cfg, store)
     try:
         result = await client.call(MESSAGES, model="openrouter/foo", max_tokens=100, now=NOW)
     finally:
         await client.aclose()
 
-    assert result.text == "Привет!"
+    assert result.text == "Hello!"
     calls_key = day_key("llm_calls", NOW, cfg.persona.timezone)
     spent_key = day_key("llm_spent_usd", NOW, cfg.persona.timezone)
     assert store.state[calls_key] == "1"
@@ -390,17 +390,17 @@ async def test_call_delegates_to_call_raw_and_counts_budget() -> None:
 
 
 async def test_call_raw_accepts_vision_content_and_counts_budget() -> None:
-    """``call_raw`` принимает content-массив (текст + картинка, stickers_fill.py) —
-    тот же учёт бюджета, что у обычного текстового ``call``."""
+    """``call_raw`` accepts a content array (text + image, stickers_fill.py) with the
+    same budget accounting as the plain text ``call``."""
     cfg = Config()
     store = FakeStore()
-    handler, calls = _counting_handler(lambda _req: _ok_response(content='{"text": "надпись"}'))
+    handler, calls = _counting_handler(lambda _req: _ok_response(content='{"text": "caption"}'))
     client = _client(handler, cfg, store)
     vision_messages: list[dict[str, object]] = [
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": "распознай"},
+                {"type": "text", "text": "recognise"},
                 {"type": "image_url", "image_url": {"url": "data:image/webp;base64,AAAA"}},
             ],
         }
@@ -412,7 +412,7 @@ async def test_call_raw_accepts_vision_content_and_counts_budget() -> None:
     finally:
         await client.aclose()
 
-    assert result.text == '{"text": "надпись"}'
+    assert result.text == '{"text": "caption"}'
     calls_key = day_key("llm_calls", NOW, cfg.persona.timezone)
     assert store.state[calls_key] == "1"
     assert len(calls) == 1
@@ -422,9 +422,8 @@ async def test_call_raw_accepts_vision_content_and_counts_budget() -> None:
 
 
 async def test_custom_counter_key_is_isolated_from_llm_calls() -> None:
-    """counter_key (CLAUDE.md, "внимание как у живого человека") пишет свой
-    суточный счётчик вместо общего llm_calls — followup-чекер не должен есть
-    бюджет вызовов основной модели."""
+    """counter_key writes its own daily counter instead of the shared llm_calls: the
+    followup checker must not eat the call budget of the main model."""
     cfg = Config()
     store = FakeStore()
     handler, calls = _counting_handler(lambda _req: _ok_response())
@@ -436,7 +435,7 @@ async def test_custom_counter_key_is_isolated_from_llm_calls() -> None:
     finally:
         await client.aclose()
 
-    assert result.text == "Привет"
+    assert result.text == "Hello"
     followup_key = day_key("followup_calls", NOW, cfg.persona.timezone)
     llm_calls_key = day_key("llm_calls", NOW, cfg.persona.timezone)
     assert store.state[followup_key] == "1"
@@ -446,7 +445,7 @@ async def test_custom_counter_key_is_isolated_from_llm_calls() -> None:
 
 async def test_custom_calls_cap_blocks_before_request_independent_of_daily_calls_cap() -> None:
     cfg = Config()
-    cfg.llm.daily_calls_cap = 1000  # общий потолок далеко не достигнут
+    cfg.llm.daily_calls_cap = 1000  # the shared cap is nowhere near reached
     store = FakeStore()
     calls_key = day_key("followup_calls", NOW, cfg.persona.timezone)
     store.state[calls_key] = "3"
@@ -466,12 +465,12 @@ async def test_custom_calls_cap_blocks_before_request_independent_of_daily_calls
         await client.aclose()
 
     assert excinfo.value.reason == "llm:calls_cap"
-    assert store.state[calls_key] == "3"  # не выросло
+    assert store.state[calls_key] == "3"  # did not grow
     assert len(calls) == 0
 
 
 async def test_default_counter_key_and_cap_unchanged() -> None:
-    """Без явных counter_key/calls_cap поведение — как раньше: общий llm_calls и
+    """Without explicit counter_key/calls_cap the behaviour is as before: the shared llm_calls and
     cfg.llm.daily_calls_cap."""
     cfg = Config()
     cfg.llm.daily_calls_cap = 1
@@ -552,7 +551,8 @@ async def test_http_error_calls_refusal_hook_with_provider_message() -> None:
             "message": "Prompt tokens limit exceeded: 5863 > 3332.",
         }
     ]
-    # Время отказа — по часам клиента, не now вызывающего (у фото это дата сообщения).
+    # The refusal time comes from the client clock, not the caller's now (a photo's now is the
+    # message date).
     assert store.state["llm_last_refusal"] == f"{WALL_NOW}|402"
 
 

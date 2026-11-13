@@ -14,7 +14,7 @@ from tools.golden import canonical, runner
 from tools.golden.schema import load_scenarios, parse_offset
 
 REPO = Path(__file__).resolve().parent.parent
-PACK = REPO / "personas" / "_legacy_ru"
+PACK = REPO / "personas" / "demo"
 
 MINI = """
 version: 1
@@ -22,10 +22,10 @@ scenarios:
   - id: A_mini
     group: A
     seed:
-      users: {1: "Гена"}
-    llm: ['{"speak": true, "text": "Привет."}']
+      users: {1: "Dana"}
+    llm: ['{"speak": true, "text": "Hello."}']
     actions:
-      - {kind: gate_pass, passes: [{trigger: mention, user: 1, msg: 5, text: "@golden_bot привет"}]}
+      - {kind: gate_pass, passes: [{trigger: mention, user: 1, msg: 5, text: "@golden_bot hello"}]}
   - id: D_mini
     group: D
     actions: [{kind: describe_keys, keys: [behaviour.daily_cap]}]
@@ -41,10 +41,10 @@ def write(path: Path, text: str) -> Path:
 
 
 def test_canonical_dumps_is_stable() -> None:
-    value = {"b": {2, 1}, "a": (1.00000000004, b"\x01"), "ё": None}
+    value = {"b": {2, 1}, "a": (1.00000000004, b"\x01"), "\u0451": None}
     text = canonical.dumps(value)
-    assert text == canonical.dumps(json.loads(text) | {"ё": None}) or text.endswith("\n")
-    assert '"ё"' in text and text.endswith("\n")
+    assert text == canonical.dumps(json.loads(text) | {"\u0451": None}) or text.endswith("\n")
+    assert '"\u0451"' in text and text.endswith("\n")
     assert json.loads(text)["b"] == [1, 2]
     assert json.loads(text)["a"] == [1.0, "01"]
 
@@ -217,12 +217,12 @@ def test_language_gate_reports_and_enforces(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    (tmp_path / "a.py").write_text("x = 'привет'\n", encoding="utf-8")
+    (tmp_path / "a.py").write_text("x = '\u043f\u0440\u0438\u0432\u0435\u0442'\n", encoding="utf-8")
     (tmp_path / "plain.txt").write_text("hello\n", encoding="utf-8")
     (tmp_path / "blob.bin").write_bytes(b"\xff\xfe\x00")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "lang").mkdir()
-    (tmp_path / "tests/lang/test_ru.py").write_text("x = 'да'\n", encoding="utf-8")
+    (tmp_path / "tests/lang/test_ru.py").write_text("x = '\u0434\u0430'\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True)
     files = check_language.tracked_files(tmp_path)
     assert "a.py" in files and check_language.is_allowed("tests/lang/test_ru.py")
@@ -235,24 +235,24 @@ def test_language_gate_reports_and_enforces(
 
 # --- inventories --------------------------------------------------------------
 
-SAMPLE = '''"""Док."""
+SAMPLE = '''"""\u0414\u043e\u043a."""
 import logging
 logger = logging.getLogger(__name__)
-_MSG = "привет"
-name = "мир"  # комментарий
+_MSG = "\u043f\u0440\u0438\u0432\u0435\u0442"
+name = "\u043c\u0438\u0440"  # \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439
 
 class Cfg:
-    x: str = Field(default="а", description="описание")
+    x: str = Field(default="\u0430", description="\u043e\u043f\u0438\u0441\u0430\u043d\u0438\u0435")
 
 def f(parser):
-    logger.info("лог")
-    parser.add_argument("--x", help="помощь")
-    raise ValueError("ошибка")
+    logger.info("\u043b\u043e\u0433")
+    parser.add_argument("--x", help="\u043f\u043e\u043c\u043e\u0449\u044c")
+    raise ValueError("\u043e\u0448\u0438\u0431\u043a\u0430")
 
 def g():
-    return "внутри"
+    return "\u0432\u043d\u0443\u0442\u0440\u0438"
 
-print("тоже")
+print("\u0442\u043e\u0436\u0435")
 '''
 
 

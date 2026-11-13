@@ -8,7 +8,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from sotto.db import LifeEventRow, MessageRow
-from sotto.fragments import load_valid_fragments
 from sotto.prompt import (
     CHAT_CLOSE,
     CHAT_OPEN,
@@ -23,9 +22,8 @@ from sotto.prompt import (
     situation_followup,
     situation_life,
 )
+from tests.demo import DEMO_FRAG
 from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
 
 PLACES_NONE = DEMO_FRAG.text("prompt.places_none")
 SITUATION_CALLBACK_TEMPLATE = DEMO_FRAG.text("situations.callback")

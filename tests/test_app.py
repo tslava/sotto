@@ -1,9 +1,9 @@
-"""Тесты для sotto.app. main() не запускается — только setup_logging.
+"""Tests for sotto.app. main() is not run here, only setup_logging and the startup persona.
 
-Полная сборка процесса (Settings -> ConfigStore -> PromptStore -> Bot -> Deps ->
-Dispatcher -> Responder) проверяется сквозным тестом в
-tests/test_commands_integration.py, не здесь: main() требует реального aiogram
-Bot.get_me() (сетевой вызов), поэтому напрямую не вызывается ни в одном тесте.
+The full process assembly (Settings -> ConfigStore -> PromptStore -> Bot -> Deps ->
+Dispatcher -> Responder) is covered by the end-to-end test in
+tests/test_commands_integration.py: main() needs a real aiogram Bot.get_me() (a network
+call), so no test calls it directly.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import pytest
 
 from sotto.app import load_startup_persona, setup_logging
 from sotto.settings import Settings
-from tests.packs import LEGACY_PACK
+from tests.packs import DEMO_PACK
 
 
 def test_setup_logging_does_not_raise() -> None:
@@ -44,13 +44,13 @@ def _settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **env: str) -> Se
 def test_startup_persona_loads_from_persona_dir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    settings = _settings(monkeypatch, tmp_path, PERSONA_DIR=str(LEGACY_PACK))
+    settings = _settings(monkeypatch, tmp_path, PERSONA_DIR=str(DEMO_PACK))
 
     with caplog.at_level(logging.INFO, logger="sotto.app"):
         persona = load_startup_persona(settings)
 
-    assert persona.name == "legacy_ru"
-    assert "persona: legacy_ru rev dev" in caplog.text
+    assert persona.name == "demo"
+    assert "persona: demo rev dev" in caplog.text
 
 
 def test_startup_without_persona_dir_exits(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -80,7 +80,7 @@ def test_startup_broken_pack_exits(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
 def test_startup_bad_prompt_slots_exit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     pack = tmp_path / "pack"
-    shutil.copytree(LEGACY_PACK, pack)
+    shutil.copytree(DEMO_PACK, pack)
     (pack / "prompts" / "judge.txt").write_text("no slots", encoding="utf-8")
     settings = _settings(monkeypatch, tmp_path, PERSONA_DIR=str(pack))
 
@@ -94,7 +94,7 @@ def test_startup_warns_about_deprecated_path_variables(
     settings = _settings(
         monkeypatch,
         tmp_path,
-        PERSONA_DIR=str(LEGACY_PACK),
+        PERSONA_DIR=str(DEMO_PACK),
         CONFIG_PATH="/old/config.yaml",
         STICKERS_PATH="/old/stickers.yaml",
     )
@@ -102,7 +102,8 @@ def test_startup_warns_about_deprecated_path_variables(
     with caplog.at_level(logging.WARNING, logger="sotto.app"):
         load_startup_persona(settings)
 
-    warned = [r.message for r in caplog.records if "игнорируется" in r.message]
+    ignored_word = "игнорируется"  # PR-8: Russian log text in src/
+    warned = [r.message for r in caplog.records if ignored_word in r.message]
     assert [m.split()[0] for m in warned] == ["CONFIG_PATH", "STICKERS_PATH"]
 
 

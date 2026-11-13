@@ -14,6 +14,8 @@ from sotto.vocab import Vocab, VocabDict, parse_vocab
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LEGACY_PACK = REPO_ROOT / "personas" / "_legacy_ru"
 DEMO_PACK = REPO_ROOT / "personas" / "demo"
+# Synthetic Russian pack for the language tests (tests/lang); it outlives personas/_legacy_ru.
+RU_PACK = REPO_ROOT / "tests" / "fixtures" / "ru_pack"
 
 
 def _load_legacy_fragments() -> Fragments:
@@ -48,3 +50,21 @@ def parse_ru_vocab(raw: str) -> VocabDict:
 
 def ru_vocab(dicts: Sequence[VocabDict] = ()) -> Vocab:
     return Vocab(dicts, lang=RU)
+
+
+# Fragments and config of the synthetic Russian pack (tests/lang).
+RU_FRAG = load_valid_fragments(RU_PACK / "fragments.yaml")
+
+
+def ru_frag_with(**changes: object) -> Fragments:
+    """Russian-pack fragments with leaves replaced; ``group__leaf=value`` sets ``group.leaf``."""
+    data = copy.deepcopy(dict(RU_FRAG.data))
+    for name, value in changes.items():
+        group, leaf = name.split("__", 1)
+        data[group][leaf] = value
+    return Fragments(data)
+
+
+def ru_config() -> Config:
+    """The synthetic Russian pack's parsed config (Russian persona and filter lists)."""
+    return load_config(load_persona(RU_PACK).config_layers())

@@ -6,18 +6,12 @@ import httpx
 import pytest
 
 from sotto import filters as filters_module
-from sotto.config_models import Config
 from sotto.db import Database
 from sotto.filters import FilterVerdict
 from sotto.gate_types import Trigger
-from sotto.llm import LLMClient
-from sotto.patterns import Patterns
-from sotto.responder import Responder
 from sotto.stickers import Sticker
 from sotto.timeutil import day_key
-from tests.packs import LEGACY_FRAG, RU, legacy_config
 from tests.responder.helpers import (
-    BOT_USERNAME,
     DAY_NOW,
     PROMPT_TEMPLATE_WITH_LIFE,
     FakeBot,
@@ -239,48 +233,6 @@ async def test_announce_life_filter_cut_not_shadow_returns_sent_false_with_candi
         still = await db.life_event(event_id)
         assert still is not None
         assert still.announced_at is None
-    finally:
-        await responder.shutdown()
-        await llm.aclose()
-
-
-def _russian_responder(
-    db: Database, llm: LLMClient, bot: FakeBot, clock: FakeClock
-) -> tuple[Config, Responder]:
-    """Responder on the legacy Russian pack: the venue filter (Latin words inside Russian
-    text) only exists for languages that have a foreign script."""
-    cfg = legacy_config()
-    cfg.llm.main_model = "test/model"
-    cfg.filters.shadow = False
-    responder = _make_responder(db, cfg, llm, bot, clock)
-    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, BOT_USERNAME, RU)
-    responder.patterns_getter = lambda: patterns
-    responder.frag = LEGACY_FRAG
-    return cfg, responder
-
-
-# stays for tests/lang: regex:venue only exists for a language with a foreign script (Russian)
-async def test_announce_life_latin_from_note_passes_venue_filter(db: Database) -> None:
-    """Латинское название из заметки владельца («Hyundai») не режется regex:venue:
-    текст события уходит как trigger_text и попадает в белый список фильтра."""
-    cfg = legacy_config()
-    llm, _calls = _make_llm(cfg, db, lambda _req: _ok_response("Взял Hyundai, старую продал."))
-    bot = FakeBot()
-    clock = FakeClock(DAY_NOW)
-    _cfg, responder = _russian_responder(db, llm, bot, clock)
-    try:
-        event_id = await db.insert_life_event(
-            text="продал тележку, взял Hyundai 2015 года", created_at=DAY_NOW
-        )
-        event = await db.life_event(event_id)
-        assert event is not None
-
-        task = await _drive(clock, responder.announce_life(event))
-        outcome = task.result()
-
-        assert outcome.sent is True
-        assert outcome.reason == "send:life"
-        assert len(bot.sent) == 1
     finally:
         await responder.shutdown()
         await llm.aclose()

@@ -27,7 +27,6 @@ from sotto.persona import load_persona
 from tests.packs import LEGACY_PACK, REPO_ROOT
 
 EN = read_locale_dir(ENGINE_LOCALES_DIR / "en")
-RU = read_locale_dir(LEGACY_PACK / "locale" / "ru")
 AREAS = {"help", "status", "commands", "alerts", "errors", "validation", "config_keys"}
 SRC = REPO_ROOT / "src" / "sotto"
 
@@ -51,23 +50,15 @@ def test_english_catalog_has_the_seven_owner_areas() -> None:
     assert {path.stem for path in (ENGINE_LOCALES_DIR / "en").glob("*.yaml")} == AREAS
 
 
-def test_legacy_ru_catalog_has_the_same_seven_files() -> None:
-    assert {path.stem for path in (LEGACY_PACK / "locale" / "ru").glob("*.yaml")} == AREAS
-
-
-def test_english_and_legacy_ru_are_in_parity() -> None:
-    assert catalog_parity(EN, RU, ["one", "few", "many"], other_name="ru") == []
-
-
 def test_english_catalog_is_plain_english_text() -> None:
     for text in _texts(EN):
-        assert not re.search("[А-Яа-яЁё]", text), text
+        assert not re.search("[\u0400-\u04ff]", text), text
         assert "**" not in text and "`" not in text and "<b>" not in text, text
         assert len(text) <= 3500, text[:40]
 
 
 def test_help_texts_fit_one_telegram_message() -> None:
-    for entries in (EN, RU):
+    for entries in (EN,):
         help_text = entries["help.text"]
         assert isinstance(help_text, str) and len(help_text) <= 3500
         for command in (
@@ -102,7 +93,7 @@ def test_help_texts_fit_one_telegram_message() -> None:
 
 
 def test_every_value_formats_with_its_own_placeholders() -> None:
-    for entries in (EN, RU):
+    for entries in (EN,):
         for value in entries.values():
             for text in [value] if isinstance(value, str) else list(value.values()):
                 params = {name: 1 for name in _placeholders(text)}
@@ -113,17 +104,6 @@ def test_plural_forms_follow_the_language_rule() -> None:
     en = Catalog("en", EN, plural_rule=lambda n: "one" if n == 1 else "other")
     assert en.plural("commands.words_count", 1) == "1 word"
     assert en.plural("commands.words_count", 2) == "2 words"
-    from sotto.lang import get_language
-
-    ru = Catalog("ru", RU, plural_rule=get_language("ru").plural)
-    assert [ru.plural("commands.words_count", n) for n in (1, 2, 5, 11, 21, 22)] == [
-        "1 слово",
-        "2 слова",
-        "5 слов",
-        "11 слов",
-        "21 слово",
-        "22 слова",
-    ]
 
 
 # -- every catalog call in the engine ----------------------------------------------
@@ -322,6 +302,4 @@ def test_owner_error_renders_through_the_catalog_and_stays_a_value_error() -> No
     assert error.code == "ex_rm_range" and error.params == {"index": 4, "total": 2}
     assert "ex_rm_range" in str(error)
     assert error.render(engine_catalog()) == "index 4 is out of range: there are 2 examples"
-    ru = load_persona(LEGACY_PACK).catalog
-    assert error.render(ru) == "индекс 4 вне диапазона: всего примеров 2"
     assert str(OwnerError("set_persona")) == "set_persona"

@@ -22,12 +22,9 @@ from aiogram.methods import GetFile
 from aiogram.types import Chat, Message, PhotoSize, User
 
 from sotto.bot import Deps, build_router
-from sotto.config import load_config
 from sotto.config_models import Config
 from sotto.db import Database, MessageRow
-from sotto.fragments import load_valid_fragments
 from sotto.gate_types import Trigger
-from sotto.lang import get_language
 from sotto.patterns import Patterns
 from sotto.persona import load_persona
 from sotto.sanitize import stable_n
@@ -35,16 +32,8 @@ from sotto.settings import Settings
 from sotto.stores import ConfigStore, PromptStore
 from sotto.timeutil import day_key
 from sotto.vocab import VocabStore
+from tests.demo import DEMO_FRAG, EN, demo_config
 from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
-EN = get_language("en")
-
-
-def demo_config() -> Config:
-    """The demo pack's parsed config (English persona and filter lists)."""
-    return load_config(load_persona(DEMO_PACK).config_layers())
-
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
@@ -1492,9 +1481,8 @@ async def test_photo_download_error_falls_back_to_placeholder(
     assert describer.calls == []
     summary = dict(await db.filter_log_summary(0))
     assert summary.get("vision:failed") == 1
-    assert any(
-        "не удалось скачать фото" in record.getMessage() for record in caplog.records
-    )  # PR-8: the log message in src/sotto/bot.py is still Russian
+    download_failed = "не удалось скачать фото"  # PR-8: Russian log message in src/sotto/bot.py
+    assert any(download_failed in record.getMessage() for record in caplog.records)
 
 
 async def test_photo_describe_returns_none_logs_failed(

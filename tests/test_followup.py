@@ -7,17 +7,13 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from sotto.config import load_config
 from sotto.config_models import Config
 from sotto.db import MessageRow
 from sotto.followup import FollowupChecker
-from sotto.fragments import load_valid_fragments
 from sotto.llm import LLMClient
-from sotto.persona import load_persona
 from sotto.timeutil import day_key
+from tests.demo import DEMO_FRAG, demo_config
 from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
 
 NOW = 1_768_003_200  # see tests/test_llm.py
 FOLLOWUP_PROMPT_PATH = DEMO_PACK / "prompts/followup.txt"
@@ -140,7 +136,7 @@ def _checker(
 
 
 def _cfg(*, followup_model: str = "openrouter/small", judge_model: str = "") -> Config:
-    cfg = load_config(load_persona(DEMO_PACK).config_layers())
+    cfg = demo_config()
     cfg.behaviour.followup.model = followup_model
     cfg.llm.judge_model = judge_model
     return cfg

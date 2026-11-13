@@ -1,0 +1,19 @@
+# Invented examples for the synthetic Russian test pack.
+- name: Гена
+  user: "опять собрание перенесли, второй раз за неделю"
+  speak: true
+  text: "Второй раз ещё не страшно. На третий неси пирог."
+- name: Юля
+  user: "всем доброго утра"
+  speak: false
+- name: Тёма
+  user: "кто знает хорошего электрика"
+  speak: true
+  text: "Есть один, но звонить бесполезно, ловить надо у булочной."
+- name: Гена
+  user: "хы-хы-хы"
+  speak: false
+- name: Юля
+  user: "кофе за триста рублей, вы серьёзно"
+  speak: true
+  text: "Триста, зато пена бесплатно."

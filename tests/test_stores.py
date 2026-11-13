@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import shutil
 from dataclasses import replace
 from pathlib import Path
 
@@ -14,15 +13,11 @@ from sotto.db import Database
 from sotto.errors import OwnerError
 from sotto.persona import Persona, load_persona
 from sotto.stores import ConfigStore, PromptStore, build_seed_plan, decide_seed
-from tests.packs import DEMO_PACK, LEGACY_PACK
+from tests.packs import DEMO_PACK
 
 
 def _demo() -> Persona:
     return load_persona(DEMO_PACK)
-
-
-def _legacy() -> Persona:
-    return load_persona(LEGACY_PACK)
 
 
 def _with_system(persona: Persona, text: str) -> Persona:
@@ -201,40 +196,6 @@ async def test_describe_reads_the_description_from_the_packs_catalog(tmp_path: P
 
         assert info is not None
         # The demo pack ships no locale: the engine's English catalog, not Field.description.
-        assert info.description == "Daily limit of ambient and unprompted replies together"
-    finally:
-        await db.close()
-
-
-# Stays Russian: pins the legacy pack's ru catalog (tests/lang).
-async def test_describe_reads_the_description_from_the_legacy_ru_catalog(tmp_path: Path) -> None:
-    db = Database(tmp_path / "bot.db")
-    await db.connect()
-    store = ConfigStore(_legacy(), db)
-    await store.load()
-    try:
-        info = store.describe("behaviour.daily_cap")
-
-        assert info is not None
-        assert info.description == "Суточный лимит ambient и «просто так» вместе"
-    finally:
-        await db.close()
-
-
-async def test_describe_falls_back_to_the_english_catalog_for_a_pack_without_locale(
-    tmp_path: Path,
-) -> None:
-    db = Database(tmp_path / "bot.db")
-    await db.connect()
-    pack = tmp_path / "pack"
-    shutil.copytree(LEGACY_PACK, pack)
-    shutil.rmtree(pack / "locale")
-    store = ConfigStore(load_persona(pack), db)
-    await store.load()
-    try:
-        info = store.describe("behaviour.daily_cap")
-
-        assert info is not None
         assert info.description == "Daily limit of ambient and unprompted replies together"
     finally:
         await db.close()
@@ -568,18 +529,5 @@ async def test_config_store_patterns_carry_the_persona_language(tmp_path: Path) 
         assert store.patterns().lang.code == "en"
         store.set_bot_username("x_bot")  # rebuilds the patterns
         assert store.patterns().lang is not None
-    finally:
-        await db.close()
-
-
-# Stays Russian: the legacy pack's language (tests/lang).
-async def test_config_store_patterns_carry_the_legacy_pack_language(tmp_path: Path) -> None:
-    db = Database(tmp_path / "bot.db")
-    await db.connect()
-    store = ConfigStore(_legacy(), db)
-    await store.load()
-    try:
-        assert store.patterns().lang is not None
-        assert store.patterns().lang.code == "ru"
     finally:
         await db.close()

@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from sotto.config import load_config
 from sotto.config_models import Config, HotWindowConfig
 from sotto.gate import should_consider
 from sotto.gate_types import (
@@ -19,8 +18,7 @@ from sotto.gate_types import (
     Trigger,
     Verdict,
 )
-from sotto.persona import load_persona
-from tests.packs import DEMO_PACK
+from tests.demo import demo_config
 
 TZ = ZoneInfo("Europe/London")
 
@@ -152,7 +150,7 @@ def make_state(
 
 
 def make_cfg(**behaviour_overrides: object) -> Config:
-    cfg = load_config(load_persona(DEMO_PACK).config_layers())
+    cfg = demo_config()
     if behaviour_overrides:
         cfg = cfg.model_copy(
             update={"behaviour": cfg.behaviour.model_copy(update=behaviour_overrides)}

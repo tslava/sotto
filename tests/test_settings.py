@@ -1,4 +1,4 @@
-"""Settings читается из окружения, .env не обязателен."""
+"""Settings is read from the environment; a .env file is optional."""
 
 from pathlib import Path
 
@@ -9,7 +9,7 @@ from sotto.settings import Settings
 
 @pytest.fixture(autouse=True)
 def _isolated_cwd(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # Гарантируем, что рядом нет .env — настройки должны собираться из чистого окружения.
+    # Make sure there is no .env nearby: settings must build from a clean environment.
     monkeypatch.chdir(tmp_path)
 
 
@@ -52,8 +52,8 @@ def test_settings_from_env_full(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_settings_empty_env_values_like_env_example(monkeypatch: pytest.MonkeyPatch) -> None:
-    # .env.example содержит все ключи с пустыми значениями (KEY=). Пустая строка не должна
-    # ломать int-поля или превращаться в SecretStr("") — она должна трактоваться как "не задано".
+    # .env.example holds every key with an empty value (KEY=). An empty string must not break
+    # int fields or turn into SecretStr(""): it must be read as "not set".
     monkeypatch.setenv("BOT_TOKEN", "abc")
     monkeypatch.setenv("ADMIN_USER_ID", "")
     monkeypatch.setenv("ALLOWED_CHAT_ID", "")
@@ -73,7 +73,7 @@ def test_settings_empty_env_values_like_env_example(monkeypatch: pytest.MonkeyPa
 
 
 def test_settings_weather_home_point_defaults_to_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Координат домашней точки в репозитории нет: по умолчанию их просто нет."""
+    """There are no home-point coordinates in the repository: by default there are none."""
     monkeypatch.setenv("BOT_TOKEN", "abc")
 
     settings = Settings()
@@ -87,17 +87,17 @@ def test_settings_weather_home_point_from_env(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("BOT_TOKEN", "abc")
     monkeypatch.setenv("WEATHER_LATITUDE", "50.0")
     monkeypatch.setenv("WEATHER_LONGITUDE", "10.0")
-    monkeypatch.setenv("WEATHER_HOME_NAME", "Город")
+    monkeypatch.setenv("WEATHER_HOME_NAME", "Town")
 
     settings = Settings()
 
     assert settings.weather_latitude == 50.0
     assert settings.weather_longitude == 10.0
-    assert settings.weather_home_name == "Город"
+    assert settings.weather_home_name == "Town"
 
 
 def test_settings_empty_weather_env_values_mean_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    """.env.example держит ключи пустыми — пустая строка не должна ломать float-поля."""
+    """.env.example keeps the keys empty: an empty string must not break float fields."""
     monkeypatch.setenv("BOT_TOKEN", "abc")
     monkeypatch.setenv("WEATHER_LATITUDE", "")
     monkeypatch.setenv("WEATHER_LONGITUDE", "")
@@ -113,7 +113,7 @@ def test_settings_empty_weather_env_values_mean_unset(monkeypatch: pytest.Monkey
 def test_settings_missing_bot_token_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BOT_TOKEN", raising=False)
 
-    with pytest.raises(Exception):  # noqa: B017 - pydantic ValidationError, обязательное поле
+    with pytest.raises(Exception):  # noqa: B017 - pydantic ValidationError, a required field
         Settings()
 
 

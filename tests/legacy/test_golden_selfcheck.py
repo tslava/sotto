@@ -2,6 +2,8 @@
 committed synthetic baseline, and a mutation per scenario group.
 
 A group whose mutation is not detected has missing scenarios: the failing assertion names it.
+
+Migration proof: removed together with ``personas/_legacy_ru`` in PR-9.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from tools.golden.schema import GROUPS, load_scenarios
 
 from sotto.fragments import ALL_FRAGMENT_KEYS
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent.parent
 PACK = REPO / "personas" / "_legacy_ru"
 SCENARIOS = REPO / "tools" / "golden" / "scenarios_ru.yaml"
 BASELINE = REPO / "tools" / "golden" / "baseline_synthetic"

@@ -17,11 +17,8 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
-from sotto.config import load_config
 from sotto.config_models import Config
-from sotto.fragments import load_valid_fragments
 from sotto.llm import LLMClient
-from sotto.persona import load_persona
 from sotto.timeutil import day_key
 from sotto.weather import (
     Place,
@@ -32,14 +29,7 @@ from sotto.weather import (
     render_weather,
     render_weather_place,
 )
-from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
-
-
-def demo_config() -> Config:
-    return load_config(load_persona(DEMO_PACK).config_layers())
-
+from tests.demo import DEMO_FRAG, demo_config
 
 LOCAL = ZoneInfo("Europe/London")
 TZ = "Europe/London"

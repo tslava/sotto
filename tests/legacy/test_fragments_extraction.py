@@ -2,6 +2,8 @@
 
 All wording here is synthetic or already part of the repo's legacy pack; the extractor is
 tested against tiny generated source trees, never against real engine history.
+
+Migration proof: removed together with ``personas/_legacy_ru`` in PR-9.
 """
 
 from __future__ import annotations

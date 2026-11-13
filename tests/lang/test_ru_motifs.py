@@ -1,0 +1,242 @@
+"""motifs.py: реквизит персонажа и квота баек (CLAUDE.md, "меньше и разнообразнее")."""
+
+from __future__ import annotations
+
+import re
+
+import pytest
+
+from sotto.motifs import (
+    SelfShare,
+    motifs_in,
+    render_avoid,
+    render_self_share,
+    self_share,
+    speaks_about_self,
+    story_count,
+    used_motifs,
+)
+from sotto.patterns import Patterns
+from tests.packs import RU, RU_FRAG, ru_config
+
+
+def _patterns() -> Patterns:
+    return Patterns(ru_config().filters, ["боря"], "", RU)
+
+
+def _motifs() -> dict[str, list[re.Pattern[str]]]:
+    return _patterns().motifs
+
+
+def _story_markers() -> list[re.Pattern[str]]:
+    return _patterns().story_markers
+
+
+# --- motifs_in ---------------------------------------------------------------------
+
+
+def test_motifs_in_finds_labels_in_config_order() -> None:
+    text = "В гараже сидел, потом жена позвала в теплицу."
+
+    assert motifs_in(text, _motifs()) == ["жена", "теплица", "гараж"]
+
+
+def test_motifs_in_empty_text_is_empty() -> None:
+    assert motifs_in("", _motifs()) == []
+
+
+def test_motifs_in_nothing_matched_is_empty() -> None:
+    assert motifs_in("Тихо прошли выходные.", _motifs()) == []
+
+
+def test_motifs_in_is_case_insensitive() -> None:
+    assert motifs_in("ГАРАЖ закрыт.", _motifs()) == ["гараж"]
+
+
+def test_motifs_in_word_boundary_for_wife() -> None:
+    """«жена/жене/женой» — мотив, «женился» — нет (регулярка по границам слов)."""
+    assert motifs_in("Жена сказала.", _motifs()) == ["жена"]
+    assert motifs_in("Женой доволен.", _motifs()) == ["жена"]
+    assert "жена" not in motifs_in("Сосед женился в мае.", _motifs())
+
+
+def test_motifs_in_nineties_digits_form() -> None:
+    assert motifs_in("Это было в 95-м.", _motifs()) == ["девяностые"]
+
+
+def test_motifs_in_factory_forms() -> None:
+    """Завод, заводской, цех, наладчик — один мотив; линия, смена и «заводится» — нет."""
+    for text in (
+        "У нас на заводе так было.",
+        "Там заводская столовая была.",
+        "Целый цех стоял.",
+        "Я же наладчик.",
+    ):
+        assert motifs_in(text, _motifs()) == ["завод"], text
+    for text in (
+        "Линия трамвая встала, смена планов.",
+        "Машина не заводится, заводи с толкача.",
+    ):
+        assert "завод" not in motifs_in(text, _motifs()), text
+
+
+# --- used_motifs -------------------------------------------------------------------
+
+
+def test_used_motifs_only_looks_at_window_tail() -> None:
+    replies = ["Жена сказала.", "Теплица протекла.", "Тихо прошли.", "Ключи нашлись."]
+
+    assert used_motifs(replies, 2, _motifs(), frag=RU_FRAG) == []
+    assert used_motifs(replies, 4, _motifs(), frag=RU_FRAG) == ["жена", "теплица"]
+
+
+def test_used_motifs_zero_window_is_empty() -> None:
+    assert used_motifs(["Жена сказала."], 0, _motifs(), frag=RU_FRAG) == []
+
+
+def test_used_motifs_deduplicates_labels() -> None:
+    replies = ["Жена сказала.", "Жене не понравилось."]
+
+    assert used_motifs(replies, 10, _motifs(), frag=RU_FRAG) == ["жена"]
+
+
+def test_used_motifs_skips_sticker_records() -> None:
+    """«[стикер #N] надпись» — картинка, а не реплика персонажа: мотивов в ней нет."""
+    replies = ["[стикер #3] Жена сказала", "Тихо прошли."]
+
+    assert used_motifs(replies, 10, _motifs(), frag=RU_FRAG) == []
+
+
+# --- story_count -------------------------------------------------------------------
+
+
+def test_story_count_counts_replies_not_matches() -> None:
+    replies = ["Помню, в девяностых так же было.", "Тихо прошли.", "Как-то раз повезло."]
+
+    assert story_count(replies, 10, _story_markers(), frag=RU_FRAG) == 2
+
+
+def test_story_count_respects_window() -> None:
+    replies = ["Помню, было дело.", "Тихо прошли.", "Ключи нашлись."]
+
+    assert story_count(replies, 2, _story_markers(), frag=RU_FRAG) == 0
+    assert story_count(replies, 3, _story_markers(), frag=RU_FRAG) == 1
+
+
+def test_story_count_skips_sticker_records() -> None:
+    assert story_count(["[стикер #1] помню такое"], 10, _story_markers(), frag=RU_FRAG) == 0
+
+
+def test_story_count_zero_window_is_zero() -> None:
+    assert story_count(["Помню, было дело."], 0, _story_markers(), frag=RU_FRAG) == 0
+
+
+# --- render_avoid ------------------------------------------------------------------
+
+
+def test_render_avoid_empty_when_nothing_to_say() -> None:
+    assert render_avoid([], no_story=False, frag=RU_FRAG) == ""
+
+
+def test_render_avoid_declines_known_labels() -> None:
+    text = render_avoid(["жена", "теплица", "гараж"], no_story=False, frag=RU_FRAG)
+
+    assert "уже поминал: жену, теплицу, гараж" in text
+    assert "другая деталь или вовсе без байки" in text
+
+
+def test_render_avoid_unknown_label_goes_as_is() -> None:
+    assert "рыбалку" not in render_avoid(["рыбалка"], no_story=False, frag=RU_FRAG)
+    assert "рыбалка" in render_avoid(["рыбалка"], no_story=False, frag=RU_FRAG)
+
+
+def test_render_avoid_no_story_only() -> None:
+    text = render_avoid([], no_story=True, frag=RU_FRAG)
+
+    assert text.startswith("Байку сейчас не рассказывай")
+    assert "поминал" not in text
+
+
+def test_render_avoid_both_parts() -> None:
+    text = render_avoid(["гараж"], no_story=True, frag=RU_FRAG)
+
+    assert "уже поминал: гараж" in text
+    assert "Байку сейчас не рассказывай" in text
+
+
+def test_render_avoid_has_no_typographic_dash() -> None:
+    """Модель копирует типографику промпта — тире в нём быть не должно."""
+    text = render_avoid(["жена"], no_story=True, frag=RU_FRAG)
+
+    assert "—" not in text
+    assert "–" not in text
+
+
+# --- метрика «про себя» (CLAUDE.md, "про себя через раз") ---------------------------
+
+
+def _self_markers() -> list[re.Pattern[str]]:
+    return [re.compile(p, re.IGNORECASE) for p in ru_config().filters.self_markers]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "У нас в лаборатории так же спорили, только про премию",
+        "Лисы у нас на участке зимой в сарае жили",
+        "Болтик этот теперь живёт отдельной жизнью, у меня такие в ящике",
+        "Внук лук не ест, зато варенье за вечер может уполовинить",
+        "Мои в этой дискуссии не участвуют",
+        "Мне-то всё равно, я одну чашку беру",
+        "Мы у себя молоко из деревни брали",
+        "Я час ищу ключи в моём сарае",
+        "в нашем сарае такого не было",
+        "Сын звонил вчера",
+        "Внучка поёт",
+    ],
+)
+def test_speaks_about_self_catches_real_self_replies(text: str) -> None:
+    assert speaks_about_self(text, _self_markers(), frag=RU_FRAG)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Второй раз это уже распорядок. Третий отметьте пирожными.",
+        "Мне кажется, кот на что-то намекает",
+        "Нашёл время, конечно",
+        "Рейс из Внуково задержали",
+        "Сынишкин портфель тут ни при чём",
+        "Восемнадцать злотых, зато пенка бесплатно.",
+        "[стикер #3] я тебя",
+        "",
+    ],
+)
+def test_speaks_about_self_ignores_other_replies(text: str) -> None:
+    assert not speaks_about_self(text, _self_markers(), frag=RU_FRAG)
+
+
+def test_self_share_groups_and_skips() -> None:
+    share = self_share(
+        [
+            ("ambient", "У нас в лаборатории"),
+            ("ambient", "Плюс девять ещё бодрит"),
+            ("mention", "Я не проверял"),
+            ("followup", "Бывает"),
+            ("places", "Мы там сидели"),
+            ("checkin", "у меня тоже"),
+            ("say", "я в баню"),
+            ("life", "я продал машину"),
+            ("ambient", "[стикер #1] я"),
+        ],
+        _self_markers(),
+        frag=RU_FRAG,
+    )
+    assert share == SelfShare(ambient=(1, 2), address=(2, 3), other=(1, 1))
+
+
+def test_render_self_share() -> None:
+    share = SelfShare(ambient=(6, 6), address=(2, 2), other=(0, 1))
+    assert render_self_share(share, 3, frag=RU_FRAG) == (
+        "о себе за 3 сут: ambient 6/6, обращения 2/2, прочее 0/1"
+    )

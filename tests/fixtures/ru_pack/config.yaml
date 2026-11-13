@@ -1,0 +1,138 @@
+# Synthetic Russian test pack: invented persona and lists, only the structure follows the engine.
+persona:
+  name: Борис
+  display_name: Борис Седов
+  name_triggers: [борис, боря, борь, отец, отче, батюшка, дед]
+  birth_date: 1960-05-20
+  district: Заречье
+  timezone: Europe/Moscow
+
+places:
+  min_rating: 4.2
+  queries:
+    - craft beer pub Tikhorechensk
+    - pub Zarechye Tikhorechensk
+  min_reviews: 50
+  default_district: Тихореченск
+  district_aliases:
+    Заречье: [заречье, zarechye]
+    Старый город: [старый город, центр, staryj gorod]
+    Посад: [посад, posad]
+  quiet_keywords: [тихо, спокойно, поговорить, посидеть]
+  outskirts_keywords: [за город, съездить, природа, озеро, лес]
+
+behaviour:
+  vocab:
+    request_markers: ['\bсловеч', '\bсловар', '\bдиалект']
+    request_size: 5
+    explain_markers: ['\bне понял', '\bне поняла', '\bне понятно', '\bнепонятно',
+                      '\bчто (это |оно )?значит', '\bчто это (за слово|такое)', '\bв смысле\b',
+                      '\bэто как\b', '\bпереведи', '\bпо-русски', '\bчё это\b', '\bчо это\b']
+
+weather:
+  geocode_language: ru
+  home_country_codes: [RU]
+  home_country_names: [россия, russia]
+
+filters:
+  shadow: true
+  places_whitelist: [Magnit, Ozon, Wildberries, Avito]
+  allowed_emoji: ["🙁", "🙂", "😂", "😀", "🤪", "💩", "👍"]
+  emoji_max_per_reply: 1
+  emoji_recent_window: 4
+  known_places:
+    - Zarya Bar
+    - Dom Peka
+    - ZORKA
+  polish_words: [działka, działce, przegląd, urząd, sklep, piwo, zrobiony, lech, tyskie, spoko]
+  districts: [Zarechye, Posad, Tikhorechensk]
+  latin_extra_letters: "ĄąĆćĘęŁłŃńÓóŚśŹźŻż"
+  topic_stop:
+    - \bвойн[а-я]*
+    - \bполитик[а-я]*
+    - \bвыбор(ы|ов|ах|ам)\b
+    - \bсанкци[а-я]*
+    - \bпартия\b
+    - \bмигрант[а-я]*
+    - \bцерк[а-я]*
+    - \bхрам[а-я]*
+    - \bаборт[а-я]*
+    - \bобстрел[а-я]*
+    - \bфронт[а-я]*
+    - \bмобилизац[а-я]*
+    - \bтрамп(а|у|ом|е|ы)?\b
+    - \bсектор газа
+    - \bпис\b
+    - \bpis\b
+    - \bроссии\b
+    - \bукраин[а-я]*
+    - \bлгбт\b
+    - \bкостёл[а-я]*
+    - \bкостел[а-я]*
+  logistics:
+    - \b\d{1,2}[:.]\d{2}\b
+    - \bв (семь|восемь|девять|десять|шесть|пять|четыре|три|два)\b(?! раз)
+    - \bв час\b(?! пик)
+    - \bво сколько\b
+    - "\\bкто (идёт|идет|будет|со мной)\\b"
+    - \bя пас\b
+    - \bвстречаемся\b
+    - "\\bгде (собираемся|встречаемся)\\b"
+    - \bкто в (пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|среду|четверг|пятницу|субботу|воскресенье|выходные)\b
+    - \bподтянусь\b
+    - \bбуду через\b
+  urgent:
+    - \bсегодня\b
+    - \bсейчас\b
+    - \bчерез час\b
+    - \bкуда идём\b
+    - \bкуда идем\b
+    - \bты где\b
+  places_request:
+    - \bкуда сходить\b
+    - \bпосоветуй
+    - \bгде посидеть\b
+    - \bгде выпить\b
+    - \bкакой бар\b
+    - \bпаб\b
+    - \bпивнух
+    - \bкуда съездить\b
+    - \bгде (пиво|бар|паб|пивная|нормальн\w+ пиво)
+    - \bколись,? где\b
+    - \bкуда (пойти|податься|зайти)\b
+    - \bесть (бар|паб|место)\b
+  grumpy_markers:
+    - \bя (же|уже|вам уже) (говорил|сказал|написал)\b
+    - \bразговор закрыт\b
+    - \bникому не интересно\b
+    - \bне буду (говорить|рассказывать|отвечать)\b
+    - \bнеинтересно\b
+    - \bотстань
+    - \bхватит (уже|про|об)
+    - \bсколько можно\b
+  enforce_stages: [dedup, style]
+  motifs:
+    жена: ['\bжен[аеуы]\b', '\bжено[йю]\b']
+    теплица: ['\bтеплиц']
+    гараж: ['\bгараж']
+    девяностые: ['\bдевяност', '\b9\d-?[мхе]\b']
+    двухтысячные: ['\bдвухтысячн']
+    сын: ['\bсын']
+    грибы: ['\bгриб']
+    участок: ['\bучасток', '\bучастк']
+    машина: ['\bмашин']
+    зато: ['\bзато\b']
+    завод: ['\bзавод(а|у|ом|е|ы|ов|ах|ам|ами)?\b', '\bзаводск', '\bцех', '\bналадчик']
+  motif_recent_window: 3
+  motif_avoid_window: 10
+  story_markers:
+    - \bдевяност
+    - \bдвухтысячн
+    - \bв прошлом году
+    - \bлет назад
+    - \bпомню\b
+    - \bкогда-то\b
+    - \bодин раз\b
+    - \bкак-то раз\b
+  story_window: 5
+  story_max: 1

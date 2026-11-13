@@ -1,4 +1,4 @@
-"""Тесты для delays.py: распределение по бакетам, границы, urgent, дебаунс."""
+"""Tests for delays.py: bucket distribution, boundaries, urgent, debounce."""
 
 from __future__ import annotations
 

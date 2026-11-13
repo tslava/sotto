@@ -20,7 +20,7 @@ import pytest
 from aiogram.types import Chat, Document, Message, MessageEntity, PhotoSize, User
 
 from sotto.commands import build_commands_router
-from sotto.config import KeyInfo, load_config
+from sotto.config import KeyInfo
 from sotto.config_models import Config
 from sotto.db import (
     ChatMemoryRow,
@@ -31,7 +31,7 @@ from sotto.db import (
     SelfFactRow,
 )
 from sotto.few_shot import FewShot
-from sotto.fragments import Fragments, load_valid_fragments
+from sotto.fragments import Fragments
 from sotto.patterns import Patterns
 from sotto.persona import Persona, load_persona
 from sotto.responder import PreviewOutcome, SendOutcome
@@ -39,15 +39,8 @@ from sotto.settings import Settings
 from sotto.timeutil import day_key, local_dt
 from sotto.vocab import VocabStore
 from sotto.weather import Place, Weather
+from tests.demo import DEMO_FRAG, demo_config
 from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
-
-
-def demo_config() -> Config:
-    """The demo pack's parsed config: the English persona with its filter lists."""
-    return load_config(load_persona(DEMO_PACK).config_layers())
-
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
@@ -2395,32 +2388,34 @@ async def test_status_shows_chat_memory_total_and_last_period_end(
 # --- /changelog -------------------------------------------------------------
 
 
-# The legacy CHANGELOG.md format: Russian block headers (PR-8: changelog.py keys on them).
-_CHANGELOG_SAMPLE = """# Changelog
+# The legacy CHANGELOG.md format: Russian block headers.
+_CHAT = "### Для чата"  # PR-8: changelog.py keys on the Russian block headers
+_OWNER = "### Для владельца"  # PR-8: same
+_CHANGELOG_SAMPLE = f"""# Changelog
 
 ## [Unreleased]
 
-### Для чата
+{_CHAT}
 
-### Для владельца
+{_OWNER}
 
 ## [0.5.0] — 2026-09-16
 
-### Для чата
+{_CHAT}
 
 - Gus now talks noticeably less often.
 
-### Для владельца
+{_OWNER}
 
 - Presence cap `behaviour.presence` (#12).
 
 ## [0.4.0] — 2026-09-15
 
-### Для чата
+{_CHAT}
 
 - Gus can see photos.
 
-### Для владельца
+{_OWNER}
 
 - `/life`, `/say` (#10).
 

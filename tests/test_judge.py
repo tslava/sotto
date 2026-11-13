@@ -8,13 +8,12 @@ import httpx
 import pytest
 
 from sotto.config_models import Config
-from sotto.fragments import load_valid_fragments
 from sotto.judge import Judge
 from sotto.llm import LLMClient
+from tests.demo import DEMO_FRAG
 from tests.packs import DEMO_PACK
 
 NOW = 1_768_003_200  # see tests/test_llm.py
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
 JUDGE_PROMPT_PATH = DEMO_PACK / "prompts/judge.txt"
 
 

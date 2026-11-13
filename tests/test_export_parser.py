@@ -7,10 +7,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sotto.export_parser import ExportMessage, parse_export
-from sotto.fragments import load_valid_fragments
-from tests.packs import DEMO_PACK
-
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
+from tests.demo import DEMO_FRAG
 
 TZ = "Europe/London"
 

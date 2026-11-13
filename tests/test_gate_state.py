@@ -5,14 +5,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from sotto.config import load_config
 from sotto.db import Database
 from sotto.gate_state import load_gate_state
 from sotto.gate_types import GateMessage
-from sotto.persona import load_persona
-from tests.packs import DEMO_PACK
+from tests.demo import demo_config
 
-CONFIG = load_config(load_persona(DEMO_PACK).config_layers())
+CONFIG = demo_config()
 
 
 def _msg(

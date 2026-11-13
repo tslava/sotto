@@ -13,12 +13,9 @@ from sotto.config import ConfigError, describe_key, load_config
 from sotto.config_models import Config
 from sotto.errors import OwnerError
 from sotto.i18n import ENGINE_LOCALES_DIR, Catalog, engine_catalog, read_locale_dir
-from sotto.persona import load_persona
-from tests.packs import LEGACY_PACK
 
-_CYRILLIC = re.compile("[А-Яа-яЁё]")
+_CYRILLIC = re.compile("[\u0400-\u04ff]")
 EN_FILE = ENGINE_LOCALES_DIR / "en" / "config_keys.yaml"
-RU_FILE = LEGACY_PACK / "locale" / "ru" / "config_keys.yaml"
 
 
 def _leaf_keys() -> list[str]:
@@ -33,17 +30,14 @@ def _catalog_keys(directory: Path) -> set[str]:
 # -- coverage ----------------------------------------------------------------------
 
 
-def test_every_settable_key_has_an_entry_in_each_locale() -> None:
+def test_every_settable_key_has_an_entry_in_the_english_catalog() -> None:
     settable = {key for key in _leaf_keys() if not key.startswith("persona.")}
     assert settable
-    for directory in (ENGINE_LOCALES_DIR / "en", LEGACY_PACK / "locale" / "ru"):
-        assert settable <= _catalog_keys(directory), directory
+    assert settable <= _catalog_keys(ENGINE_LOCALES_DIR / "en")
 
 
-def test_the_catalogs_hold_exactly_the_leaf_keys() -> None:
-    expected = set(_leaf_keys())
-    assert _catalog_keys(ENGINE_LOCALES_DIR / "en") == expected
-    assert _catalog_keys(LEGACY_PACK / "locale" / "ru") == expected
+def test_the_english_catalog_holds_exactly_the_leaf_keys() -> None:
+    assert _catalog_keys(ENGINE_LOCALES_DIR / "en") == set(_leaf_keys())
 
 
 def test_every_leaf_field_has_an_english_description() -> None:
@@ -56,14 +50,6 @@ def test_every_leaf_field_has_an_english_description() -> None:
 def test_the_english_file_is_what_the_generator_writes() -> None:
     assert EN_FILE.read_text(encoding="utf-8") == render(leaf_descriptions())
     assert main(["check", str(EN_FILE)]) == 0
-
-
-def test_the_russian_file_is_russian_text_with_escaped_braces() -> None:
-    ru = read_locale_dir(LEGACY_PACK / "locale" / "ru")
-    texts = {k: v for k, v in ru.items() if k.startswith("config_keys.")}
-    assert all(isinstance(v, str) and _CYRILLIC.search(v) for v in texts.values())
-    catalog = Catalog("ru", ru)
-    assert "{avoid}" in catalog.t("config_keys.filters.motif_avoid_window")
 
 
 def test_generator_writes_and_checks_a_file(tmp_path: Path) -> None:
@@ -111,13 +97,6 @@ def test_describe_key_keeps_braces_of_the_description() -> None:
     cfg = Config()
     info = describe_key(cfg, cfg, {}, "filters.motif_avoid_window", engine_catalog("en"))
     assert info is not None and "{avoid}" in info.description
-
-
-def test_the_legacy_pack_describes_a_key_in_russian() -> None:
-    persona = load_persona(LEGACY_PACK)
-    cfg = load_config(persona.config_layers())
-    info = describe_key(cfg, cfg, {}, "persona.timezone", persona.catalog)
-    assert info is not None and _CYRILLIC.search(info.description)
 
 
 # -- validators raise owner errors ---------------------------------------------------
@@ -170,15 +149,6 @@ def test_every_validator_error_renders_through_the_english_catalog(
     text = owner.render(engine_catalog("en"))
     assert text.startswith(str(owner.params["key"]) + ": ")
     assert not _CYRILLIC.search(text)
-
-
-def test_the_legacy_pack_keeps_the_russian_emoji_message() -> None:
-    owner = OwnerError("validation.emoji_not_telegram", key="behaviour.reactions.emoji", bad=["😂"])
-    text = owner.render(load_persona(LEGACY_PACK).catalog)
-    assert text == (
-        "behaviour.reactions.emoji: ['😂'] не входит в набор реакций Telegram "
-        "(например, вместо 😂 нужен 🤣)"
-    )
 
 
 def test_generator_refuses_a_key_without_a_description(

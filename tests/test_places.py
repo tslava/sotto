@@ -10,17 +10,11 @@ import random
 
 import pytest
 
-from sotto.config import load_config
 from sotto.config_models import PlacesConfig
 from sotto.db import PlaceRow
-from sotto.fragments import load_valid_fragments
-from sotto.lang import get_language
-from sotto.persona import load_persona
 from sotto.places import render_places_block, render_places_menu, select_places, validate_fact
-from tests.packs import DEMO_PACK, RU
+from tests.demo import DEMO_FRAG, EN, demo_config
 
-DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
-EN = get_language("en")
 PLACES_NONE = DEMO_FRAG.text("prompt.places_none")
 
 
@@ -52,9 +46,7 @@ def _row(
 
 
 def _cfg(**overrides: object) -> PlacesConfig:
-    return PlacesConfig(
-        **{**load_config(load_persona(DEMO_PACK).config_layers()).places.model_dump(), **overrides}
-    )
+    return PlacesConfig(**{**demo_config().places.model_dump(), **overrides})
 
 
 # --------------------------------------------------------------------------- #
@@ -370,7 +362,4 @@ def test_validate_fact_exactly_40_chars_ok() -> None:
 
 def test_validate_fact_follows_the_language_alphabet() -> None:
     assert validate_fact("quiet, near-park", lang=EN) == "quiet, near-park"
-    assert validate_fact("тихо", lang=EN) is None
-    # stays for tests/lang: the Russian alphabet
-    assert validate_fact("тихо, дёшево", lang=RU) == "тихо, дёшево"
-    assert validate_fact("quiet", lang=RU) is None
+    assert validate_fact("\u0442\u0438\u0445\u043e", lang=EN) is None  # Cyrillic: not English
