@@ -1,27 +1,27 @@
-"""FollowupChecker — дешёвая семантическая проверка «это мне?» (CLAUDE.md,
-"внимание как у живого человека: телефон в руках").
+"""FollowupChecker: a cheap semantic "is this for me?" check (CLAUDE.md,
+"attention like a live person: phone in hand").
 
-Пока открыто горячее окно после ``/life``/``/say`` (и, в дальнейшем, после любой
-своей реплики), человек может написать боту без реплая, без имени и без ``@`` —
-просто продолжить разговор. Обычный гейт такое сообщение не признаёт обращением
-(``gate:not_live``/``gate:dice``/``gate:ambient_cap``/``gate:ambient_cooldown``/
-``gate:hot_cap``). ``FollowupChecker`` — второй, дешёвый вызов LLM (тот же приём,
-что ``judge.Judge`` и ``stickers.StickerChooser``): короткий промпт с недавним
-контекстом чата, последними репликами персонажа и новым сообщением, ответ строго
-JSON ``{"addressed": true|false, "reason": "..."}``. «Да» превращает сообщение в
-обращение ``Trigger.FOLLOWUP``.
+While the hot window is open after ``/life``/``/say`` (and, later, after any of the
+persona's own replies), a person may write to the bot without a reply, without the name and
+without ``@``, simply continuing the conversation. The ordinary gate does not treat such a
+message as addressing (``gate:not_live``/``gate:dice``/``gate:ambient_cap``/
+``gate:ambient_cooldown``/``gate:hot_cap``). ``FollowupChecker`` is a second, cheap LLM call
+(the same approach as ``judge.Judge`` and ``stickers.StickerChooser``): a short prompt with
+recent chat context, the persona's latest replies and the new message, answered strictly as
+JSON ``{"addressed": true|false, "reason": "..."}``. A "yes" turns the message into a
+``Trigger.FOLLOWUP`` addressing.
 
-Тот же приём переиспользуется ещё дважды: ``check_batch`` — дешёвый предфильтр
-пачки перед «вернулся проверить», ``check_name`` — подтверждение обращения по
-имени (CLAUDE.md, "имя в падежах и проверка обращения по имени"), где регулярка
-видит имя в любом падеже, но не отличает «Федя, ты где?» от «отец вчера поставил смайлик».
+The same approach is reused twice more: ``check_batch`` is a cheap prefilter for a batch
+before the "come back and check" pass, and ``check_name`` confirms addressing by name
+(CLAUDE.md, "name in cases and name-addressing check"), where the regex sees the name in any
+case but cannot tell "Fedya, where are you?" from "the old man put a smiley yesterday".
 
-Модуль не ходит в БД — контекст и последние реплики передаются аргументами
-(``bot.py`` готовит их и пишет ``filter_log``). Провал (невалидный JSON, LLMError,
-пустая модель) у каждой проверки трактуется в свою, более дешёвую сторону:
-``check`` -> ``False`` (промолчать дешевле, чем ответить не по адресу),
-``check_name`` -> ``True`` (пропустить обращение хуже лишней реплики),
-``check_batch`` -> все номера (пусть решает основная модель).
+The module does not touch the DB: context and recent replies are passed as arguments
+(``bot.py`` prepares them and writes ``filter_log``). A failure (invalid JSON, LLMError,
+empty model) is resolved in each check's own cheaper direction:
+``check`` -> ``False`` (silence is cheaper than answering the wrong person),
+``check_name`` -> ``True`` (missing an addressing is worse than one extra reply),
+``check_batch`` -> all numbers (let the main model decide).
 """
 
 from __future__ import annotations
@@ -42,8 +42,8 @@ logger = logging.getLogger(__name__)
 
 _COUNTER_KEY = "followup_calls"
 
-# Дублирует вырезание разделителей из sanitize.normalize_text/prompt.py/judge.py —
-# на всякий случай ещё раз чистим то, что уходит в промпт проверки.
+# Duplicates the delimiter stripping of sanitize.normalize_text/prompt.py/judge.py:
+# whatever goes into the check prompt is cleaned once more, just in case.
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 
@@ -71,14 +71,14 @@ class _FollowupVerdict:
 
 
 def _parse_verdict(raw: str, key: str = "addressed") -> _FollowupVerdict | None:
-    """Разбирает ответ проверки так же строго и терпимо, как ``judge._parse_verdict``:
-    срез ```json``` обёрток, поиск первой "{" и ``json.JSONDecoder.raw_decode`` от
-    неё. Любой сбой или неверный тип булева поля -> None. Что значит None —
-    решает вызывающий: для ``check`` это "не адресовано", для ``check_name`` —
-    наоборот, "не смогли проверить, отвечаем".
+    """Parses a check answer as strictly and tolerantly as ``judge._parse_verdict``:
+    strip the ```json``` fence, find the first "{" and ``json.JSONDecoder.raw_decode`` from
+    it. Any failure or a wrong boolean type -> None. What None means is up to the caller:
+    for ``check`` it is "not addressed", for ``check_name`` the opposite, "could not check,
+    so answer".
 
-    ``key`` — имя булева поля в ответе: ``addressed`` у проверки горячего окна,
-    ``answer`` у проверки обращения по имени (промпты разные, приём один)."""
+    ``key`` is the name of the boolean field in the answer: ``addressed`` for the hot-window
+    check, ``answer`` for the name-addressing check (different prompts, same approach)."""
     try:
         candidate = _strip_code_fence(raw.strip())
         start = candidate.find("{")
@@ -100,19 +100,19 @@ def _parse_verdict(raw: str, key: str = "addressed") -> _FollowupVerdict | None:
 
         return _FollowupVerdict(addressed=addressed, reason=reason_value)
     except Exception:
-        # Ответ модели — недоверенный внешний текст: любой сбой разбора означает
-        # "не адресовано", а не падение.
+        # The model's answer is untrusted external text: any parse failure means
+        # "not addressed", not a crash.
         return None
 
 
 def _parse_batch_verdict(raw: str) -> list[int] | None:
-    """Разбирает ответ дешёвого предфильтра ``{"addressed": [номера]}`` тем же
-    приёмом, что ``_parse_verdict``/``judge._parse_verdict``: срез ```json```
-    обёрток, поиск первой "{" и терпимый ``raw_decode``. Любой сбой или не-список
-    в ``addressed`` -> None ("не смогли проверить" — вызывающий вернёт все номера).
-    Элементы списка, не являющиеся целым числом (``bool`` — тоже не число, это
-    типичная JSON-подделка ``true``/``false`` вместо номера), просто отбрасываются,
-    а не роняют разбор целиком — диапазон всё равно проверяет вызывающий."""
+    """Parses the cheap prefilter's ``{"addressed": [numbers]}`` the same way as
+    ``_parse_verdict``/``judge._parse_verdict``: strip the ```json``` fence, find the first
+    "{" and a tolerant ``raw_decode``. Any failure or a non-list ``addressed`` -> None
+    ("could not check": the caller returns all numbers). List items that are not integers
+    (``bool`` is not a number either: ``true``/``false`` instead of a number is a typical
+    JSON slip) are simply dropped instead of failing the whole parse; the caller checks the
+    range anyway."""
     try:
         candidate = _strip_code_fence(raw.strip())
         start = candidate.find("{")
@@ -128,8 +128,8 @@ def _parse_batch_verdict(raw: str) -> list[int] | None:
 
         return [item for item in addressed if isinstance(item, int) and not isinstance(item, bool)]
     except Exception:
-        # Ответ модели — недоверенный внешний текст: любой сбой разбора означает
-        # "не смогли проверить", а не падение.
+        # The model's answer is untrusted external text: any parse failure means
+        # "could not check", not a crash.
         return None
 
 
@@ -160,8 +160,8 @@ class FollowupChecker:
         context_rows: Sequence[MessageRow],
         recent_replies: Sequence[str],
     ) -> str:
-        """Подстановка слотов {context}/{recent_replies}/{name}/{text} за один проход
-        (общая и для ``check``, и для ``check_name``: промпты разные, слоты те же)."""
+        """Fills the {context}/{recent_replies}/{name}/{text} slots in one pass (shared by
+        ``check`` and ``check_name``: different prompts, same slots)."""
         context = _strip_fake_delimiters(render_context(list(context_rows))).strip()
         recent = _strip_fake_delimiters("\n".join(recent_replies)).strip()
         slot_values = {
@@ -226,17 +226,17 @@ class FollowupChecker:
         recent_replies: Sequence[str],
         now: int,
     ) -> bool:
-        """Подтверждение обращения по имени (CLAUDE.md, "имя в падежах и проверка
-        обращения по имени").
+        """Confirms addressing by name (CLAUDE.md, "name in cases and name-addressing
+        check").
 
-        Регулярка теперь ловит имя во всех падежах, но не отличает обращение
-        («Федя, ты где?») от разговора о нём в третьем лице («отец вчера поставил
-        смайлик под сообщением»). Различает дешёвая модель — та же механика, что у
-        ``check``, только другой промпт и другое поле ответа (``answer``).
+        The regex now catches the name in every case but cannot tell an addressing
+        ("Fedya, where are you?") from talk about the persona in the third person ("the old
+        man put a smiley under the message yesterday"). The cheap model tells them apart: the
+        same mechanics as ``check``, with a different prompt and answer field (``answer``).
 
-        Провал (нет модели, нет шаблона, ``LLMError``, невалидный JSON) — ``True``,
-        зеркально ``check``: там молчание дешевле ошибки, здесь наоборот —
-        пропустить настоящее обращение хуже лишней реплики.
+        A failure (no model, no template, ``LLMError``, invalid JSON) gives ``True``, the
+        mirror of ``check``: there silence is cheaper than an error, here missing a real
+        addressing is worse than one extra reply.
         """
         cfg = self._cfg_getter()
         followup_cfg = cfg.behaviour.followup
@@ -282,17 +282,17 @@ class FollowupChecker:
         recent_replies: Sequence[str],
         now: int,
     ) -> list[int]:
-        """Дешёвый предфильтр «вернулся проверить» (CLAUDE.md, "Интерфейсы: дешёвый
-        предфильтр для «вернулся проверить»") — один вызов дешёвой модели по всей
-        пачке ``rows``, накопившейся с последней реплики Фёдора, вместо основной
-        модели на каждую проверку ``responder._maybe_checkin``.
+        """Cheap prefilter for the "come back and check" pass (CLAUDE.md, "cheap prefilter
+        for the 'come back and check' pass"): one cheap-model call over the whole batch
+        ``rows`` accumulated since the persona's last reply, instead of the main model on
+        every ``responder._maybe_checkin`` check.
 
-        Возвращает 1-based номера сообщений из ``rows``, адресованных Фёдору или
-        прямо продолжающих его тему. Пустой список означает «основной модели
-        звать незачем — там ничего для Фёдора». Когда проверить нечем (нет
-        модели, не задан ``batch_prompt_template``, ``LLMError``, невалидный
-        JSON) — решать дешевле нельзя, поэтому возвращаются ВСЕ номера: пусть
-        решает основная модель, дороже, но с шансом ответить.
+        Returns 1-based numbers of messages in ``rows`` addressed to the persona or directly
+        continuing its topic. An empty list means "no need to call the main model, nothing
+        here is for the persona". When there is nothing to check with (no model, no
+        ``batch_prompt_template``, ``LLMError``, invalid JSON) a cheaper decision is not
+        possible, so ALL numbers are returned: let the main model decide, costlier but with a
+        chance to answer.
         """
         if not rows:
             return []
@@ -308,8 +308,8 @@ class FollowupChecker:
         messages_block = _strip_fake_delimiters(render_numbered_messages(rows)).strip()
         recent = _strip_fake_delimiters("\n".join(recent_replies)).strip()
 
-        # Как его зовут в чате: без этого дешёвая модель знает только «Фёдор» и
-        # отсеивает обращения «отец»/«Федя», до основной модели они не доходят.
+        # How the persona is called in the chat: without this the cheap model knows only the
+        # persona's name and drops addressings by a nickname; they never reach the main model.
         persona = cfg.persona
         names = list(dict.fromkeys([persona.name, persona.display_name, *persona.name_triggers]))
         slot_values = {

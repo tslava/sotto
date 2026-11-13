@@ -1,17 +1,19 @@
-"""Словечки из словаря (CLAUDE.md, "словечки из словаря").
+"""Vocabulary words from a dictionary (CLAUDE.md, "vocabulary words from a dictionary").
 
-Владелец грузит словари файлом в личку (``/words``), их может быть несколько. Персонаж
-изредка и к месту употребляет словечко: в некоторые реплики (кубик, дневной потолок,
-пауза в несколько реплик) модели предлагается пара слов со значением. И знает значение,
-если спросят: слово из словаря, мелькнувшее в разговоре, уходит в промпт со значением.
-Новых вызовов модели нет — только подстановка в слот ``{vocab}``.
+The owner uploads dictionaries as a file in a private chat (``/words``); there can be several.
+Now and then, in the right place, the persona uses a word: in some replies (a die roll, a
+daily cap, a pause of a few replies) the model is offered a couple of words with their
+meanings. It also knows the meaning if asked: a dictionary word that came up in conversation
+goes into the prompt with its meaning. There are no new model calls, only substitution into
+the ``{vocab}`` slot.
 
-Словарь — данные владельца (как ``{life}``), а не ввод участников, поэтому живёт в
-system. В публичный репозиторий словари не коммитятся: это чужой авторский текст, они
-лежат в БД (``vocab_dicts``), в репо только ``personas/demo/vocab.example.yaml``.
+A dictionary is the owner's data (like ``{life}``), not participant input, so it lives in
+the system prompt. Dictionaries are not committed to the public repository: they are someone
+else's copyrighted text and live in the DB (``vocab_dicts``); the repo holds only
+``personas/demo/vocab.example.yaml``.
 
-Чистая часть (разбор, матчинг, рендер) — без I/O; ``VocabStore`` — тонкая обёртка над
-БД по образцу ``stores.PromptStore``.
+The pure part (parsing, matching, rendering) does no I/O; ``VocabStore`` is a thin wrapper
+over the DB modelled on ``stores.PromptStore``.
 """
 
 from __future__ import annotations
@@ -48,17 +50,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
-# Знаки ударения (острое и тупое) — в публичных глоссариях они в каждом слове.
+# Stress marks (acute and grave): public glossaries put them in every word.
 _ACCENTS_RE = re.compile("[\u0300\u0301]")
 _SPACES_RE = re.compile(r"\s+")
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
-# Тире в промпте модель копирует в реплики (CLAUDE.md, "пост-обработка").
+# The model copies dashes from the prompt into replies (CLAUDE.md, "post-processing").
 _DASH_RE = re.compile(r"\s*[‒–—―]\s*")
 
-# Формы слова ищутся по основе и ЗАКРЫТОМУ списку окончаний языка (``Language.vocab_rules``;
-# ревью Codex 17.10: «любой хвост до N букв» путал «костюм» с «коста»). Основа короче
-# трёх букв — только точное совпадение.
+# Word forms are looked up by stem and a CLOSED list of the language's endings
+# (``Language.vocab_rules``; Codex review: "any tail up to N letters" confused one word
+# with a different, shorter one). A stem shorter than three letters matches exactly only.
 _MIN_STEM = 3
 _PREFIX_KEY = 3
 
@@ -73,7 +75,7 @@ _ERRORS_SHOWN = 5
 
 
 def normalize(text: str, lang: Language) -> str:
-    """``lang.fold`` (регистр, «ё», ударения), пробелы схлопнуты."""
+    """``lang.fold`` (case, "yo" letter, stress marks), spaces collapsed."""
     return _SPACES_RE.sub(" ", lang.fold(text)).strip()
 
 
@@ -82,13 +84,14 @@ def _tokens(text: str, lang: Language) -> list[str]:
 
 
 def _display(text: str) -> str:
-    """Текст для показа: без знаков ударения, пробелы схлопнуты, регистр сохранён."""
+    """Text for display: no stress marks, spaces collapsed, case preserved."""
     return _SPACES_RE.sub(" ", _ACCENTS_RE.sub("", text)).strip()
 
 
 def _context_lang(info: ValidationInfo) -> Language:
-    """Язык разбора из ``model_validate(context=...)``; без контекста (модель собрана
-    руками) — английский: на «есть ли в слове буквы» и повтор слов язык почти не влияет."""
+    """Parsing language from ``model_validate(context=...)``; without a context (the model was
+    built by hand) it is English: the language hardly affects "does the word contain letters"
+    and word repetition."""
     context = info.context
     if isinstance(context, dict) and context.get("lang") is not None:
         return cast(Language, context["lang"])
@@ -213,7 +216,7 @@ def parse_vocab(raw: str, lang: Language) -> VocabDict:
 
 @dataclass(frozen=True, slots=True)
 class VocabEntry:
-    word: str  # без ударений, как в словаре
+    word: str  # without stress marks, as in the dictionary
     meaning: str
     example: str
     about: str
@@ -233,8 +236,8 @@ def _compile(patterns: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
 
 
 def vocab_requested(text: str, vocab: Vocab, cfg: VocabConfig) -> bool:
-    """Просят сказать словечком: «скажи по-дворовому», «а какие у тебя словечки?» —
-    ``request_markers`` или основа имени включённого словаря."""
+    """Asked to say something with a word: "say it the local way", "what words do you
+    have?": ``request_markers`` or the stem of an enabled dictionary's name."""
     if not text or not vocab:
         return False
     if any(p.search(text) for p in _compile(tuple(cfg.request_markers))):
@@ -244,8 +247,8 @@ def vocab_requested(text: str, vocab: Vocab, cfg: VocabConfig) -> bool:
 
 
 def explain_requested(text: str, cfg: VocabConfig) -> bool:
-    """«Не понял», «что это значит», «в смысле» — по ``explain_markers``. Регулярки
-    идут по исходному тексту (не по normalize: там «чё» уже «че»)."""
+    """ "I did not understand", "what does it mean", "meaning?": by ``explain_markers``. The
+    regexes run on the original text (not on the normalized one, which has folded letters)."""
     return bool(text) and any(p.search(text) for p in _compile(tuple(cfg.explain_markers)))
 
 
@@ -253,13 +256,13 @@ def explain_requested(text: str, cfg: VocabConfig) -> bool:
 class _Rule:
     stem: str
     endings: frozenset[str]
-    reflexive: bool | None  # None — не глагол; True — форма кончается на суффикс возвратности
+    reflexive: bool | None  # None: not a verb; True: the form ends in a reflexive suffix
     entry: VocabEntry
 
 
 class Vocab:
-    """Включённые словари, собранные в один матчер. Повтор слова в двух словарях —
-    берётся первое (словари идут по имени)."""
+    """Enabled dictionaries assembled into one matcher. A word repeated across two
+    dictionaries takes the first (dictionaries go by name)."""
 
     def __init__(self, dicts: Sequence[VocabDict] = (), *, lang: Language) -> None:
         self.lang = lang
@@ -323,9 +326,9 @@ class Vocab:
         return None
 
     def _match_rules(self, token: str, *, verbs_only: bool) -> VocabEntry | None:
-        # Несколько подходящих слов — берётся самая длинная основа («бурамак» против
-        # «бура-»). Возвратный и невозвратный глагол с одной основой («зюзить» и
-        # «зюзиться») не спорят: форма на «ся/сь» подходит только возвратному.
+        # Several matching words: the longest stem wins (a long word against a shorter
+        # prefix of it). A reflexive and a non-reflexive verb with one stem do not compete:
+        # the reflexive-suffix form fits only the reflexive one.
         best: _Rule | None = None
         for rule in self._rules.get(token[:_PREFIX_KEY], ()):
             if not token.startswith(rule.stem) or (verbs_only and rule.reflexive is None):
@@ -341,7 +344,7 @@ class Vocab:
         return best.entry if best is not None else None
 
     def find(self, text: str) -> list[VocabEntry]:
-        """Слова словаря, упомянутые в ``text``, по порядку первого появления, без повторов."""
+        """Dictionary words mentioned in ``text``, in order of first appearance, no repeats."""
         if not self.entries or not text:
             return []
         tokens = _tokens(text, self.lang)
@@ -366,7 +369,8 @@ class Vocab:
 
 
 def _speech(replies: Sequence[str], frag: Fragments) -> list[str]:
-    """Реплики без записей-стикеров (префикс — из ``placeholders.sticker_tag`` пакета)."""
+    """Replies without sticker entries (the prefix comes from the package's
+    ``placeholders.sticker_tag``)."""
     prefix = frag.prefix("placeholders.sticker_tag")
     return [reply for reply in replies if not reply.startswith(prefix)]
 
@@ -380,8 +384,8 @@ def offer_allowed(
     rng: random.Random,
     frag: Fragments,
 ) -> bool:
-    """Предложить ли модели словечки в этой реплике. Кубик последним: ``rng`` тратится,
-    только когда всё остальное позволяет (как ``reactions.pick_reaction``)."""
+    """Whether to offer the model words in this reply. The die roll is last: ``rng`` is
+    consumed only when everything else allows (like ``reactions.pick_reaction``)."""
     if not cfg.enabled or not vocab:
         return False
     if count_today >= cfg.daily_cap:
@@ -402,9 +406,10 @@ def pick_offer(
     fill: bool = False,
     frag: Fragments,
 ) -> list[VocabEntry]:
-    """``size`` случайных слов, которых не было в ``recent_replies`` и нет в ``exclude``.
-    ``fill`` — не хватило таких (маленький словарь, всё недавно звучало) — добрать из
-    остальных: по прямой просьбе пустой список хуже повтора (ревью Codex 18.10)."""
+    """``size`` random words that were not in ``recent_replies`` and are not in ``exclude``.
+    ``fill``: if there are not enough of those (a small dictionary, everything sounded
+    recently), top up from the rest: on a direct request an empty list is worse than a
+    repeat (Codex review)."""
     used = {id(entry) for reply in _speech(recent_replies, frag) for entry in vocab.find(reply)}
     used.update(id(entry) for entry in exclude)
     pool = [entry for entry in vocab.entries if id(entry) not in used]
@@ -423,8 +428,8 @@ def _clean(text: str) -> str:
 
 
 def _meaning(text: str) -> str:
-    """Значение со строчной: в словарях оно с заглавной («Мокрая, слякотная погода»),
-    а в промпте идёт посреди фразы. Аббревиатуры («СССР») не трогаем."""
+    """Meaning in lower case: dictionaries capitalize it ("Wet, slushy weather") while the
+    prompt uses it mid-sentence. Abbreviations ("NATO") are left alone."""
     cleaned = _clean(text)
     if len(cleaned) > 1 and cleaned[0].isupper() and not cleaned[1].isupper():
         return cleaned[0].lower() + cleaned[1:]
@@ -438,9 +443,9 @@ def render_vocab(
     requested: bool = False,
     frag: Fragments,
 ) -> str:
-    """Блок слота ``{vocab}``: предложение словечек и/или значения мелькнувших.
-    ``requested`` — его прямо попросили сказать словечком (другой заголовок).
-    Пусто -> "". Без «- » в начале строк (regex:prompt_leak) и без тире."""
+    """Block for the ``{vocab}`` slot: an offer of words and/or the meanings of words that came up.
+    ``requested`` means the persona was asked outright to use a word (a different heading).
+    Empty -> "". No "- " at line starts (regex:prompt_leak) and no dashes."""
     parts: list[str] = []
     if offer:
         abouts = {_clean(entry.about) for entry in offer}
@@ -463,8 +468,9 @@ def render_vocab(
 
 
 class VocabStore:
-    """Словари из БД, собранные в ``Vocab``. Источник истины — таблица ``vocab_dicts``;
-    в памяти — только разобранные включённые словари, пересобираются после каждой правки."""
+    """Dictionaries from the DB assembled into a ``Vocab``. The source of truth is the
+    ``vocab_dicts`` table; memory holds only the parsed enabled dictionaries, rebuilt after
+    every edit."""
 
     def __init__(self, db: Database, lang: Language | None = None) -> None:
         lang = lang if lang is not None else get_language("en")
@@ -493,7 +499,7 @@ class VocabStore:
         logger.info("vocab: %d dicts, %d words", len(dicts), len(self._vocab.entries))
 
     async def put(self, raw: str, now: int) -> VocabDict:
-        """Разобрать и сохранить словарь (тот же ``name`` — замена). ``ValueError`` наружу."""
+        """Parse and save a dictionary (the same ``name`` replaces). ``ValueError`` propagates."""
         parsed = parse_vocab(raw, self._lang)
         async with self._lock:
             await self._db.upsert_vocab_dict(parsed.name, raw, now)
@@ -533,10 +539,10 @@ def vocab_over_quota(
     count_today: int,
     frag: Fragments,
 ) -> bool:
-    """Словечек на сегодня хватит: потолок суток выбран или словечко уже звучало в
-    последних ``recent_window`` репликах. Тогда выходной фильтр режет реплику с
-    непрошеным словечком (``dedup:vocab``) — подсказка в промпте одна лимит не держит
-    (ревью Codex 17.10)."""
+    """Enough words for today: the daily cap is used up, or the word already sounded in the
+    last ``recent_window`` replies. Then the output filter cuts a reply with an unsolicited
+    word (``dedup:vocab``): a hint in the prompt alone does not hold the limit
+    (Codex review)."""
     if count_today >= cfg.daily_cap:
         return True
     window = _speech(recent_replies, frag)[-cfg.recent_window :] if cfg.recent_window > 0 else []

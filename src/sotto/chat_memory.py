@@ -1,20 +1,20 @@
-"""Долгая память чата (CLAUDE.md, "долгая память чата").
+"""Long-term chat memory (CLAUDE.md, "long-term chat memory").
 
-Сообщения живут ``behaviour.message_retention_days`` (по умолчанию 30 суток), а
-персонаж должен помнить, о чём говорили месяцы назад. Раз в неделю (шаг —
-``chat_memory.period_days``) один вызов модели сжимает прошедший период в
-несколько строк; пересказ лежит в таблице ``chat_memory`` дольше самих сообщений
-(``keep_days``) и подмешивается в системный промпт слотом ``{chat_memory}``.
+Messages live for ``behaviour.message_retention_days`` (30 days by default), yet the
+persona should remember what was discussed months ago. Once a week (the step is
+``chat_memory.period_days``) one model call compresses the past period into a few lines;
+the recap sits in the ``chat_memory`` table longer than the messages themselves
+(``keep_days``) and is mixed into the system prompt through the ``{chat_memory}`` slot.
 
-Это осознанное решение владельца по приватности: пересказ чужих разговоров
-хранится дольше самих разговоров. Компенсация — сообщения замьюченных участников
-в пересказ не попадают вовсе (``exclude_user_ids`` в ``messages_between``).
+This is a deliberate owner decision on privacy: a recap of other people's conversations is
+kept longer than the conversations. As compensation, messages of muted participants never
+reach the recap (``exclude_user_ids`` in ``messages_between``).
 
-Границы периодов — всегда локальная полночь ``persona.timezone``, и шаг
-считается в календарных сутках, а не в ``period_days * 86400``: при переходе на
-летнее/зимнее время сутки длятся 23 или 25 часов, и арифметика по секундам
-увела бы границу периода с полуночи на 23:00/01:00, а дальше — всё дальше.
-``_add_days`` пересчитывает через локальную дату и потому от DST не зависит.
+Period boundaries are always local midnight in ``persona.timezone``, and the step counts
+calendar days, not ``period_days * 86400``: across a DST change a day lasts 23 or 25 hours,
+and second-based arithmetic would drift the boundary from midnight to 23:00/01:00 and then
+further and further. ``_add_days`` recomputes via the local date and is therefore
+independent of DST.
 """
 
 from __future__ import annotations
@@ -38,24 +38,24 @@ from sotto.timeutil import in_window, local_date
 
 logger = logging.getLogger(__name__)
 
-# Меньше этого числа строк за период — пересказывать нечего, модель не зовём.
+# Fewer lines than this in a period: nothing to recap, the model is not called.
 _MIN_LINES = 5
 
-# Цикл job() по образцу retention.retention_loop: раз в час проверить, не пора ли.
+# job() loop modelled on retention.retention_loop: once an hour check whether it is time.
 _JOB_INTERVAL_SEC = 3600
-# После упавшей итерации — короткая пауза вместо обычной, чтобы не крутить busy-loop
-# и при этом не ждать целый час (тот же приём, что в responder.checkin_job).
+# After a failed iteration, a short pause instead of the usual one, so there is no busy
+# loop yet no wait of a whole hour either (same approach as responder.checkin_job).
 _ERROR_RETRY_SEC = 60
 
-# Данные людей уходят внутри <<<CHAT ... >>>, поддельные разделители из них
-# вырезаются — тот же приём, что в prompt.py/judge.py/followup.py.
+# People's data goes inside <<<CHAT ... >>>, forged delimiters are stripped from it
+# (same approach as prompt.py/judge.py/followup.py).
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 
 _SLOT_RE = re.compile(r"\{(period|chat|limit)\}")
 
-# Шутки и истории людей (CLAUDE.md, "шутки чата и истории людей"): потолки длины
-# из контракта, токены ответа — шутки из контракта, истории — с запасом на JSON.
+# Jokes and people's threads (CLAUDE.md, "chat jokes and people's threads"): length caps
+# from the contract; answer tokens: jokes from the contract, threads with room for JSON.
 _JOKE_MAX_LEN = 80
 _JOKES_MAX_TOKENS = 200
 _THREAD_MAX_LEN = 120
@@ -64,11 +64,11 @@ _THREADS_MAX_PER_PERIOD = 5
 _EXISTING_JOKES_LOOKUP = 200
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```$", re.DOTALL | re.IGNORECASE)
 
-# Ведущие маркеры списка и нумерация, которые модель любит дописывать вопреки
-# инструкции. Срезаются: строка пересказа, начинающаяся с "- ", попала бы в
-# системный промпт буллетом и filters.regex:prompt_leak считал бы её инструкцией.
+# Leading list markers and numbering that the model likes to add despite the
+# instruction. They are stripped: a recap line starting with "- " would reach the
+# system prompt as a bullet and filters.regex:prompt_leak would treat it as an instruction.
 _BULLET_RE = re.compile(r"^\s*(?:[-*•–—]+\s+|\d+[.)]\s+)")
-# Строка, в которой модель заговорила про формат ответа, а не про чат.
+# A line where the model started talking about the answer format rather than the chat.
 _JSON_RE = re.compile(r"json", re.IGNORECASE)
 
 
@@ -77,8 +77,8 @@ def _strip_fake_delimiters(text: str) -> str:
 
 
 def _parse_json_object(raw: str) -> dict[str, object] | None:
-    """Терпимый разбор ответа модели (как ``judge._parse_verdict``): срез ```json```
-    обёрток, первая "{" и ``raw_decode``. Любой сбой -> None."""
+    """Tolerant parse of a model answer (like ``judge._parse_verdict``): strip the ```json```
+    fence, take the first "{" and ``raw_decode``. Any failure -> None."""
     try:
         candidate = raw.strip()
         match = _CODE_FENCE_RE.match(candidate)
@@ -92,14 +92,15 @@ def _parse_json_object(raw: str) -> dict[str, object] | None:
             return None
         return data
     except Exception:
-        # Ответ модели — недоверенный внешний текст: любой сбой разбора значит
-        # «ничего не нашли», а не падение.
+        # The model's answer is untrusted external text: any parse failure means
+        # "found nothing", not a crash.
         return None
 
 
 def _clean_note(raw: object, max_len: int) -> str | None:
-    """Строка из ответа модели -> заметка для БД/промпта: без разделителей, буллета,
-    переносов; пусто или длиннее ``max_len`` (модель пересказала, а не сжала) -> None."""
+    """A line from a model answer -> a note for the DB/prompt: no delimiters, bullet or
+    line breaks; empty or longer than ``max_len`` (the model retold instead of
+    compressing) -> None."""
     if not isinstance(raw, str):
         return None
     cleaned = normalize_text(_BULLET_RE.sub("", _strip_fake_delimiters(raw))).strip()
@@ -109,17 +110,17 @@ def _clean_note(raw: object, max_len: int) -> str | None:
 
 
 def _local_midnight(ts: int, tz: str) -> int:
-    """Начало локальных суток, в которые попадает ``ts``."""
+    """Start of the local day that ``ts`` falls into."""
     zone = ZoneInfo(tz)
     day = local_date(ts, tz)
     return int(datetime(day.year, day.month, day.day, tzinfo=zone).timestamp())
 
 
 def _add_days(ts: int, days: int, tz: str) -> int:
-    """``ts`` (локальная полночь) плюс ``days`` календарных суток — снова полночь.
+    """``ts`` (local midnight) plus ``days`` calendar days, which is midnight again.
 
-    Именно календарных: в сутки перехода на летнее время 23 часа, на зимнее — 25,
-    и прибавление ``days * 86400`` сдвинуло бы границу периода с полуночи.
+    Calendar days specifically: on the spring-forward day there are 23 hours, on the fall-back
+    day 25, and adding ``days * 86400`` would shift the period boundary off midnight.
     """
     zone = ZoneInfo(tz)
     day = local_date(ts, tz) + timedelta(days=days)
@@ -127,24 +128,23 @@ def _add_days(ts: int, days: int, tz: str) -> int:
 
 
 def format_period(period_start: int, period_end: int, tz: str) -> str:
-    """«08.09–14.09.2026»: конец периода исключительный, показываем последние сутки.
+    """ "08.09-14.09.2026": the period end is exclusive, so show the last day.
 
-    Публичная: тем же форматом периода подписывает пересказы ``/memory list``
-    в commands.py."""
+    Public: the same period format labels recaps in ``/memory list`` in commands.py."""
     start_day = local_date(period_start, tz)
-    # period_end исключителен и приходится на полночь следующих суток — последний
-    # день периода это period_end минус секунда.
+    # period_end is exclusive and falls on the midnight of the next day, so the last
+    # day of the period is period_end minus one second.
     end_day = local_date(max(period_end - 1, period_start), tz)
     return f"{start_day.strftime('%d.%m')}–{end_day.strftime('%d.%m.%Y')}"
 
 
 def render_chat_memory(rows: Sequence[ChatMemoryRow], tz: str, *, frag: Fragments) -> str:
-    """Блок долгой памяти для системного промпта. Пусто -> "" (весь абзац исчезает).
+    """Long-memory block for the system prompt. Empty -> "" (the whole paragraph disappears).
 
-    Строки пересказа идут с отступом в два пробела и НИКОГДА не начинаются с
-    «- »: ``filters.regex:prompt_leak`` считает инструктивной частью промпта
-    именно строки-буллеты, и воспоминание, начинающееся с дефиса, срезало бы
-    ответ персонажа как утечку промпта.
+    Recap lines are indented by two spaces and NEVER start with "- ":
+    ``filters.regex:prompt_leak`` treats bullet lines as the instructional part of the
+    prompt, and a memory starting with a hyphen would cut the persona's reply as a prompt
+    leak.
     """
     if not rows:
         return ""
@@ -159,12 +159,12 @@ def render_chat_memory(rows: Sequence[ChatMemoryRow], tz: str, *, frag: Fragment
 
 
 def _clean_summary(raw: str, max_chars: int) -> str:
-    """Ответ модели -> тело пересказа: по строке на воспоминание, без мусора.
+    """Model answer -> recap body: one line per memory, no junk.
 
-    Пустые строки выбрасываются, ведущие буллеты и нумерация срезаются (см.
-    ``render_chat_memory``), строки, в которых модель заговорила про JSON вместо
-    чата, выбрасываются целиком. Обрезка до ``max_chars`` — по границе строки:
-    оборванная на полуслове фраза в промпте выглядит хуже, чем на одну меньше.
+    Empty lines are dropped, leading bullets and numbering are stripped (see
+    ``render_chat_memory``), lines where the model started talking about JSON instead of the
+    chat are dropped whole. Trimming to ``max_chars`` is at a line boundary: a phrase cut
+    mid-word looks worse in the prompt than one line fewer.
     """
     kept: list[str] = []
     total = 0
@@ -203,8 +203,8 @@ class ChatMemorizer:
         self._interval_sec = interval_sec
         self._jokes_prompt = jokes_prompt
         self._threads_prompt = threads_prompt
-        # Шутки и истории уходят в системный промпт надолго: команды и разговоры о
-        # модели туда не пускаем (Patterns.unsafe_note). None — без проверки (тесты).
+        # Jokes and threads go into the system prompt for a long time: commands and talk
+        # about the model are not let in (Patterns.unsafe_note). None means no check (tests).
         self._patterns_getter = patterns_getter
 
     def _unsafe(self, text: str) -> bool:
@@ -212,22 +212,22 @@ class ChatMemorizer:
             return False
         hit = self._patterns_getter().unsafe_note(text)
         if hit is not None:
-            logger.warning("chat memory: заметка отброшена, сработал маркер %r", hit)
+            logger.warning("chat memory: note dropped, marker %r matched", hit)
         return hit is not None
 
     async def summarize_period(self, start: int, end: int, *, now: int) -> ChatMemoryRow | None:
-        """Один вызов модели на период ``[start, end)``; строка в БД или None.
+        """One model call for the period ``[start, end)``; a DB row or None.
 
-        None (без вызова модели) — если за период набралось меньше ``_MIN_LINES``
-        строк: пересказывать нечего, а вызов стоит денег. None (после вызова) —
-        если модель ответила пустотой или упала: пропуск периода лучше, чем
-        мусорная строка в системном промпте навсегда.
+        None (without a model call) if the period has fewer than ``_MIN_LINES`` lines:
+        nothing to recap and a call costs money. None (after a call) if the model answered
+        with nothing or failed: skipping a period is better than junk in the system prompt
+        forever.
         """
         cfg = self._cfg_getter()
         memory_cfg = cfg.behaviour.chat_memory
         model = memory_cfg.model or cfg.llm.main_model
         if not model:
-            logger.warning("chat memory: модель не задана, пересказ пропущен")
+            logger.warning("chat memory: model not set, recap skipped")
             return None
 
         muted = await self._db.muted_user_ids()
@@ -245,7 +245,7 @@ class ChatMemorizer:
         tail = [line for _ts, line in lines[-memory_cfg.max_messages :]]
         if len(tail) < _MIN_LINES:
             logger.info(
-                "chat memory: период %s пропущен, строк %d",
+                "chat memory: period %s skipped, %d lines",
                 format_period(start, end, cfg.persona.timezone),
                 len(tail),
             )
@@ -272,7 +272,7 @@ class ChatMemorizer:
         text = _clean_summary(result.text, memory_cfg.max_chars)
         if not text:
             logger.warning(
-                "chat memory: пустой пересказ периода %s",
+                "chat memory: empty recap for period %s",
                 format_period(start, end, cfg.persona.timezone),
             )
             return None
@@ -281,20 +281,20 @@ class ChatMemorizer:
             period_start=start, period_end=end, text=text, created_at=now
         )
         logger.info(
-            "chat memory: период %s пересказан, строк %d, символов %d",
+            "chat memory: period %s recapped, %d lines, %d chars",
             format_period(start, end, cfg.persona.timezone),
             len(tail),
             len(text),
         )
-        # Два дополнительных вызова по тем же строкам периода. Пересказ уже сохранён,
-        # поэтому любой их сбой (кроме отмены) пересказ не ломает.
+        # Two extra calls over the same period lines. The recap is already saved, so any
+        # failure of theirs (except cancellation) does not break the recap.
         try:
             await self._extract_jokes(cfg, model, start, end, chat_block, now)
             await self._extract_threads(cfg, model, start, end, chat_block, muted, now)
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("chat memory: извлечение шуток/историй упало")
+            logger.exception("chat memory: joke/thread extraction failed")
         return ChatMemoryRow(
             id=memory_id, period_start=start, period_end=end, text=text, created_at=now
         )
@@ -325,7 +325,7 @@ class ChatMemorizer:
             return None
         data = _parse_json_object(result.text)
         if data is None:
-            logger.warning("chat memory %s: ответ модели не JSON", what)
+            logger.warning("chat memory %s: model answer is not JSON", what)
         return data
 
     async def _extract_jokes(
@@ -358,7 +358,7 @@ class ChatMemorizer:
             saved += 1
             if saved >= jokes_cfg.per_period:
                 break
-        logger.info("chat memory: шуток сохранено %d", saved)
+        logger.info("chat memory: jokes saved %d", saved)
 
     async def _extract_threads(
         self,
@@ -388,8 +388,8 @@ class ChatMemorizer:
         bot_names = {
             name.casefold() for name in (cfg.persona.name, cfg.persona.display_name) if name
         }
-        # Одна и та же история не должна записаться дважды — ни из одного ответа
-        # модели, ни поверх уже открытой: иначе «ну как там?» прозвучит повторно.
+        # The same thread must not be saved twice, neither from one model answer nor on
+        # top of one already open: otherwise "so how did it go?" would be asked again.
         known = {(row.user_id, row.text.casefold()) for row in await self._db.open_people_threads()}
         saved = 0
         for item in raw_items[:_THREADS_MAX_PER_PERIOD]:
@@ -401,9 +401,9 @@ class ChatMemorizer:
                 continue
             if self._unsafe(text):
                 continue
-            # Только точное совпадение display_name среди сообщений периода и только
-            # если под этим именем писал один человек: имя из ответа модели — не повод
-            # привязать историю к чужому человеку или тёзке.
+            # Only an exact display_name match among the period's messages, and only if
+            # one person wrote under that name: a name from the model's answer is no reason
+            # to attach a thread to a stranger or a namesake.
             user_id = await self._db.user_id_by_display_name(self._chat_id, name, start, end)
             if user_id is None or user_id in muted:
                 continue
@@ -415,16 +415,15 @@ class ChatMemorizer:
                 user_id=user_id, display_name=name, text=text, created_at=now
             )
             saved += 1
-        logger.info("chat memory: историй сохранено %d", saved)
+        logger.info("chat memory: threads saved %d", saved)
 
     async def run_due(self, *, now: int) -> list[ChatMemoryRow]:
-        """Пересказывает все периоды, целиком уместившиеся до начала текущих суток.
+        """Recaps every period that fits entirely before the start of the current day.
 
-        Период всегда кончается на границе локальных суток, поэтому «сегодня»
-        не пересказывается никогда — только завершённые сутки. Пересказов ещё
-        нет -> догоняем ``backfill_periods`` периодов назад, но не раньше самого
-        первого сообщения чата. Повторный запуск в том же окне ничего не делает:
-        ``last_chat_memory_end`` уже равен концу последнего периода.
+        A period always ends on a local-day boundary, so "today" is never recapped, only
+        completed days. No recaps yet -> catch up ``backfill_periods`` periods back, but not
+        earlier than the chat's first message. A repeated run in the same window does
+        nothing: ``last_chat_memory_end`` already equals the end of the last period.
         """
         cfg = self._cfg_getter()
         memory_cfg = cfg.behaviour.chat_memory
@@ -454,11 +453,10 @@ class ChatMemorizer:
         return created
 
     async def job(self) -> None:
-        """Бесконечный цикл по образцу ``retention.retention_loop``: раз в час
-        смотрит, попадает ли текущий момент в ``chat_memory.run_window``, и если
-        да — зовёт ``run_due``. Второй заход внутри того же окна безопасен:
-        ``run_due`` уже ничего не найдёт. Отмена пробрасывается, любая другая
-        ошибка логируется и цикл живёт дальше."""
+        """Endless loop modelled on ``retention.retention_loop``: once an hour it checks
+        whether the current moment falls into ``chat_memory.run_window`` and if so calls
+        ``run_due``. A second pass within the same window is safe: ``run_due`` will find
+        nothing. Cancellation is propagated, any other error is logged and the loop lives on."""
         while True:
             try:
                 cfg = self._cfg_getter()

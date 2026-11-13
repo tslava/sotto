@@ -48,7 +48,7 @@ class Inline:
     """The ``index``-th string literal in a function body that matches ``pattern``.
 
     Literals are ordered by position (line, column); docstrings are skipped. Parts of an
-    f-string count as literals, which is how ``f"сейчас {x}"`` is read.
+    f-string count as literals, which is how ``f"now {x}"`` is read.
     """
 
     module: str

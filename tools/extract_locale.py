@@ -105,7 +105,7 @@ def extract_literals(source: str) -> list[SourceLiteral]:
             template, names = _joined(node)
             if _CYRILLIC.search(template):
                 found.append(SourceLiteral(function, node.lineno, template, names))
-            # Literals inside the expressions ({'да' if x else 'нет'}) are literals too.
+            # Literals inside the expressions ({'yes' if x else 'no'}) are literals too.
             for part in node.values:
                 if isinstance(part, ast.FormattedValue):
                     visit(part.value, function)

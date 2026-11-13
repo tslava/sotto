@@ -1,22 +1,21 @@
-"""Стикеры вместо текстового ответа — второй вызов дешёвой моделью (CLAUDE.md,
-"Интерфейсы: стикеры"; PLAN.md, раздел "Стикеры").
+"""Stickers instead of a text reply: a second call to a cheap model (CLAUDE.md,
+"Interfaces: stickers"; PLAN.md, section "Stickers").
 
-Основная модель ничего не знает про каталог стикеров — меню в её промпт
-никогда не подмешивается (решение владельца: дороже основной запрос не нужен,
-скорость ответа не важна). Вместо этого уже ГОТОВЫЙ, прошедший выходной фильтр
-текст вместе с сообщением-триггером и каталогом уходит отдельным, дешёвым
-вызовом (та же модель, что судья — ``cfg.llm.judge_model``, или своя
-``cfg.behaviour.stickers.model``), которая либо называет номер стикера, либо
-отвечает ``null`` — и тогда в чат уходит текст, как раньше.
+The main model knows nothing about the sticker catalog: the menu is never mixed into its
+prompt (the owner's decision: a costlier main request is not worth it, and reply speed does
+not matter). Instead the FINISHED text that already passed the output filter, together with
+the trigger message and the catalog, goes to a separate cheap call (the same model as the
+judge, ``cfg.llm.judge_model``, or its own ``cfg.behaviour.stickers.model``), which either
+names a sticker number or answers ``null``, in which case the text goes to the chat as before.
 
-Промпт хранится в ``prompts/sticker.txt`` и, как ``prompts/judge.txt``, сам
-оборачивает данные ({trigger}/{reply}) в разделители ``<<<CHAT ... >>>`` —
-здесь только вырезаются поддельные разделители из самих данных (тем же
-приёмом, что и ``judge.py``), подстановка слотов — один проход ``re.sub``.
+The prompt lives in ``prompts/sticker.txt`` and, like ``prompts/judge.txt``, wraps the data
+({trigger}/{reply}) in ``<<<CHAT ... >>>`` delimiters itself; here only forged delimiters
+are stripped from the data (the same approach as ``judge.py``), and slots are filled in one
+``re.sub`` pass.
 
-Каталог (``stickers.yaml``) собирается офлайн-скриптом ``stickers_fill.py`` со
-зрением и правится владельцем руками; ``load_catalog`` — чистая загрузка без
-сети, отсутствующий/пустой файл значит "стикеров нет", а не ошибку.
+The catalog (``stickers.yaml``) is built offline by the vision-based ``stickers_fill.py``
+script and edited by the owner by hand; ``load_catalog`` is a pure load with no network,
+and a missing/empty file means "no stickers", not an error.
 """
 
 from __future__ import annotations
@@ -36,8 +35,8 @@ from sotto.llm import LLMClient, LLMError
 
 logger = logging.getLogger(__name__)
 
-# Дублирует вырезание разделителей из sanitize.normalize_text/prompt.py/judge.py —
-# на всякий случай ещё раз чистим то, что уходит в промпт чузера.
+# Duplicates the delimiter stripping of sanitize.normalize_text/prompt.py/judge.py:
+# whatever goes into the chooser prompt is cleaned once more, just in case.
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 
@@ -45,10 +44,9 @@ _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```$", re.DOTALL | re.I
 
 _SLOT_RE = re.compile(r"\{(menu|trigger|reply)\}")
 
-# "нет файла -> WARNING один раз" (CLAUDE.md) — один раз за процесс, не за путь:
-# перегрузка каталога на горячую в этом боте не предусмотрена, повторный вызов
-# load_catalog с тем же отсутствующим файлом означал бы только спам одного и того
-# же предупреждения.
+# "no file -> WARNING once" (CLAUDE.md) means once per process, not per path: hot-reloading
+# the catalog is not planned in this bot, so a repeated load_catalog call with the same
+# missing file would only spam the same warning.
 _missing_catalog_warned = False
 
 
@@ -78,15 +76,15 @@ class StickerCatalog(BaseModel):
 
 
 def load_catalog(path: Path) -> StickerCatalog:
-    """``stickers.yaml`` -> ``StickerCatalog``. Файла нет или он пуст -> пустой
-    каталог (всё остальное в боте работает как раньше, стикеров просто не будет).
-    Кривой YAML/данные, не подходящие под схему, -> ``ValueError`` (в т.ч.
-    ``pydantic.ValidationError`` — её базовый класс)."""
+    """``stickers.yaml`` -> ``StickerCatalog``. File missing or empty -> an empty catalog
+    (everything else in the bot works as before, there are just no stickers).
+    Broken YAML/data that does not fit the schema -> ``ValueError`` (including
+    ``pydantic.ValidationError``, which subclasses it)."""
     global _missing_catalog_warned
     if not path.exists():
         if not _missing_catalog_warned:
             _missing_catalog_warned = True
-            logger.warning("stickers: файл %s не найден, каталог стикеров пуст", path)
+            logger.warning("stickers: file %s not found, sticker catalog is empty", path)
         return StickerCatalog()
 
     try:
@@ -102,18 +100,18 @@ def load_catalog(path: Path) -> StickerCatalog:
 
 
 def sticker_tag_re(frag: Fragments) -> re.Pattern[str]:
-    """Регулярка, которой responder.py вытаскивает id стикера из текста, записанного
-    insert_bot_reply (см. render_sticker_menu/StickerChooser.choose ниже и модульный
-    докстринг responder.py про "recent_ids"): "[стикер #3] Ну ты даёшь" -> 3.
-    Строится из ``placeholders.sticker_tag`` пакета: текст до ``{id}`` и после него экранируется,
-    вместо ``{id}`` стоит ``(\\d+)``."""
+    """Regex with which responder.py extracts a sticker id from the text written by
+    insert_bot_reply (see render_sticker_menu/StickerChooser.choose below and the
+    responder.py module docstring on "recent_ids"): "[sticker #3] Nice one" -> 3.
+    Built from the package's ``placeholders.sticker_tag``: the text before and after ``{id}``
+    is escaped, and ``(\\d+)`` stands in place of ``{id}``."""
     template: str = frag.text("placeholders.sticker_tag")
     head, _, tail = template.partition("{id}")
     return re.compile(f"^{re.escape(head)}(\\d+){re.escape(tail)}")
 
 
 def render_sticker_menu(stickers: list[Sticker], *, frag: Fragments) -> str:
-    """ "1: «Ну ты даёшь» — удивление, восхищение\\n2: ..." — только enabled."""
+    """ "1: "Nice one" - surprise, admiration\\n2: ..." - enabled only."""
     quote_open, quote_close = frag.text("render.quote_open"), frag.text("render.quote_close")
     lines = []
     for sticker in stickers:
@@ -127,11 +125,11 @@ def render_sticker_menu(stickers: list[Sticker], *, frag: Fragments) -> str:
 
 
 def parse_choice(raw: str, valid_ids: set[int]) -> int | None:
-    """Разбирает ответ чузера так же строго и терпимо, как ``judge._parse_verdict``/
-    ``prompt.parse_reply``: срез ```json``` обёрток, поиск первой "{" и
-    ``json.JSONDecoder.raw_decode`` от неё. Ожидает ``{"sticker": int|null}`` —
-    всё, что не целое число из ``valid_ids`` (включая ``bool`` — подкласс ``int``
-    в Python, но не то, что здесь имеют в виду), означает ``None``."""
+    """Parses the chooser's answer as strictly and tolerantly as ``judge._parse_verdict``/
+    ``prompt.parse_reply``: strip the ```json``` fence, find the first "{" and
+    ``json.JSONDecoder.raw_decode`` from it. Expects ``{"sticker": int|null}``;
+    anything that is not an integer from ``valid_ids`` (including ``bool``, a subclass of
+    ``int`` in Python but not what is meant here) means ``None``."""
     try:
         candidate = _strip_code_fence(raw.strip())
         start = candidate.find("{")
@@ -150,16 +148,16 @@ def parse_choice(raw: str, valid_ids: set[int]) -> int | None:
             return None
         return sticker_id
     except Exception:
-        # Ответ модели — недоверенный внешний текст: любой сбой разбора значит
-        # "стикер не выбран", а не падение.
+        # The model's answer is untrusted external text: any parse failure means
+        # "no sticker chosen", not a crash.
         return None
 
 
 def recent_sticker_ids(texts: Sequence[str], window: int, *, frag: Fragments) -> set[int]:
-    """id стикеров, использованных в последних ``window`` репликах бота, отмеченных
-    тегом ``sticker_tag_re`` — не по всем текстам, а по последним ``window`` именно
-    стикерным. ``texts`` — в хронологическом порядке (как отдаёт
-    ``Database.recent_bot_replies``), самые свежие последними."""
+    """Ids of stickers used in the bot's last ``window`` replies marked with the
+    ``sticker_tag_re`` tag: not over all texts but over the last ``window`` sticker ones.
+    ``texts`` is in chronological order (as ``Database.recent_bot_replies`` returns it),
+    the freshest last."""
     tag_re = sticker_tag_re(frag)
     ids: list[int] = []
     for text in reversed(texts):
@@ -172,8 +170,8 @@ def recent_sticker_ids(texts: Sequence[str], window: int, *, frag: Fragments) ->
 
 
 def sticker_allowed(*, cfg: StickersConfig, replies_since: int, count_today: int) -> bool:
-    """Может ли вообще идти речь о стикере сейчас — до того, как чузер вызван
-    (CLAUDE.md: "min_replies_between не выдержан -> чузер не вызывается вовсе")."""
+    """Whether a sticker can be considered at all right now, before the chooser is called
+    (CLAUDE.md: "min_replies_between not satisfied -> the chooser is not called at all")."""
     if not cfg.enabled:
         return False
     if replies_since < cfg.min_replies_between:
@@ -182,10 +180,10 @@ def sticker_allowed(*, cfg: StickersConfig, replies_since: int, count_today: int
 
 
 class StickerChooser:
-    """Второй, дешёвый вызов LLM: выбирает стикер под уже готовый ответ, либо
-    ``None``. Само решение "можно ли вообще предлагать стикер сейчас"
-    (``sticker_allowed``) принимает вызывающий (``responder.py``) — сюда
-    попадают только уже отфильтрованные кандидаты."""
+    """Second, cheap LLM call: picks a sticker for an already finished reply, or
+    ``None``. The decision "may a sticker be offered at all right now"
+    (``sticker_allowed``) is made by the caller (``responder.py``); only candidates that
+    are already filtered get here."""
 
     def __init__(
         self,
@@ -238,8 +236,8 @@ class StickerChooser:
                 messages, model=model, max_tokens=cfg.behaviour.stickers.max_tokens, now=now
             )
         except LLMError as exc:
-            # Стикер — необязательное украшение: текст всё равно уйдёт, поэтому
-            # ошибка чузера — не повод резать ответ, только WARNING в лог.
+            # A sticker is optional decoration: the text goes out anyway, so a chooser
+            # error is no reason to cut the reply, only a WARNING in the log.
             logger.warning("sticker chooser llm error: reason=%s", exc.reason)
             return None
 

@@ -1,7 +1,7 @@
-"""Скомпилированные паттерны гейта и фильтров (CHARACTER.md раздел 6, PLAN.md этап 2).
+"""Compiled gate and filter patterns (CHARACTER.md section 6, PLAN.md stage 2).
 
-Всё компилируется один раз в __init__, дальше — чистые методы поиска по готовым
-regex-объектам. Реализует gate_types.PatternsLike.
+Everything is compiled once in __init__; after that, pure search methods over ready
+regex objects. Implements gate_types.PatternsLike.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ def _compile_regex_list(patterns: list[str]) -> list[re.Pattern[str]]:
 
 
 def _compile_phrase_list(phrases: list[str]) -> list[re.Pattern[str]]:
-    """Маркеры ассистента — фразы, экранируются через re.escape при компиляции."""
+    """Assistant markers: phrases, escaped through re.escape when compiled."""
     return [re.compile(re.escape(phrase), re.IGNORECASE) for phrase in phrases]
 
 
@@ -29,7 +29,7 @@ def _first_match(patterns: list[re.Pattern[str]], text: str) -> str | None:
 
 
 class Patterns:
-    """Компилирует регулярки фильтров и триггеры один раз, дальше только поиск."""
+    """Compiles the filter regexes and triggers once; after that only searches."""
 
     def __init__(
         self,
@@ -38,8 +38,9 @@ class Patterns:
         bot_username: str,
         lang: Language | None = None,
     ) -> None:
-        # Язык пакета: склонения имён и всё, что зависит от алфавита и морфологии.
-        # Без языка (тесты, инструменты без пакета) — английский, нейтральный по умолчанию.
+        # The pack's language: name declensions and everything that depends on the alphabet
+        # and morphology. Without a language (tests, tools without a pack) it is English, the
+        # neutral default.
         lang = lang if lang is not None else get_language("en")
         self.lang = lang
         self._topic_stop = _compile_regex_list(filters.topic_stop)
@@ -47,29 +48,29 @@ class Patterns:
         self._logistics = _compile_regex_list(filters.logistics)
         self._urgent = _compile_regex_list(filters.urgent)
         self._places_request = _compile_regex_list(filters.places_request)
-        # Повод узнать погоду в названном месте (CLAUDE.md, "погода в другом месте").
+        # A reason to look up the weather at a named place (CLAUDE.md, "weather somewhere else").
         self._weather_request = _compile_regex_list(filters.weather_request)
         self._model_talk = _compile_regex_list(filters.model_talk)
         self._assistant_markers = _compile_phrase_list(filters.assistant_markers)
         self._grumpy_markers = _compile_regex_list(filters.grumpy_markers)
-        # Реквизит и байки (CLAUDE.md, "меньше и разнообразнее", мера 5) —
-        # компилируются здесь же, чтобы и промпт (слот {avoid}), и выходной фильтр
-        # (dedup:motif / style:story_quota) брали один и тот же готовый набор.
+        # Props and tall tales (CLAUDE.md, "less and more varied", measure 5) are
+        # compiled here too, so that both the prompt (the {avoid} slot) and the output filter
+        # (dedup:motif / style:story_quota) take one and the same ready set.
         self._motifs = {
             label: _compile_regex_list(patterns) for label, patterns in filters.motifs.items()
         }
         self._story_markers = _compile_regex_list(filters.story_markers)
-        # Метрика «про себя» (CLAUDE.md, "про себя через раз") — только /status.
+        # "About myself" metric (CLAUDE.md, "about myself every other time"): /status only.
         self._self_markers = _compile_regex_list(filters.self_markers)
-        # Имя ищется во всех падежах единственного числа (CLAUDE.md, "имя в
-        # падежах"): «про Федора» и «спроси у отца» — то же обращение, что
-        # «Федор» и «отец». Формы даёт morph.name_pattern закрытым списком
-        # окончаний, чтобы «федерация» и «дедлайн» по-прежнему не совпадали.
+        # The name is looked up in all singular cases (CLAUDE.md, "name in cases"): "about
+        # Fedor" and "ask the old man" are the same addressing as "Fedor" and "old man".
+        # morph.name_pattern gives the forms as a closed list of endings, so that unrelated
+        # words that merely start with the name still do not match.
         self._name_triggers = [
             re.compile(lang.name_pattern(trigger), re.IGNORECASE) for trigger in name_triggers
         ]
-        # "\b" не работает перед "@" (@ не словообразующий символ), поэтому границу
-        # слева ставим лукбихайндом "не словообразующий символ перед @", а справа — "\b".
+        # "\b" does not work before "@" (@ is not a word character), so on the left we use a
+        # lookbehind "a non-word character before @", and "\b" on the right.
         self._bot_mention = (
             re.compile(rf"(?<!\w)@{re.escape(bot_username)}\b", re.IGNORECASE)
             if bot_username
@@ -109,9 +110,9 @@ class Patterns:
         return _first_match(self._assistant_markers, text)
 
     def unsafe_note(self, text: str) -> str | None:
-        """Заметка, извлечённая моделью (факт дневника, шутка чата, история
-        человека), уходит в системный промпт надолго — команды и разговоры о
-        модели/ассистенте туда не пускаем (ревью Codex)."""
+        """A note extracted by the model (a diary fact, a chat joke, a person's
+        thread) goes into the system prompt for a long time: commands and talk about the
+        model/assistant are not let in (Codex review)."""
         return self.injection(text) or self.model_talk(text) or self.assistant_marker(text)
 
     def grumpy(self, text: str) -> str | None:
@@ -119,15 +120,15 @@ class Patterns:
 
     @property
     def motifs(self) -> dict[str, list[re.Pattern[str]]]:
-        """Метка мотива -> скомпилированные регулярки (для motifs.py)."""
+        """Motif label -> compiled regexes (for motifs.py)."""
         return self._motifs
 
     @property
     def story_markers(self) -> list[re.Pattern[str]]:
-        """Скомпилированные маркеры байки (для motifs.story_count)."""
+        """Compiled tall-tale markers (for motifs.story_count)."""
         return self._story_markers
 
     @property
     def self_markers(self) -> list[re.Pattern[str]]:
-        """Скомпилированные маркеры «говорит о себе» (для motifs.self_share)."""
+        """Compiled "talks about itself" markers (for motifs.self_share)."""
         return self._self_markers

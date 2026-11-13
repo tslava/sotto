@@ -1,23 +1,23 @@
-"""Реквизит персонажа и квота баек (CLAUDE.md, "меньше и разнообразнее", мера 5).
+"""Persona props and the story quota (CLAUDE.md, "less and more varied", measure 5).
 
-Диагноз владельца после стопа 15.09: бот не только слишком много говорил, но и
-говорил одно и то же — в 22 репликах жена встретилась 7 раз, теплица 5, гараж 5,
-«в девяносто пятом» 5, и почти каждая реплика была байкой. Лечится с двух концов:
+The diagnosis after the chat stopped the bot for a day: it spoke too much and also kept
+saying the same thing. The same few props (a spouse, an outbuilding, a decade) recurred in
+most replies, and almost every reply was a tall tale. The cure works from both ends:
 
-- **до модели** — ``used_motifs``/``story_count``/``render_avoid`` собирают из уже
-  сказанного абзац для слота ``{avoid}`` системного промпта («ты уже поминал жену,
-  теплицу, гараж — сейчас без них»), то есть модель предупреждена заранее;
-- **после модели** — ``motifs_in``/``story_count`` используются выходным фильтром
-  (``filters.layer_rules``: ``dedup:motif`` и ``style:story_quota``) как страховка,
-  если предупреждение не сработало.
+- **before the model**: ``used_motifs``/``story_count``/``render_avoid`` build, from what
+  was already said, a paragraph for the ``{avoid}`` slot of the system prompt ("you already
+  mentioned X and Y, now without them"), so the model is warned in advance;
+- **after the model**: ``motifs_in``/``story_count`` are used by the output filter
+  (``filters.layer_rules``: ``dedup:motif`` and ``style:story_quota``) as insurance if the
+  warning did not work.
 
-Функции чистые, без I/O и без зависимости от конфига: скомпилированные регулярки
-приходят готовыми из ``patterns.Patterns`` (``motifs``/``story_markers``), окна —
-числами из ``FiltersConfig``. Записи стикеров («[стикер #N] надпись», их пишет
-``responder.py`` через ``insert_bot_reply``) при подсчёте пропускаются: это не
-реплика персонажа, а картинка, и мотивов в ней нет — тот же приём, что в
-``postprocess._recent_has_emoji``, включая собственную константу префикса, чтобы
-не тянуть сюда ``stickers.py`` с его ``llm``-зависимостями.
+The functions are pure, do no I/O and do not depend on the config: compiled regexes arrive
+ready from ``patterns.Patterns`` (``motifs``/``story_markers``), windows are numbers from
+``FiltersConfig``. Sticker entries ("[sticker #N] caption", written by ``responder.py``
+through ``insert_bot_reply``) are skipped when counting: they are a picture, not a persona
+reply, and contain no motifs. Same approach as ``postprocess._recent_has_emoji``, including
+the local prefix constant, so as not to pull ``stickers.py`` with its ``llm`` dependencies
+in here.
 """
 
 from __future__ import annotations
@@ -31,18 +31,17 @@ from sotto.gate_types import Trigger
 
 
 def _is_sticker_record(text: str, frag: Fragments) -> bool:
-    """«[стикер #3] Ну ты даёшь» в recent_bot_replies — картинка, а не текст персонажа
-    (см. докстринг модуля); префикс берётся из ``placeholders.sticker_tag`` пакета."""
+    """ "[sticker #3] Nice one" in recent_bot_replies is a picture, not persona text
+    (see the module docstring); the prefix comes from the package's ``placeholders.sticker_tag``."""
     return text.startswith(frag.prefix("placeholders.sticker_tag"))
 
 
 def _tail(recent_replies: Sequence[str], window: int, frag: Fragments) -> list[str]:
-    """Последние ``window`` реплик без записей-стикеров.
+    """The last ``window`` replies without sticker entries.
 
-    Окно отсчитывается по всем записям, а стикеры отбрасываются уже внутри него
-    (как в ``postprocess._recent_has_emoji``): «последние 10 реплик» — это ровно
-    последние 10 строк ``db.recent_bot_replies``, часть из которых может оказаться
-    стикерами и в подсчёт не попасть.
+    The window is counted over all entries and stickers are dropped inside it afterwards
+    (as in ``postprocess._recent_has_emoji``): "the last 10 replies" means exactly the last
+    10 rows of ``db.recent_bot_replies``, some of which may be stickers and not counted.
     """
     if window <= 0:
         return []
@@ -50,7 +49,7 @@ def _tail(recent_replies: Sequence[str], window: int, frag: Fragments) -> list[s
 
 
 def motifs_in(text: str, motifs: Mapping[str, Sequence[re.Pattern[str]]]) -> list[str]:
-    """Метки мотивов, встретившихся в тексте, в порядке объявления в конфиге."""
+    """Labels of motifs found in the text, in the order declared in the config."""
     if not text:
         return []
     return [
@@ -67,10 +66,10 @@ def used_motifs(
     *,
     frag: Fragments,
 ) -> list[str]:
-    """Метки мотивов из последних ``window`` реплик, без повторов, в порядке конфига.
+    """Labels of motifs from the last ``window`` replies, without repeats, in config order.
 
-    ``recent_replies`` — хронологически, свежие последними (как отдаёт
-    ``db.recent_bot_replies``).
+    ``recent_replies`` is chronological, the freshest last (as
+    ``db.recent_bot_replies`` returns it).
     """
     tail = _tail(recent_replies, window, frag)
     if not tail:
@@ -89,20 +88,19 @@ def story_count(
     *,
     frag: Fragments,
 ) -> int:
-    """Сколько из последних ``window`` реплик выглядят байкой (есть маркер истории).
+    """How many of the last ``window`` replies look like a tall tale (have a story marker).
 
-    Считаются реплики, а не срабатывания: две «девяностых» в одной фразе — одна
-    байка, а не две.
+    Replies are counted, not hits: two period mentions in one phrase are one tale, not two.
     """
     tail = _tail(recent_replies, window, frag)
     return sum(1 for reply in tail if any(marker.search(reply) for marker in markers))
 
 
 def render_avoid(used: Sequence[str], *, no_story: bool, frag: Fragments) -> str:
-    """Абзац для слота ``{avoid}`` системного промпта. Нечего сказать -> "".
+    """Paragraph for the ``{avoid}`` slot of the system prompt. Nothing to say -> "".
 
-    ``used`` — метки мотивов из ``used_motifs``; ``no_story`` — квота баек в окне
-    уже выбрана (``story_count >= filters.story_max``).
+    ``used`` is the motif labels from ``used_motifs``; ``no_story`` means the tale quota in
+    the window is already used up (``story_count >= filters.story_max``).
     """
     parts: list[str] = []
     if used:
@@ -115,11 +113,12 @@ def render_avoid(used: Sequence[str], *, no_story: bool, frag: Fragments) -> str
     return " ".join(parts)
 
 
-# Метрика «про себя» (CLAUDE.md, "про себя через раз"): после 0.6.0 7 из 7 непрошеных
-# реплик были про самого Фёдора. Ничего не режет — только строка в /status, чтобы
-# видеть тренд после правок промпта. Обращения считаются отдельно: на вопрос про
-# него говорить о себе нормально. /say (дословный текст владельца) и /life (новость
-# о себе по определению) не считаются вовсе, стикеры — тоже.
+# "About myself" metric (CLAUDE.md, "about myself every other time"): in the release where
+# this was added, 7 of 7 unsolicited replies were about the persona itself. It cuts nothing,
+# only feeds a line in /status so the trend is visible after prompt edits. Addressings are
+# counted separately: answering a question about the persona by talking about itself is
+# fine. /say (the owner's verbatim text) and /life (news about itself by definition) are
+# not counted at all, nor are stickers.
 _SELF_ADDRESS_TRIGGERS = frozenset(
     {
         Trigger.MENTION.value,
@@ -134,7 +133,7 @@ _SELF_SKIP_TRIGGERS = frozenset({"say", "life"})
 
 @dataclass(frozen=True, slots=True)
 class SelfShare:
-    """Сколько реплик «про себя» из скольких, по группам триггеров."""
+    """How many replies are "about myself" out of how many, by trigger group."""
 
     ambient: tuple[int, int] = (0, 0)
     address: tuple[int, int] = (0, 0)
@@ -142,7 +141,8 @@ class SelfShare:
 
 
 def speaks_about_self(text: str, markers: Sequence[re.Pattern[str]], *, frag: Fragments) -> bool:
-    """Есть ли в реплике маркер «о себе» (первое лицо, его родня). Стикер — нет."""
+    """Whether the reply has an "about myself" marker (first person, relatives).
+    A sticker has none."""
     if not text or _is_sticker_record(text, frag):
         return False
     return any(marker.search(text) for marker in markers)
@@ -151,9 +151,9 @@ def speaks_about_self(text: str, markers: Sequence[re.Pattern[str]], *, frag: Fr
 def self_share(
     replies: Iterable[tuple[str, str]], markers: Sequence[re.Pattern[str]], *, frag: Fragments
 ) -> SelfShare:
-    """``replies`` — пары (trigger, text) из ``bot_replies``. Группы: ambient,
-    обращения (mention/reply/name/followup/places), прочее (morning, checkin,
-    callback, spontaneous). say/life и стикеры пропускаются."""
+    """``replies`` are (trigger, text) pairs from ``bot_replies``. Groups: ambient,
+    addressings (mention/reply/name/followup/places), other (morning, checkin,
+    callback, spontaneous). say/life and stickers are skipped."""
     counts = {"ambient": [0, 0], "address": [0, 0], "other": [0, 0]}
     for trigger, text in replies:
         if trigger in _SELF_SKIP_TRIGGERS or _is_sticker_record(text, frag):
@@ -175,7 +175,7 @@ def self_share(
 
 
 def render_self_share(share: SelfShare, days: int, *, frag: Fragments) -> str:
-    """Строка для /status: «о себе за 3 сут: ambient 6/6, обращения 2/2, прочее 1/1»."""
+    """Line for /status: "about myself over 3 days: ambient 6/6, addressings 2/2, other 1/1"."""
     return frag.render(
         "render.self_share",
         days=str(days),

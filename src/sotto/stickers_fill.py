@@ -1,29 +1,29 @@
-"""Офлайн-наполнение каталога стикеров (CLAUDE.md, "Интерфейсы: стикеры"; PLAN.md,
-раздел "Стикеры").
+"""Offline fill of the sticker catalog (CLAUDE.md, "Interfaces: stickers"; PLAN.md,
+section "Stickers").
 
 ``python -m sotto.stickers_fill <set_name> [--out stickers.yaml] [--dry-run]
     [--no-llm] [--model provider/model]``
 
-Не рантайм бота — отдельный ручной прогон (после того, как владелец собрал/поправил
-набор стикеров в Telegram). Ходит в Bot API: ``get_sticker_set`` за списком стикеров
-набора, затем ``download`` за содержимым каждого нового (webp). Animated/video-стикеры
-(``is_animated``/``is_video``) распознавать не умеем (tgs/webm) — пропускаются с
-WARNING, в каталог не попадают вовсе.
+Not part of the bot runtime: a separate manual run (after the owner has assembled/adjusted
+the sticker set in Telegram). It calls the Bot API: ``get_sticker_set`` for the set's
+sticker list, then ``download`` for the content of each new one (webp). Animated/video
+stickers (``is_animated``/``is_video``) cannot be recognized (tgs/webm): they are skipped
+with a WARNING and never reach the catalog.
 
-Надпись на стикере телеграм не отдаёт как текст — распознаётся один раз моделью со
-зрением через ``LLMClient.call_raw`` (content-массив с ``image_url``), результат
-(``text``/``when``) владелец правит руками — этот скрипт даёт только черновик.
+Telegram does not expose the text on a sticker as text, so it is recognized once by a
+vision model through ``LLMClient.call_raw`` (a content array with ``image_url``); the owner
+edits the result (``text``/``when``) by hand, this script only produces a draft.
 
-Существующий ``stickers.yaml`` (если есть) читается и МЕРЖИТСЯ по ``file_id``:
-совпадение — id/text/when/enabled старой записи сохраняются (правки владельца не
-теряются), новые стикеры получают следующие id, пропавшие из набора остаются в
-файле, но помечаются ``enabled: false`` с WARNING (не удаляются — на них могут
-быть ссылки в ``bot_replies``/недавно использованных).
+An existing ``stickers.yaml`` (if any) is read and MERGED by ``file_id``: on a match the old
+entry's id/text/when/enabled are kept (owner edits are not lost), new stickers get the next
+ids, and stickers that vanished from the set stay in the file but are marked
+``enabled: false`` with a WARNING (they are not deleted: ``bot_replies``/recently used may
+refer to them).
 
-Зависимости, нужные тестам, инжектируются явно (по образцу ``places_fill.py``):
-``BotLike`` (тесты подставляют подделку с ``get_sticker_set``/``download``, без
-настоящего aiogram) и ``LLMLike`` (подмножество ``LLMClient.call_raw``, не считает
-бюджет/бухгалтерию живого бота — как ``_InMemoryState`` в ``places_fill.py``).
+Dependencies needed by tests are injected explicitly (modelled on ``places_fill.py``):
+``BotLike`` (tests supply a fake with ``get_sticker_set``/``download``, without a real
+aiogram) and ``LLMLike`` (a subset of ``LLMClient.call_raw`` that does not count the live
+bot's budget/accounting, like ``_InMemoryState`` in ``places_fill.py``).
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ class _ReadableLike(Protocol):
 
 
 class _StickerLike(Protocol):
-    """Подмножество ``aiogram.types.Sticker``, нужное этому модулю."""
+    """The subset of ``aiogram.types.Sticker`` this module needs."""
 
     @property
     def file_id(self) -> str: ...
@@ -80,13 +80,12 @@ class _StickerLike(Protocol):
 
 
 class _StickerSetLike(Protocol):
-    """Подмножество ``aiogram.types.StickerSet``, нужное этому модулю.
+    """The subset of ``aiogram.types.StickerSet`` this module needs.
 
-    ``Sequence`` (не ``list``) — так же, как ``commands._DbLike.last_bot_replies``:
-    ``list`` инвариантен по параметру, поэтому настоящий
-    ``aiogram.types.StickerSet`` (``stickers: list[Sticker]``) не подошёл бы
-    структурно под ``list[_StickerLike]``, а под ковариантный ``Sequence`` —
-    подходит, раз ``Sticker`` структурно совпадает с ``_StickerLike``.
+    ``Sequence`` (not ``list``), like ``commands._DbLike.last_bot_replies``: ``list`` is
+    invariant in its parameter, so a real ``aiogram.types.StickerSet``
+    (``stickers: list[Sticker]``) would not fit ``list[_StickerLike]`` structurally, but fits
+    the covariant ``Sequence`` since ``Sticker`` structurally matches ``_StickerLike``.
     """
 
     @property
@@ -94,8 +93,8 @@ class _StickerSetLike(Protocol):
 
 
 class BotLike(Protocol):
-    """Узкий протокол вместо ``aiogram.Bot`` — тесты подделывают его без aiogram
-    (по образцу ``responder._BotLike``/``reactions.ReactionBotLike``)."""
+    """A narrow protocol instead of ``aiogram.Bot``: tests fake it without aiogram
+    (modelled on ``responder._BotLike``/``reactions.ReactionBotLike``)."""
 
     async def get_sticker_set(self, name: str) -> _StickerSetLike: ...
 
@@ -103,8 +102,8 @@ class BotLike(Protocol):
 
 
 class LLMLike(Protocol):
-    """Подмножество ``LLMClient``, нужное этому модулю — тесты подставляют подделку,
-    не считающую бюджет/бухгалтерию живого бота (см. модульный докстринг)."""
+    """The subset of ``LLMClient`` this module needs: tests supply a fake that does not count
+    the live bot's budget/accounting (see the module docstring)."""
 
     async def call_raw(
         self, messages: list[dict[str, object]], *, model: str, max_tokens: int, now: int
@@ -112,11 +111,11 @@ class LLMLike(Protocol):
 
 
 class _InMemoryState:
-    """Минимальный state-стор для настоящего LLMClient внутри stickers_fill.
+    """Minimal state store for the real LLMClient inside stickers_fill.
 
-    Наполнение каталога — офлайн и разовое действие: дневные лимиты/бюджет/
-    предохранитель живого бота (общая таблица state) ему не нужны, счётчики
-    LLMClient здесь живут только на время одного прогона (по образцу
+    Filling the catalog is an offline one-off action: the live bot's daily limits, budget and
+    circuit breaker (the shared state table) are not needed here, and the LLMClient counters
+    live only for the duration of one run (modelled on
     ``places_fill._InMemoryState``)."""
 
     def __init__(self) -> None:
@@ -140,9 +139,9 @@ class _InMemoryState:
 
 
 def _parse_recognition(raw: str) -> tuple[str, str]:
-    """Разбирает ответ распознавания так же терпимо, как ``judge._parse_verdict``:
-    срез ```json``` обёрток, поиск первой "{" и ``raw_decode`` от неё. Любой сбой ->
-    ("", "") — черновик остаётся пустым, владелец заполнит сам."""
+    """Parses the recognition answer as tolerantly as ``judge._parse_verdict``:
+    strip the ```json``` fence, find the first "{" and ``raw_decode`` from it. Any failure ->
+    ("", ""): the draft stays empty and the owner fills it in."""
     try:
         candidate = _strip_code_fence(raw.strip())
         start = candidate.find("{")
@@ -163,8 +162,8 @@ def _parse_recognition(raw: str) -> tuple[str, str]:
 async def recognize_sticker(
     image_bytes: bytes, *, llm: LLMLike | None, model: str, now: int, frag: Fragments
 ) -> tuple[str, str]:
-    """(text, when) черновика по картинке стикера (webp). ``llm=None`` -> ("", "")
-    без сетевого вызова — это и есть ``--no-llm``."""
+    """(text, when) draft from a sticker image (webp). ``llm=None`` -> ("", "")
+    with no network call: this is ``--no-llm``."""
     if llm is None:
         return "", ""
     encoded = base64.b64encode(image_bytes).decode("ascii")
@@ -205,9 +204,9 @@ async def build_catalog(
     now: int,
     frag: Fragments,
 ) -> StickerCatalog:
-    """Тянет набор из Bot API и мержит с ``existing`` по ``file_id`` (см. модульный
-    докстринг: правки владельца сохраняются, новые получают следующие id, пропавшие
-    остаются выключенными)."""
+    """Pulls the set from the Bot API and merges with ``existing`` by ``file_id`` (see the
+    module docstring: owner edits are kept, new ones get the next ids, vanished ones
+    stay disabled)."""
     sticker_set = await bot.get_sticker_set(set_name)
 
     existing_by_file_id = {sticker.file_id: sticker for sticker in existing.stickers}
@@ -227,8 +226,8 @@ async def build_catalog(
         seen_file_ids.add(raw.file_id)
         old = existing_by_file_id.get(raw.file_id)
         if old is not None:
-            # Совпадение по file_id — id/text/when/enabled владельца не трогаем,
-            # emoji обновляем сам (его правкой владелец не занимается).
+            # A file_id match: the owner's id/text/when/enabled are left alone, the
+            # emoji is refreshed (the owner does not edit it).
             result.append(
                 Sticker(
                     id=old.id,
@@ -330,7 +329,7 @@ async def run(
     llm: LLMLike | None = None,
     persona: Persona | None = None,
 ) -> StickerCatalog:
-    """Точка входа, общая для CLI и тестов (см. модульный докстринг про DI)."""
+    """Entry point shared by the CLI and tests (see the module docstring on DI)."""
     args = parse_args(argv)
     settings = settings if settings is not None else Settings()
     now = int(time_module.time())
@@ -350,7 +349,7 @@ async def run(
     if bot is not None:
         bot_obj: BotLike = bot
     else:
-        from aiogram import Bot  # ленивый импорт: тестам не нужен настоящий aiogram Bot
+        from aiogram import Bot  # lazy import: tests do not need a real aiogram Bot
 
         bot_obj = Bot(token=settings.bot_token.get_secret_value())
 
@@ -391,8 +390,8 @@ async def run(
         )
     finally:
         if owns_bot:
-            # owns_bot=True -> bot_obj — настоящий aiogram.Bot (создан выше), не
-            # подделка теста; BotLike не объявляет .session, поэтому type: ignore.
+            # owns_bot=True -> bot_obj is a real aiogram.Bot (created above), not a
+            # test fake; BotLike does not declare .session, hence the type: ignore.
             await bot_obj.session.close()  # type: ignore[attr-defined]
         if owns_llm:
             assert isinstance(use_llm, LLMClient)

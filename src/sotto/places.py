@@ -1,22 +1,23 @@
-"""Рантайм-выбор заведений (PLAN.md, этап 5; CLAUDE.md, "Интерфейсы этапа 5").
+"""Runtime venue selection (PLAN.md, stage 5; CLAUDE.md, "Stage 5 interfaces").
 
-Чистые синхронные функции без I/O — наполнение кэша (Google Places, LLM-сжатие
-отзывов) делает отдельный офлайн-скрипт (``places_fill.py``, другой агент),
-этот модуль только читает уже готовые ``db.PlaceRow`` и решает, что подмешать
-в промпт по тексту сообщения-триггера:
+Pure synchronous functions with no I/O. Filling the cache (Google Places, LLM compression
+of reviews) is done by a separate offline script (``places_fill.py``, another agent); this
+module only reads ready ``db.PlaceRow`` objects and decides what to mix into the prompt
+based on the trigger message text:
 
-- ``select_places`` / ``render_places_block`` — старый путь (regex-детект +
-  фильтрованный список из 1-2 мест); оставлены для ``replay.py`` и тестов,
-  ``responder._generate_and_send`` их больше не зовёт;
-- ``render_places_menu`` — рантайм-путь при прямом обращении: весь кэш целиком,
-  решение «спрашивали ли про место» и выбор 1-2 подходящих отдаёт модели (решение
-  владельца после живого теста — regex не покрывает «где тут пиво приличное»);
-- ``validate_fact`` — та же валидация, что ``places_fill.py`` прогоняет по
-  сжатому отзыву перед записью в БД. Отзыв — чужой текст из интернета, канал
-  непрямой инъекции (PLAN.md, этап 5, п.3): команда в отзыве может проехать
-  через LLM-сжатие в fact и оттуда в каждый промпт про места, поэтому фильтр
-  строгий (только кириллица, пробелы, запятая, дефис, до 40 символов) и это
-  последняя автоматическая защита перед ручным просмотром.
+- ``select_places`` / ``render_places_block``: the old path (regex detection + a filtered
+  list of 1-2 places); kept for ``replay.py`` and tests, ``responder._generate_and_send``
+  no longer calls them;
+- ``render_places_menu``: the runtime path on direct addressing: the whole cache at once,
+  leaving the decision "was a place asked about" and the choice of 1-2 suitable ones to the
+  model (an owner decision after a live test: regex does not cover "where's a decent beer
+  around here");
+- ``validate_fact``: the same validation ``places_fill.py`` runs on the compressed review
+  before writing to the DB. A review is foreign text from the internet, a channel for
+  indirect injection (PLAN.md stage 5 item 3): a command in a review could travel through
+  LLM compression into the fact and from there into every venue prompt, so the filter is
+  strict (only Cyrillic, spaces, comma, hyphen, up to 40 characters) and is the last
+  automatic defence before manual review.
 """
 
 from __future__ import annotations
@@ -34,12 +35,13 @@ _FACT_MAX_LEN = 40
 
 
 def _normalize(text: str, lang: Language) -> str:
-    """``lang.fold`` (регистр, «ё»), для сравнения без учёта регистра, принятого в контракте."""
+    """``lang.fold`` (case, "yo" letter), for the case-insensitive comparison from the contract."""
     return lang.fold(text.strip())
 
 
 def _district_lookup(cfg: PlacesConfig, lang: Language) -> dict[str, str]:
-    """Вариант написания (без регистра, ё/е) -> каноническое имя района из ``district_aliases``."""
+    """Spelling variant (case- and yo/ye-insensitive) -> canonical district name from
+    ``district_aliases``."""
     lookup: dict[str, str] = {}
     for canonical, variants in cfg.district_aliases.items():
         lookup[_normalize(canonical, lang)] = canonical
@@ -49,12 +51,12 @@ def _district_lookup(cfg: PlacesConfig, lang: Language) -> dict[str, str]:
 
 
 def _district_group(name: str, lookup: dict[str, str], lang: Language) -> str | None:
-    """Канонический район для произвольного написания (PlaceRow.district), либо None."""
+    """Canonical district for an arbitrary spelling (PlaceRow.district), or None."""
     return lookup.get(_normalize(name, lang))
 
 
 def _detect_district(request_text: str, lookup: dict[str, str], lang: Language) -> str | None:
-    """Первый упомянутый в тексте район (любой вариант написания), либо None."""
+    """First district mentioned in the text (any spelling variant), or None."""
     normalized = _normalize(request_text, lang)
     for variant, canonical in lookup.items():
         if variant and variant in normalized:
@@ -75,22 +77,22 @@ def select_places(
     *,
     lang: Language,
 ) -> list[PlaceRow]:
-    """Фильтрует ``rows`` по тексту запроса и выбирает до ``cfg.max_per_reply``.
+    """Filters ``rows`` by the request text and picks up to ``cfg.max_per_reply``.
 
-    Порядок (CLAUDE.md, "Интерфейсы этапа 5"):
+    Order (CLAUDE.md, "Stage 5 interfaces"):
 
-    1. База: ``operational``, ``rating >= cfg.min_rating``, ``reviews >= cfg.min_reviews``.
-    2. Если в запросе слова про тишину — жёсткий фильтр ``quiet=1`` (пусто, если
-       среди оставшихся нет ни одного тихого).
-    3. Если упомянут район — он в приоритете: сужаем до совпадений по району,
-       но только если такие совпадения есть, иначе (район в кэше не встретился)
-       используем то, что было до этого шага, а не пустой список.
-    4. Иначе, если в запросе слова про выезд за город — жёсткий фильтр
+    1. Base: ``operational``, ``rating >= cfg.min_rating``, ``reviews >= cfg.min_reviews``.
+    2. If the request has words about quiet: a hard ``quiet=1`` filter (empty if none of the
+       remaining places is quiet).
+    3. If a district is mentioned it takes priority: narrow to district matches, but only if
+       there are any; otherwise (the district was not met in the cache) use what there was
+       before this step rather than an empty list.
+    4. Otherwise, if the request has words about going out of town: a hard filter
        ``category == "outskirts"``.
-    5. Иначе — любая категория.
+    5. Otherwise any category.
 
-    Из итогового набора — ``rng.sample`` до ``max_per_reply`` (или меньше, если
-    подходящих не хватает). Пустой список на любом шаге -> ``[]``.
+    From the resulting set, ``rng.sample`` up to ``max_per_reply`` (or fewer if there are
+    not enough suitable ones). An empty list at any step -> ``[]``.
     """
     candidates = [
         row
@@ -128,10 +130,10 @@ def select_places(
 
 
 def render_places_block(rows: list[PlaceRow], *, frag: Fragments) -> str:
-    """Блок ``{places}``: название, район, категория, факт. Пусто -> prompt.PLACES_NONE.
+    """``{places}`` block: name, district, category, fact. Empty -> prompt.PLACES_NONE.
 
-    Часы работы не выводятся никогда (их нет в PlaceRow), источник (Google) не
-    упоминается — "был, ничего особенного", а не "по отзывам в Гугле".
+    Opening hours are never printed (they are not in PlaceRow) and the source (Google) is not
+    mentioned: "been there, nothing special", not "according to Google reviews".
     """
     if not rows:
         return str(frag.text("prompt.places_none"))
@@ -145,18 +147,18 @@ def render_places_block(rows: list[PlaceRow], *, frag: Fragments) -> str:
 
 
 def render_places_menu(rows: list[PlaceRow], *, frag: Fragments) -> str:
-    """Весь кэш заведений для промпта при прямом обращении (mention/reply/name).
+    """The whole venue cache for the prompt on direct addressing (mention/reply/name).
 
-    Решение владельца после живого теста (CLAUDE.md, "Интерфейсы этапа 5"): детект
-    запроса про место регулярками не покрывает живую речь («где тут пиво
-    приличное», «тихое место есть на Рожицах?»), поэтому при любом прямом
-    обращении список уходит в промпт целиком, а решение «спрашивали ли про место»
-    принимает модель по инструкции в этом же блоке — не ``select_places``.
-    Регулярки (``patterns.places_request``) остаются для статистики и ambient.
+    An owner decision after a live test (CLAUDE.md, "Stage 5 interfaces"): detecting a place
+    request by regex does not cover live speech ("where's a decent beer around here", "any
+    quiet place in the neighbourhood?"), so on any direct addressing the list goes into the
+    prompt whole, and the decision "was a place asked about" is made by the model following
+    the instruction in the same block, not by ``select_places``.
+    The regexes (``patterns.places_request``) remain for statistics and ambient.
 
-    Пусто -> фрагмент ``prompt.places_none``. Иначе строки по ``name``, ``тихо``/``шумно``
-    по ``quiet``, ``fact`` — только если непустой. Никаких рейтингов, цен, часов
-    работы, слова Google (источник не палится, как и в ``render_places_block``).
+    Empty -> the ``prompt.places_none`` fragment. Otherwise lines by ``name``, quiet/noisy
+    per ``quiet``, ``fact`` only if non-empty. No ratings, prices, opening hours or the word
+    Google (the source is not given away, as in ``render_places_block``).
     """
     if not rows:
         return str(frag.text("prompt.places_none"))
@@ -171,11 +173,11 @@ def render_places_menu(rows: list[PlaceRow], *, frag: Fragments) -> str:
 
 
 def validate_fact(raw: str, *, lang: Language) -> str | None:
-    """Только кириллица, пробелы, запятая, дефис; <= 40 символов; иначе None.
+    """Only Cyrillic, spaces, comma, hyphen; <= 40 characters; otherwise None.
 
-    Отзыв Google — недоверенный внешний текст (PLAN.md, этап 5, п.3): латиница,
-    цифры и любая другая пунктуация валят факт целиком, а не только вырезаются
-    из него — частичная очистка оставила бы шанс протащить инъекцию обрывками.
+    A Google review is untrusted external text (PLAN.md stage 5 item 3): Latin, digits and
+    any other punctuation fail the whole fact rather than being merely stripped from it:
+    partial cleaning would leave a chance to smuggle an injection through in fragments.
     """
     text = raw.strip()
     if not text or len(text) > _FACT_MAX_LEN:

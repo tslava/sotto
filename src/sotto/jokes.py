@@ -1,12 +1,12 @@
-"""Шутки чата (CLAUDE.md, "шутки чата и истории людей").
+"""Chat jokes (CLAUDE.md, "chat jokes and people's threads").
 
-Недельный ``ChatMemorizer`` достаёт из переписки словечки, которые чат подхватил, и
-кладёт их в таблицу ``chat_jokes``. ``render_jokes`` собирает из них абзац для слота
-``{jokes}`` системного промпта («можно к месту вернуть одну»), а ``joke_used`` решает,
-вернул ли персонаж шутку в только что отправленной реплике — тогда responder ставит ей
-``last_used_at`` и шутка отдыхает ``cooldown_days`` суток.
+The weekly ``ChatMemorizer`` pulls from the conversation the words the chat picked up and
+puts them in the ``chat_jokes`` table. ``render_jokes`` builds from them a paragraph for the
+``{jokes}`` slot of the system prompt ("you may bring one back where it fits"), and
+``joke_used`` decides whether the persona brought a joke back in the reply just sent; then
+the responder sets its ``last_used_at`` and the joke rests for ``cooldown_days`` days.
 
-Чистые функции, без I/O.
+Pure functions, no I/O.
 """
 
 from __future__ import annotations
@@ -20,11 +20,12 @@ from sotto.lang import Language
 
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
-# Ведущий буллет/нумерация: строка слота не должна начинаться с «- » (regex:prompt_leak).
+# Leading bullet/numbering: a slot line must not start with "- " (regex:prompt_leak).
 _BULLET_RE = re.compile(r"^\s*(?:[-*•–—]+\s+|\d+[.)]\s+)")
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
 
-# Сколько общих слов подряд считается «шутку вернули» (и порог «короткой» шутки).
+# How many shared words in a row count as "the joke was brought back" (and the threshold
+# of a "short" joke).
 _MIN_RUN = 3
 
 
@@ -39,10 +40,10 @@ def _words(text: str, lang: Language) -> list[str]:
 
 
 def render_jokes(rows: Sequence[JokeRow], *, now: int, cooldown_days: int, frag: Fragments) -> str:
-    """Блок слота ``{jokes}``. Пусто -> "" (абзац со слотом в system.txt пропадает).
+    """Block for the ``{jokes}`` slot. Empty -> "" (the slot's paragraph in system.txt disappears).
 
-    Шутка показывается, если её ещё не использовали или с использования прошло
-    не меньше ``cooldown_days`` суток. Одна строка, без «- » в начале."""
+    A joke is shown if it has not been used yet or at least ``cooldown_days`` days have
+    passed since its use. One line, no "- " at the start."""
     cooldown = cooldown_days * 86400
     quote_open, quote_close = frag.text("render.quote_open"), frag.text("render.quote_close")
     parts: list[str] = []
@@ -58,8 +59,8 @@ def render_jokes(rows: Sequence[JokeRow], *, now: int, cooldown_days: int, frag:
 
 
 def joke_used(text: str, joke: str, lang: Language) -> bool:
-    """Шутка прозвучала в ``text``: 3+ общих нормализованных слова подряд, либо шутка
-    короче трёх слов и целиком (по словам, подряд) входит в текст."""
+    """The joke sounded in ``text``: 3+ shared normalized words in a row, or the joke is
+    shorter than three words and is contained whole (by words, in a row) in the text."""
     text_words = _words(text, lang)
     joke_words = _words(joke, lang)
     if not joke_words or not text_words:

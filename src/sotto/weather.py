@@ -1,24 +1,23 @@
-"""Погода как фон жизни персонажа (CLAUDE.md, "Интерфейсы: погода" и
-"Интерфейсы: погода в другом месте").
+"""Weather as background colour for the persona's life (CLAUDE.md, "Interfaces: weather" and
+"Interfaces: weather somewhere else").
 
-Повод — живой случай 19.09.2026: на «что там с погодой на завтра?» персонаж
-ответил «посмотрю в окно». Теперь у него есть настоящие данные. Источник —
-Open-Meteo: публичный API без ключа и регистрации.
+The persona used to answer a weather question with a shrug; now it has real data. The source
+is Open-Meteo: a public API with no key and no registration.
 
-Погода — фон, а не справочная услуга: одна-две строки уходят в системный промпт,
-и модель сама решает, к слову они или нет. Домашняя точка (координаты и название)
-живёт в ``.env``, а не в конфиге и не в коде: репозиторий публичный, а где живёт
-владелец — его личные данные. Координат нет -> ``get()`` без места отдаёт ``None``,
-блок погоды пустой, всё остальное работает как раньше.
+Weather is background, not a lookup service: one or two lines go into the system prompt and
+the model decides whether they are relevant. The home point (coordinates and name) lives in
+``.env``, not in the config or the code: the repository is public and where the owner lives
+is personal data. No coordinates -> ``get()`` without a place returns ``None``, the weather
+block is empty and everything else works as before.
 
-Если в обращении спрашивают про другое место («а в Варшаве?»), название достаёт
-из текста дешёвая модель (``WeatherPlaceExtractor`` — тот же приём, что у
-``followup.FollowupChecker``: один вызов, только когда есть повод), координаты
-даёт геокодер Open-Meteo, и в промпт добавляется вторая строка.
+When a message asks about another place ("and in Warsaw?"), a cheap model extracts the name
+from the text (``WeatherPlaceExtractor``, the same approach as ``followup.FollowupChecker``:
+one call, only when there is a reason), the Open-Meteo geocoder supplies coordinates, and a
+second line is added to the prompt.
 
-Сеть есть только в этом модуле, и наружу её ошибки не выходят: любая неудача —
-``logger.warning`` и прошлый (пусть протухший) кэш либо ``None``. Молчание про
-погоду дешевле, чем сорванный ответ.
+The network is used only in this module and its errors never escape: any failure is a
+``logger.warning`` plus the previous (even stale) cache, or ``None``. Saying nothing about
+the weather is cheaper than a broken reply.
 """
 
 from __future__ import annotations
@@ -44,12 +43,12 @@ logger = logging.getLogger(__name__)
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
-# Свой суточный счётчик попыток (как vision_calls/followup_calls): дешёвый вызов
-# не должен съедать потолок вызовов основной модели.
+# Own daily call counter (like vision_calls/followup_calls): a cheap call must not eat
+# the main model's call cap.
 _COUNTER_KEY = "weather_calls"
 
-# Название длиннее — это уже не место, а пересказ сообщения: модель не поняла
-# задачу, геокодер такое всё равно не найдёт.
+# A longer name is no longer a place but a paraphrase of the message: the model misread
+# the task and the geocoder would not find it anyway.
 _PLACE_MAX_LEN = 60
 
 _SLOT_RE = re.compile(r"\{(text)\}")
@@ -73,9 +72,9 @@ class Weather:
 
 @dataclass(frozen=True, slots=True)
 class Place:
-    """Точка на карте. ``name`` — как её зовут в промпте: для домашней точки это
-    ``Settings.weather_home_name`` (может быть пустым), для найденной геокодером —
-    то, что вернул геокодер."""
+    """A point on the map. ``name`` is how the prompt refers to it: for the home point it is
+    ``Settings.weather_home_name`` (may be empty), for a geocoded place whatever the
+    geocoder returned."""
 
     name: str
     latitude: float
@@ -83,18 +82,18 @@ class Place:
 
 
 def describe(code: int, *, frag: Fragments) -> str:
-    """Код WMO -> описание из ``weather.wmo`` пакета; неизвестный код -> "" (строка без описания).
+    """WMO code -> description from the package's ``weather.wmo`` table; unknown code -> ""
+    (a line without a description).
 
-    Таблица кодов — ровно те, которые Open-Meteo действительно возвращает; ключи в YAML —
-    целые числа."""
+    The table holds exactly the codes Open-Meteo actually returns; YAML keys are integers."""
     return str(frag.table("weather.wmo").get(code, ""))
 
 
 def format_temp(value: float) -> str:
-    """Температура целым числом со знаком: "+9", "-3", "0" (ноль без знака).
+    """Temperature as a signed integer: "+9", "-3", "0" (zero has no sign).
 
-    Публичная: той же формой пользуется строка погоды в ``/status``
-    (commands.py), чтобы «+9» в промпте и в статусе выглядело одинаково."""
+    Public: the weather line in ``/status`` (commands.py) uses the same form, so "+9" looks
+    the same in the prompt and in the status."""
     rounded = round(value)
     if rounded == 0:
         return "0"
@@ -102,12 +101,12 @@ def format_temp(value: float) -> str:
 
 
 def _same_local_day(fetched_at: int, tz: str, now: int) -> bool:
-    """Снимок погоды сделан в те же локальные сутки, что и ``now``.
+    """The snapshot was taken on the same local day as ``now``.
 
-    Важно для честности «днём» и «завтра»: при долгом обрыве сети клиент отдаёт
-    прошлый кэш (лучше вчерашняя погода, чем никакой), но если он снят вчера, то
-    «завтра» в нём — это уже сегодня, и строка врала бы. Такой снимок не
-    рендерится вовсе — в промпте просто не будет абзаца про погоду.
+    Keeps "today" and "tomorrow" honest: after a long network outage the client serves the
+    previous cache (yesterday's weather beats none), but if it was taken yesterday its
+    "tomorrow" is already today and the line would lie. Such a snapshot is not rendered at
+    all, so the prompt simply has no weather paragraph.
     """
     return local_date(fetched_at, tz) == local_date(now, tz)
 
@@ -122,15 +121,15 @@ def _with_desc(prefix: str, code: int, *, joiner: str, frag: Fragments) -> str:
 def render_weather(
     w: Weather | None, tz: str, now: int, *, home_name: str = "", frag: Fragments
 ) -> str:
-    """Блок домашней погоды для системного промпта. ``None`` -> "" (абзац исчезает).
+    """Home-weather block for the system prompt. ``None`` -> "" (the paragraph disappears).
 
-    Название домашней точки в текст НЕ подставляется: русские названия пришлось бы
-    склонять («в Волсань» вместо «в Волсани»), а модель и так знает из промпта, где
-    персонаж живёт. ``home_name`` нужен только чтобы не выводить второй блок, когда
-    спросили про свой же город (``responder``). Строки НЕ начинаются с «- »:
-    ``filters.regex:prompt_leak`` считает инструктивной частью промпта именно
-    строки-буллеты, и погода-буллет срезала бы ответ персонажа как утечку.
-    Часов и дат в строке нет — модель не должна пересказывать «данные на 12:30».
+    The home point's name is NOT put into the text: Russian names would need declension
+    (a wrong case form of the city) and the model already knows from the prompt where the
+    persona lives. ``home_name`` is only needed to skip the second block when someone asks
+    about the persona's own town (``responder``). Lines do NOT start with "- ":
+    ``filters.regex:prompt_leak`` treats bullet lines as the instructional part of the
+    prompt, and a bullet weather line would cut the persona's reply as a leak.
+    There are no times or dates in the line, so the model does not recite "data as of 12:30".
     """
     if w is None or not _same_local_day(w.fetched_at, tz, now):
         return ""
@@ -159,7 +158,7 @@ def render_weather(
 def render_weather_place(
     place_name: str, w: Weather | None, tz: str, now: int, *, frag: Fragments
 ) -> str:
-    """Вторая строка блока — погода в месте, про которое спросили. ``None`` -> ""."""
+    """Second line of the block: weather at the place that was asked about. ``None`` -> ""."""
     if w is None or not _same_local_day(w.fetched_at, tz, now):
         return ""
     now_part = _with_desc(
@@ -176,8 +175,8 @@ def render_weather_place(
         joiner=", ",
         frag=frag,
     )
-    # Название в именительном падеже: «Спрашивают про Варшава» было бы ошибкой, а
-    # склонять названия из геокодера нечем — поэтому двоеточие после «место».
+    # The name is in the nominative case: "Asking about Warszawa" would be wrong in Russian
+    # and geocoder names cannot be declined, hence the colon after "place".
     return (
         f"{frag.get('weather.place_prefix')}{place_name}. {now_part.capitalize()}, {tomorrow_part}."
     )
@@ -195,8 +194,8 @@ def _strip_code_fence(text: str) -> str:
 
 
 def _parse_weather(data: Any, now: int) -> Weather:
-    """Ответ Open-Meteo -> Weather. Любое расхождение с форматом — исключение
-    (KeyError/IndexError/TypeError/ValueError), которое ловит вызывающий."""
+    """Open-Meteo response -> Weather. Any mismatch with the format is an exception
+    (KeyError/IndexError/TypeError/ValueError) that the caller catches."""
     current = data["current"]
     daily = data["daily"]
     mins = daily["temperature_2m_min"]
@@ -216,9 +215,9 @@ def _parse_weather(data: Any, now: int) -> Weather:
 
 
 def _parse_place(data: Any, cfg: WeatherConfig) -> Place:
-    """Ответ геокодера -> Place. Страна дописывается к названию, если это не домашняя
-    (``home_country_codes``/``home_country_names``): своё место и так понятно, а
-    «Кёльн, Германия» — уже другая история."""
+    """Geocoder response -> Place. The country is appended to the name unless it is the home
+    country (``home_country_codes``/``home_country_names``): the home country is understood
+    anyway, while "Cologne, Germany" is another story."""
     results = data["results"]
     first = results[0]
     name = str(first["name"]).strip()
@@ -238,22 +237,21 @@ def _parse_place(data: Any, cfg: WeatherConfig) -> Place:
 
 @dataclass(frozen=True, slots=True)
 class _GeocodeEntry:
-    """Результат геокодирования в кэше. ``place`` = None — «искали, не нашли»:
-    отрицательный ответ кэшируется тоже, чтобы не долбить геокодер одним и тем
-    же несуществующим местом."""
+    """Geocoding result in the cache. ``place`` = None means "searched, not found": a negative
+    answer is cached too, so the geocoder is not hammered with the same nonexistent place."""
 
     place: Place | None
     fetched_at: int
 
 
 class WeatherClient:
-    """Открытый API Open-Meteo с кэшем в памяти. Единственное место в проекте,
-    которое ходит за погодой в сеть.
+    """Open-Meteo public API with an in-memory cache. The only place in the project that
+    goes to the network for weather.
 
-    ``home`` — домашняя точка из ``.env`` (app.py собирает её из
-    ``WEATHER_LATITUDE``/``WEATHER_LONGITUDE``/``WEATHER_HOME_NAME``). ``None``
-    значит «домашней точки нет»: ``get()`` без аргумента вернёт ``None``, а
-    погода по спрошенному месту всё равно работает.
+    ``home`` is the home point from ``.env`` (app.py builds it from
+    ``WEATHER_LATITUDE``/``WEATHER_LONGITUDE``/``WEATHER_HOME_NAME``). ``None`` means
+    "no home point": ``get()`` without an argument returns ``None``, while weather for a
+    place that was asked about still works.
     """
 
     def __init__(
@@ -271,19 +269,19 @@ class WeatherClient:
             else httpx.AsyncClient(timeout=cfg_getter().behaviour.weather.timeout_sec)
         )
         self._clock = clock
-        # Кэш по округлённым до сотых координатам: домашняя точка и каждое
-        # спрошенное место живут отдельно и не перетирают друг друга.
+        # Cache keyed by coordinates rounded to hundredths: the home point and every
+        # place asked about live separately and do not overwrite each other.
         self._cache: dict[tuple[float, float], Weather] = {}
         self._geocode_cache: dict[str, _GeocodeEntry] = {}
-        # Два разных лока: погода и геокодер зовутся последовательно (сначала
-        # geocode, потом get), но брать один лок дважды подряд незачем, а вложить
-        # их друг в друга было бы легко испортить будущей правкой.
+        # Two separate locks: weather and geocoding are called in sequence (geocode first,
+        # then get), so there is no need to take one lock twice, and nesting them would be
+        # easy to break with a future edit.
         self._lock = asyncio.Lock()
         self._geocode_lock = asyncio.Lock()
 
     @property
     def home_name(self) -> str:
-        """Как звать домашнюю точку в промпте; "" — названия нет или точки нет."""
+        """What the home point is called in the prompt; "" means no name or no point."""
         return self._home.name if self._home is not None else ""
 
     @property
@@ -294,11 +292,11 @@ class WeatherClient:
         await self._http.aclose()
 
     async def get(self, place: Place | None = None) -> Weather | None:
-        """Погода в ``place`` (или в домашней точке). Свежий кэш — без сети.
+        """Weather at ``place`` (or at the home point). A fresh cache means no network.
 
-        Ошибка сети/разбора -> прошлый кэш этой же точки, даже протухший: лучше
-        вчерашняя погода, чем никакой (за честность «сегодня/завтра» отвечает
-        ``render_weather``, который вчерашний снимок не рендерит).
+        Network/parse error -> the previous cache of the same point, even stale: yesterday's
+        weather beats none (``render_weather`` keeps "today/tomorrow" honest and does not
+        render a yesterday snapshot).
         """
         cfg = self._cfg_getter()
         weather_cfg = cfg.behaviour.weather
@@ -315,8 +313,8 @@ class WeatherClient:
             return cached
 
         async with self._lock:
-            # Перепроверка под локом: пока ждали своей очереди, параллельный
-            # вызов мог уже сходить в сеть — второй запрос не нужен.
+            # Re-check under the lock: while waiting for our turn a parallel call may
+            # already have gone to the network, so a second request is unnecessary.
             cached = self._cache.get(key)
             now = self._clock()
             if cached is not None and now - cached.fetched_at < weather_cfg.ttl_min * 60:
@@ -343,7 +341,7 @@ class WeatherClient:
                 _FORECAST_URL, params=params, timeout=weather_cfg.timeout_sec
             )
         except httpx.HTTPError as exc:
-            # TimeoutException — тоже HTTPError, отдельной ветки не нужно.
+            # TimeoutException is an HTTPError too, no separate branch needed.
             logger.warning("weather request failed: error=%s", type(exc).__name__)
             return None
 
@@ -358,8 +356,8 @@ class WeatherClient:
             return None
 
     async def geocode(self, query: str) -> Place | None:
-        """Название места -> координаты. Кэш по строке запроса, TTL
-        ``geocode_ttl_days``; отрицательный результат кэшируется тоже."""
+        """Place name -> coordinates. Cached by the query string, TTL
+        ``geocode_ttl_days``; a negative result is cached too."""
         cfg = self._cfg_getter()
         weather_cfg = cfg.behaviour.weather
         key = query.strip().lower()
@@ -403,23 +401,22 @@ class WeatherClient:
         try:
             return _parse_place(response.json(), weather_cfg)
         except (KeyError, IndexError, TypeError, ValueError):
-            # Ничего не нашлось — в ответе просто нет ключа "results". Это
-            # обычное дело («под Кórnik-ом»), не ошибка сервиса.
-            logger.warning("geocode: место не найдено")
+            # Nothing found: the response simply has no "results" key. That is
+            # routine (a misspelled or obscure place), not a service error.
+            logger.warning("geocode: place not found")
             return None
 
 
 class WeatherPlaceExtractor:
-    """Достаёт название места из вопроса про погоду одним дешёвым вызовом.
+    """Extracts the place name from a weather question with one cheap call.
 
-    Русские склонения («в Варшаве», «под Гданьском») геокодер не понимает, а
-    регулярками их не разобрать — поэтому именительный падеж восстанавливает
-    модель. Вызов делается, только когда сработала регулярка повода
-    (``patterns.weather_request``) и только для прямых обращений: см.
-    ``responder._generate_and_send``.
+    The geocoder does not understand Russian declensions ("in Warsaw" in the locative) and
+    regexes cannot undo them, so the model restores the nominative case. The call is made
+    only when the trigger regex (``patterns.weather_request``) matched and only for direct
+    addressing: see ``responder._generate_and_send``.
 
-    Любой сбой (пустая модель, ``LLMError``, не JSON, слишком длинный ответ) —
-    ``None``: тогда в промпт уходит только домашняя погода.
+    Any failure (empty model, ``LLMError``, not JSON, too long an answer) gives ``None``:
+    then only the home weather goes into the prompt.
     """
 
     def __init__(
@@ -454,18 +451,18 @@ class WeatherPlaceExtractor:
 
         place = _parse_place_name(result.text)
         if place is None:
-            logger.info("weather place: места в сообщении нет")
+            logger.info("weather place: no place in the message")
             return None
         logger.info("weather place: %s", place)
         return place
 
 
 def _parse_place_name(raw: str) -> str | None:
-    """``{"place": "Варшава"|null}`` -> название или None.
+    """``{"place": "Warsaw"|null}`` -> the name or None.
 
-    Разбор такой же строгий и терпимый, как ``judge._parse_verdict``: срез
-    ```json``` обёрток, поиск первой "{" и ``raw_decode`` от неё. Пустая строка,
-    не строка и слишком длинный ответ — тоже None (модель не поняла задачу).
+    Parsing is as strict and tolerant as ``judge._parse_verdict``: strip the ```json```
+    fence, find the first "{" and ``raw_decode`` from it. An empty string, a non-string
+    and a too long answer are also None (the model misread the task).
     """
     try:
         candidate = _strip_code_fence(raw.strip())
@@ -484,6 +481,6 @@ def _parse_place_name(raw: str) -> str | None:
             return None
         return place
     except Exception:
-        # Ответ модели — недоверенный внешний текст: любой сбой разбора значит
-        # «места нет», а не падение ответа целиком.
+        # The model's answer is untrusted external text: any parse failure means
+        # "no place", not a crash of the whole reply.
         return None

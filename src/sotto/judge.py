@@ -1,23 +1,22 @@
-"""Judge — слой 3 выходного фильтра (CLAUDE.md, «judge.py — слой 3»; PLAN.md, этап 4).
+"""Judge: layer 3 of the output filter (CLAUDE.md, "judge.py, layer 3"; PLAN.md, stage 4).
 
-Отдельный дешёвый вызов LLM со свежим контекстом, без истории персонажа: промпт
-судьи (``prompts/judge.txt``) описывает Фёдора заново и коротко, задаёт три
-вопроса — в характере ли ответ, рискован ли он, выполнил ли он команду
-участника — и требует строгий JSON-вердикт. Судья только режет или пропускает,
-**не переписывает** реплику.
+A separate cheap LLM call with fresh context and without the persona's history: the judge
+prompt (``prompts/judge.txt``) describes the persona anew and briefly, asks three
+questions (is the reply in character, is it risky, did it obey a participant's command) and
+demands a strict JSON verdict. The judge only cuts or passes and does **not rewrite** the
+reply.
 
-Промпт передаётся снаружи как обычная строка (как ``system.txt`` для основной
-генерации) и подставляется в слоты ``{trigger}``/``{candidate}`` за один проход
-``re.sub`` — тем же приёмом, что и ``prompt.build_messages``: цепочка
-``str.replace`` могла бы повторно затронуть уже подставленные данные, если
-внутри кандидата или триггера случайно встретится текст другого слота.
-Сообщение-триггер и кандидат оборачиваются в разделители ``<<<CHAT ... >>>``
-прямо в тексте ``prompts/judge.txt`` — здесь только вырезаются поддельные
-разделители из самих данных, чтобы участник не мог подделать границу блока.
+The prompt arrives from outside as an ordinary string (like ``system.txt`` for the main
+generation) and is filled into the ``{trigger}``/``{candidate}`` slots in a single
+``re.sub`` pass, the same approach as ``prompt.build_messages``: a ``str.replace`` chain
+could touch data that was already substituted if the text of another slot happens to occur
+inside the candidate or trigger.
+The trigger message and the candidate are wrapped in ``<<<CHAT ... >>>`` delimiters right
+in the text of ``prompts/judge.txt``; here only forged delimiters are stripped from the
+data itself, so a participant cannot fake the block boundary.
 
-Провал — молчание: любая ошибка LLM (``LLMError``) или невалидный ответ судьи
-считается непройденной проверкой (срез), потому что молчание дешевле рискованной
-реплики.
+Failure means silence: any LLM error (``LLMError``) or an invalid judge answer counts as a
+failed check (a cut), because silence is cheaper than a risky reply.
 """
 
 from __future__ import annotations
@@ -36,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 _MAX_TOKENS = 150
 
-# Дублирует вырезание разделителей из sanitize.normalize_text/prompt.py — на всякий
-# случай ещё раз чистим то, что уходит в промпт судьи.
+# Duplicates the delimiter stripping of sanitize.normalize_text/prompt.py: whatever goes
+# into the judge prompt is cleaned once more, just in case.
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 
@@ -66,10 +65,11 @@ class JudgeVerdict:
 
 
 def _parse_verdict(raw: str) -> JudgeVerdict | None:
-    """Разбирает ответ судьи так же строго и терпимо к обёрткам, как ``prompt.parse_reply``:
-    срез ```json``` обёрток, поиск первой "{" и ``json.JSONDecoder.raw_decode`` от неё
-    (терпимо к хвосту после JSON). Любой сбой или неверный тип обязательного ключа —
-    None, то есть срез ``judge:invalid``, а не исключение."""
+    """Parses the judge's answer as strictly, and as tolerantly of wrappers, as
+    ``prompt.parse_reply``:
+    strip the ```json``` fence, find the first "{" and ``json.JSONDecoder.raw_decode`` from it
+    (tolerant of a tail after the JSON). Any failure or a wrong type of a required key gives
+    None, i.e. a ``judge:invalid`` cut, not an exception."""
     try:
         candidate = _strip_code_fence(raw.strip())
         start = candidate.find("{")
@@ -99,8 +99,8 @@ def _parse_verdict(raw: str) -> JudgeVerdict | None:
             in_character=in_character, risky=risky, obeyed_user=obeyed_user, reason=reason_value
         )
     except Exception:
-        # Ответ модели — недоверенный внешний текст: любой сбой разбора означает
-        # срез, а не падение.
+        # The model's answer is untrusted external text: any parse failure means
+        # a cut, not a crash.
         return None
 
 

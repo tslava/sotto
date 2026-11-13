@@ -1,24 +1,24 @@
-"""Зрение на фото: снимок из чата превращается в описание (CLAUDE.md,
-"Интерфейсы: зрение на фото").
+"""Vision on photos: a chat snapshot becomes a description (CLAUDE.md,
+"Interfaces: vision on photos").
 
-Решение владельца: до сих пор фото в чате было просто «[фото]» — бот на них слеп
-и в контексте у модели зияла дырка. Модель со зрением описывает снимок одной-двумя
-фразами, и это описание становится текстом сообщения в БД (``[фото: ...]``), так что
-дальше всё — гейт, followup, генерация ответа — работает с ним как с обычным текстом
-и ничего больше про фото знать не должно.
+Owner's decision: until now a photo in the chat was just "[photo]", the bot was blind to
+it and the model's context had a hole. A vision model describes the snapshot in a sentence
+or two, and that description becomes the message text in the DB (``[photo: ...]``), so
+everything downstream (gate, followup, reply generation) treats it as ordinary text and
+needs to know nothing more about photos.
 
-Стоит денег, поэтому описывается не каждый снимок: только когда есть повод
-(обращение или открытое горячее окно), иногда по кубику, и всегда под суточным
-потолком со своим счётчиком ``vision_calls`` (отдельно от основного ``llm_calls``,
-как у дешёвой проверки followup) — см. ``should_describe``.
+It costs money, so not every snapshot is described: only when there is a reason (an
+addressing or an open hot window), occasionally by a die roll, and always under a daily cap
+with its own ``vision_calls`` counter (separate from the main ``llm_calls``, like the cheap
+followup check); see ``should_describe``.
 
-Байты фото и их base64 никуда не сохраняются и в лог не попадают никогда: они
-живут ровно один вызов ``describe`` и уходят в тело запроса к модели. В
-``filter_log`` пишется только готовое описание.
+Photo bytes and their base64 are never stored anywhere and never reach the log: they live
+for exactly one ``describe`` call and go into the model request body. Only the finished
+description is written to ``filter_log``.
 
-Модуль ничего не знает про aiogram: размер фото описан структурным протоколом
-``PhotoSizeLike`` (настоящий ``aiogram.types.PhotoSize`` подходит под него без
-наследования), скачиванием занимается вызывающий (``bot.py``), в БД модуль не ходит.
+The module knows nothing about aiogram: a photo size is described by the structural
+protocol ``PhotoSizeLike`` (a real ``aiogram.types.PhotoSize`` fits without inheritance),
+downloading is done by the caller (``bot.py``), and the module does not touch the DB.
 """
 
 from __future__ import annotations
@@ -37,14 +37,15 @@ from sotto.sanitize import normalize_text
 
 logger = logging.getLogger(__name__)
 
-# Свой суточный счётчик попыток вместо общего llm_calls: описание фото не должно
-# съедать бюджет вызовов основной модели (тот же приём, что followup._COUNTER_KEY).
+# Own daily attempt counter instead of the shared llm_calls: describing a photo must not
+# eat the main model's call budget (same approach as followup._COUNTER_KEY).
 _COUNTER_KEY = "vision_calls"
 
 _ELLIPSIS = "…"
 
-# Дублирует вырезание разделителей из sanitize.normalize_text/prompt.py/judge.py —
-# на всякий случай ещё раз чистим и подпись, уходящую в промпт, и ответ модели.
+# Duplicates the delimiter stripping of sanitize.normalize_text/prompt.py/judge.py:
+# once more, just in case, we clean both the caption going into the prompt and the
+# model's answer.
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 
@@ -56,12 +57,12 @@ def _strip_fake_delimiters(text: str) -> str:
 
 
 class PhotoSizeLike(Protocol):
-    """Структурный тип размера фото (``aiogram.types.PhotoSize`` подходит без
-    наследования, как и ``SimpleNamespace``/dataclass в тестах).
+    """Structural type of a photo size (``aiogram.types.PhotoSize`` fits without
+    inheritance, as do ``SimpleNamespace``/dataclasses in tests).
 
-    Атрибуты объявлены read-only свойствами, а не изменяемыми полями: модулю
-    нужно только читать их, а read-only протокол принимает и обычный атрибут
-    pydantic-модели, и настоящее property.
+    Attributes are declared as read-only properties rather than mutable fields: the module
+    only needs to read them, and a read-only protocol accepts both a plain attribute of a
+    pydantic model and a real property.
     """
 
     @property
@@ -73,13 +74,13 @@ class PhotoSizeLike(Protocol):
 
 
 def pick_photo_size(sizes: Sequence[PhotoSizeLike], max_width: int) -> PhotoSizeLike | None:
-    """Самый большой размер не шире ``max_width``; если все шире — самый маленький.
+    """The largest size not wider than ``max_width``; if all are wider, the smallest.
 
-    Телеграм отдаёт ``message.photo`` по возрастанию размера, но полагаться на
-    порядок не нужно — выбор идёт по ``width``. Смысл потолка: за разрешение выше
-    примерно 1024 px модель со зрением берёт больше токенов, а описание от этого
-    не становится лучше. Если даже самый мелкий превью шире потолка — берём его,
-    описать снимок всё равно лучше, чем не описать.
+    Telegram returns ``message.photo`` in ascending size order, but there is no need to rely
+    on the order: the choice goes by ``width``. The point of the cap: above roughly 1024 px
+    a vision model takes more tokens without the description getting any better. If even the
+    smallest preview is wider than the cap, we take it: describing the snapshot anyway beats
+    not describing it.
     """
     if not sizes:
         return None
@@ -97,12 +98,12 @@ def should_describe(
     cfg: VisionConfig,
     rng: random.Random,
 ) -> bool:
-    """Тратить ли вызов модели на это фото.
+    """Whether to spend a model call on this photo.
 
-    Порядок (CLAUDE.md): enabled -> суточный потолок -> есть повод (обращение или
-    открытое горячее окно) -> кубик. Кубик последним, чтобы ``rng`` тратился только
-    когда всё остальное уже позволило описать — тесты с фиксированным seed так
-    стабильнее (ровно как последний шаг гейта и ``pick_reaction``).
+    Order (CLAUDE.md): enabled -> daily cap -> there is a reason (an addressing or an open
+    hot window) -> die roll. The die roll is last so that ``rng`` is consumed only when
+    everything else already allows describing: tests with a fixed seed are more stable that
+    way (exactly like the gate's last step and ``pick_reaction``).
     """
     if not cfg.enabled:
         return False
@@ -114,7 +115,7 @@ def should_describe(
 
 
 def _truncate(text: str, max_chars: int) -> str:
-    """Обрезка по границе слова с «…»; длина результата не превышает ``max_chars``."""
+    """Trim at a word boundary with "…"; the result length does not exceed ``max_chars``."""
     if len(text) <= max_chars:
         return text
     truncated = text[: max_chars - 1]
@@ -124,11 +125,11 @@ def _truncate(text: str, max_chars: int) -> str:
 
 
 def photo_text(description: str | None, caption: str, *, frag: Fragments) -> str:
-    """Текст, который ляжет в ``messages.text`` вместо фото.
+    """The text that goes into ``messages.text`` in place of the photo.
 
-    Без описания — привычный «[фото]» (как ``sanitize.media_placeholder``), с
-    описанием — «[фото: ...]». Подпись автора, если она есть, дописывается следом
-    и остаётся его собственными словами.
+    Without a description it is the familiar "[photo]" (like ``sanitize.media_placeholder``),
+    with one it is "[photo: ...]". The author's caption, if any, is appended after it and
+    stays in their own words.
     """
     head = (
         frag.render("placeholders.photo_with_desc", desc=description)
@@ -140,15 +141,15 @@ def photo_text(description: str | None, caption: str, *, frag: Fragments) -> str
 
 
 class VisionDescriber:
-    """Один вызов модели со зрением на снимок -> описание или None.
+    """One vision-model call on a snapshot -> a description or None.
 
-    Промпт (``prompts/vision.txt``) со слотом ``{caption}`` подставляется за один
-    проход ``re.sub`` — тем же приёмом, что в ``judge.py``/``followup.py``: цепочка
-    ``str.replace`` могла бы повторно затронуть уже подставленные данные.
+    The prompt (``prompts/vision.txt``) with the ``{caption}`` slot is filled in a single
+    ``re.sub`` pass, the same approach as in ``judge.py``/``followup.py``: a chain of
+    ``str.replace`` could touch data that was already substituted.
 
-    Любой сбой — ``None``: пустая модель, ``LLMError`` (включая исчерпанный
-    суточный потолок), пустой ответ. Вызывающий тогда пишет обычное «[фото]» —
-    фото никогда не ломает обработку сообщения.
+    Any failure gives ``None``: an empty model, ``LLMError`` (including an exhausted daily
+    cap), an empty answer. The caller then writes the plain "[photo]": a photo never breaks
+    message handling.
     """
 
     def __init__(
@@ -169,7 +170,9 @@ class VisionDescriber:
         vision_cfg = cfg.behaviour.vision
         model = vision_cfg.model or cfg.llm.main_model
         if not model:
-            logger.info("vision: модель не задана (behaviour.vision.model и llm.main_model пусты)")
+            logger.info(
+                "vision: model not set (behaviour.vision.model and llm.main_model are empty)"
+            )
             return None
 
         clean_caption = _strip_fake_delimiters(normalize_text(caption)).strip()
@@ -178,7 +181,7 @@ class VisionDescriber:
             self._prompt_template,
         )
 
-        # base64 живёт только внутри тела запроса: ни в лог, ни в БД он не попадает.
+        # base64 lives only inside the request body: it reaches neither the log nor the DB.
         data_url = f"data:{mime};base64,{base64.b64encode(image).decode('ascii')}"
         messages: list[dict[str, Any]] = [
             {
@@ -201,9 +204,9 @@ class VisionDescriber:
             )
         except LLMError as exc:
             if exc.reason == "llm:calls_cap":
-                # Исчерпанный потолок — штатное состояние к концу активных суток,
-                # а не сбой: INFO, чтобы не будить владельца WARNING'ами.
-                logger.info("vision: суточный потолок описаний исчерпан")
+                # An exhausted cap is a normal state toward the end of an active day,
+                # not a failure: INFO, so as not to wake the owner with WARNINGs.
+                logger.info("vision: daily description cap exhausted")
             else:
                 logger.warning("vision llm error: reason=%s", exc.reason)
             return None

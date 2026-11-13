@@ -1,13 +1,13 @@
-"""Дневник дня (CLAUDE.md, "дневник дня").
+"""Diary of the day (CLAUDE.md, "diary of the day").
 
-Повод — живой случай 09.10.2026: через ``/say`` Фёдор сказал «я в баню», а через
-семь минут — «а я на рыбалку», и чат поймал. Реплика лежала в «Твоих последних
-репликах», но модель не держит её как факт. ``DiaryExtractor`` — дешёвый вызов LLM
-(тот же приём, что ``followup.FollowupChecker``): из итогового текста реплики достаёт
-факт о его собственных делах, а ``render_diary`` собирает из фактов дня абзац для
-слота ``{diary}`` системного промпта: «держись этого, не противоречь».
+The reason: through ``/say`` the persona once said it was heading out somewhere and minutes
+later said it was doing something incompatible, and the chat noticed. The line was in "your
+latest replies" but the model does not hold it as a fact. ``DiaryExtractor`` is a cheap LLM
+call (the same approach as ``followup.FollowupChecker``): from the final reply text it pulls
+a fact about the persona's own doings, and ``render_diary`` assembles the day's facts into a
+paragraph for the ``{diary}`` slot of the system prompt: "stick to this, do not contradict".
 
-Модуль не ходит в БД: запись факта делает вызывающий (``responder.py``).
+The module does not touch the DB: the caller (``responder.py``) writes the fact.
 """
 
 from __future__ import annotations
@@ -47,11 +47,11 @@ def _strip_code_fence(text: str) -> str:
 
 
 def _parse_fact(raw: str) -> str | None:
-    """``{"fact": "..."|null}`` -> нормализованный факт или None.
+    """``{"fact": "..."|null}`` -> a normalized fact or None.
 
-    Разбор такой же терпимый, как ``judge._parse_verdict``: срез ```json``` обёрток,
-    первая "{" и ``raw_decode``. Не строка, пустая строка и длиннее 80 символов
-    (модель пересказала, а не сжала) — None."""
+    Parsing is as tolerant as ``judge._parse_verdict``: strip the ```json``` fence,
+    the first "{" and ``raw_decode``. A non-string, an empty string and one longer than
+    80 characters (the model retold instead of compressing) give None."""
     try:
         candidate = _strip_code_fence(raw.strip())
         start = candidate.find("{")
@@ -68,8 +68,8 @@ def _parse_fact(raw: str) -> str | None:
             return None
         return fact
     except Exception:
-        # Ответ модели — недоверенный внешний текст: любой сбой разбора значит
-        # «факта нет», а не падение.
+        # The model's answer is untrusted external text: any parse failure means
+        # "no fact", not a crash.
         return None
 
 
@@ -82,9 +82,9 @@ class DiaryExtractor:
         self._prompt_template = prompt_template
 
     async def extract(self, reply_text: str, *, now: int) -> str | None:
-        """Факт о делах персонажа из его реплики или None. Любой сбой (пустая модель,
-        ``LLMError``, не JSON, слишком длинный факт) — None, ответ в чат от этого
-        не зависит."""
+        """A fact about the persona's doings from its reply, or None. Any failure (empty
+        model, ``LLMError``, not JSON, too long a fact) gives None; the chat reply does not
+        depend on it."""
         cfg = self._cfg_getter()
         diary_cfg = cfg.behaviour.diary
         model = diary_cfg.model or cfg.llm.judge_model
@@ -108,7 +108,7 @@ class DiaryExtractor:
 
         fact = _parse_fact(result.text)
         if fact is None:
-            logger.info("diary: факта в реплике нет")
+            logger.info("diary: no fact in the reply")
             return None
         logger.info("diary: %s", fact)
         return fact
@@ -121,11 +121,11 @@ def _clean(text: str) -> str:
 def render_diary(
     today: Sequence[SelfFactRow], week: Sequence[SelfFactRow], tz: str, *, frag: Fragments
 ) -> str:
-    """Блок слота ``{diary}``. Пусто -> "" (абзац со слотом в system.txt пропадает).
+    """Block for the ``{diary}`` slot. Empty -> "" (the slot's paragraph in system.txt disappears).
 
-    Сегодня — «10:46 пошёл в баню; 12:39 возится с лодкой.», неделя — «пн чинил
-    забор; ср купил краску.» (день недели и время локальные по tz). Строки не
-    начинаются с "- " (``filters.regex:prompt_leak``)."""
+    Today looks like "10:46 went to the sauna; 12:39 tinkering with the boat.", the week like
+    "Mon fixed the fence; Wed bought paint." (weekday and time are local per tz). Lines do
+    not start with "- " (``filters.regex:prompt_leak``)."""
     lines: list[str] = []
     if today:
         parts = [f"{local_dt(row.created_at, tz):%H:%M} {_clean(row.text)}" for row in today]
