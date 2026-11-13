@@ -1,9 +1,9 @@
-"""Чистые синхронные функции для очистки пользовательских данных.
+"""Pure synchronous functions for cleaning user-supplied data.
 
-Ничего не знают про aiogram и не делают I/O — см. CLAUDE.md, раздел "Конвенции".
-Используются перед записью в БД (display_name, текст сообщения) и перед подстановкой
-данных в промпт, чтобы участник чата не мог подделать формат контекста или
-внедрить инструкции через своё имя/текст сообщения (PLAN.md, этап 1 и этап 3).
+They know nothing about aiogram and do no I/O. Used before writing to the DB
+(display_name, message text) and before inserting data into the prompt, so that a
+chat participant cannot forge the context format or inject instructions through
+their name or message text.
 """
 
 from __future__ import annotations
@@ -14,10 +14,10 @@ from typing import Protocol
 
 from sotto.fragments import Fragments
 
-# Ограничение длины отображаемого имени в контексте (символов).
+# Maximum length of a display name in the context (characters).
 _MAX_DISPLAY_NAME_LEN = 24
 
-# Модуль стабильного числа для "Участник N" — см. stable_n().
+# Modulus of the stable number for "Participant N", see stable_n().
 _STABLE_N_MODULUS = 997
 
 _MULTI_SPACE_RE = re.compile(r" {2,}")
@@ -27,12 +27,12 @@ _GT_RUN_RE = re.compile(r">{3,}")
 
 
 def stable_n(user_id: int) -> int:
-    """Детерминированное число 1..999 для f"Участник {n}", стабильное по user_id.
+    """Deterministic number 1..999 for the "Participant {n}" fallback name, stable per user_id.
 
-    Реализация: user_id % 997 + 1. 997 — простое число, близкое к 999, так что
-    результат почти равномерно покрывает диапазон 1..997. Единственное важное
-    свойство — стабильность (один user_id всегда даёт одно и то же число),
-    а не равномерность или отсутствие коллизий между разными user_id.
+    Implementation: user_id % 997 + 1. 997 is a prime close to 999, so the result
+    covers the range 1..997 almost uniformly. The only property that matters is
+    stability (one user_id always yields the same number), not uniformity or the
+    absence of collisions between different user_ids.
     """
     return user_id % _STABLE_N_MODULUS + 1
 
@@ -40,19 +40,19 @@ def stable_n(user_id: int) -> int:
 def sanitize_display_name(
     raw: str | None, user_id: int, reserved: set[str], *, frag: Fragments
 ) -> str:
-    """Санитизирует display_name перед записью в БД и подстановкой в промпт.
+    """Sanitize display_name before storing it in the DB and inserting it into the prompt.
 
-    Оставляет только буквы любого алфавита (str.isalpha), пробельные символы
-    (любой из них становится обычным пробелом) и дефис —
-    эмодзи, цифры, кавычки и прочие знаки вырезаются. Повторные пробелы
-    схлопываются, результат обрезается до 24 символов (по границе слова,
-    если она есть в пределах обрезки). Если после этого имя пустое, целиком
-    совпадает без учёта регистра с одним из `reserved`, или содержит любой
-    элемент `reserved` как отдельное слово (без учёта регистра) — возвращается
-    f"Участник {stable_n(user_id)}", чтобы никто не мог представиться именем
-    бота или его триггером и подменить в контексте, кто говорит.
+    Keeps only letters of any alphabet (str.isalpha), whitespace characters
+    (each becomes a plain space) and the hyphen; emoji, digits, quotes and other
+    marks are stripped. Repeated spaces are collapsed and the result is cut to
+    24 characters (at a word boundary if one is within the cut). If the name is
+    then empty, equals one of `reserved` case-insensitively, or contains any
+    `reserved` element as a separate word (case-insensitively), the localized
+    "Participant N" fallback (N = stable_n(user_id)) is returned, so nobody can
+    pass themselves off as the bot or its trigger and swap who is speaking in the
+    context.
 
-    Регистр в самом имени сохраняется.
+    The case of the name itself is preserved.
     """
     text = raw or ""
     filtered_chars = (
@@ -82,27 +82,26 @@ def sanitize_display_name(
 
 
 def normalize_text(raw: str | None) -> str:
-    """Нормализует произвольный пользовательский текст перед записью/подстановкой.
+    """Normalize arbitrary user text before storing or inserting it.
 
-    None -> "". Переносы строк, табы и прочие управляющие символы заменяются
-    пробелом (чтобы никто не мог подделать многострочный формат "Имя: текст"
-    в контексте промпта). Нулевые и невидимые символы (zero-width, BOM и т.п.)
-    удаляются целиком. Последовательности из трёх и более подряд `<` или `>`
-    заменяются пробелом (чтобы участник не мог подделать разделители
-    `<<<CHAT ... >>>`, которыми промпт оборачивает данные — см. PLAN.md,
-    этап 3, "Данные отдельно от инструкций"). Обычная пунктуация и эмодзи
-    не трогаются. В конце — схлопывание пробелов и strip.
+    None -> "". Line breaks, tabs and other control characters become a space
+    (so nobody can forge the multi-line "Name: text" format in the prompt context).
+    Null and invisible characters (zero-width, BOM, etc.) are removed entirely.
+    Runs of three or more `<` or `>` are replaced with a space (so a participant
+    cannot forge the `<<<CHAT ... >>>` delimiters that wrap data in the prompt:
+    data is kept separate from instructions). Ordinary punctuation and emoji are
+    left alone. Finally, whitespace is collapsed and stripped.
     """
     if raw is None:
         return ""
 
-    # Нулевые и невидимые символы (категория Cf: zero-width space/joiner, BOM...)
-    # вырезаются целиком, а не заменяются пробелом.
+    # Null and invisible characters (category Cf: zero-width space/joiner, BOM...)
+    # are removed entirely rather than replaced with a space.
     without_invisible = "".join(
         ch for ch in raw if ch != "\x00" and unicodedata.category(ch) != "Cf"
     )
 
-    # Остальные управляющие символы (переносы строк, табы и т.п.) -> пробел.
+    # Remaining control characters (line breaks, tabs, etc.) -> space.
     without_control = "".join(
         " " if unicodedata.category(ch) == "Cc" else ch for ch in without_invisible
     )
@@ -113,10 +112,10 @@ def normalize_text(raw: str | None) -> str:
 
 
 class MediaMessage(Protocol):
-    """Структурный тип сообщения с медиа-атрибутами aiogram (без импорта aiogram).
+    """Structural type of a message with aiogram media attributes (without importing aiogram).
 
-    Любой объект с такими атрибутами (например, aiogram Message или
-    types.SimpleNamespace в тестах) подходит без явного наследования.
+    Any object with such attributes (e.g. an aiogram Message or
+    types.SimpleNamespace in tests) fits without explicit inheritance.
     """
 
     @property
@@ -138,12 +137,11 @@ class MediaMessage(Protocol):
 
 
 def media_placeholder(message: MediaMessage, *, frag: Fragments) -> str | None:
-    """Плейсхолдер для медиа-сообщения без текста, иначе None.
+    """Placeholder for a media message without text, else None.
 
-    Порядок приоритета (первое совпадение побеждает, если у сообщения
-    заполнено сразу несколько полей): sticker -> "[стикер]", photo -> "[фото]",
-    voice/audio -> "[голосовое]", video/video_note/animation -> "[видео]",
-    document -> "[файл]".
+    Priority order (the first match wins if several fields of the message are
+    set): sticker, photo, voice/audio, video/video_note/animation, document.
+    The placeholder texts come from the language fragments.
     """
     if message.sticker is not None:
         return frag.text("placeholders.sticker")

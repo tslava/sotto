@@ -1,9 +1,8 @@
-"""Ретеншн: разовый прогон покупки (purge) и периодический фоновый таск.
+"""Retention: a one-off purge run and a periodic background task.
 
-`retention_loop` не завязан на config.py, чтобы не зависеть от модуля, который
-пишет параллельно другой агент — конфиг передаётся через `cfg_getter`, типизированный
-структурным Protocol: нужен только объект с `.behaviour.message_retention_days`
-и `.persona.timezone`.
+`retention_loop` does not depend on config.py: the config comes through `cfg_getter`,
+typed with a structural Protocol, so only an object with
+`.behaviour.message_retention_days` and `.persona.timezone` is required.
 """
 
 from __future__ import annotations
@@ -36,8 +35,8 @@ class _RetentionCallback(Protocol):
 
 
 class _RetentionBehaviour(Protocol):
-    # Свойства, а не атрибуты: mypy проверяет атрибуты Protocol инвариантно
-    # и не принял бы BehaviourConfig на месте _RetentionBehaviour.
+    # Properties, not attributes: mypy checks Protocol attributes invariantly
+    # and would not accept BehaviourConfig in place of _RetentionBehaviour.
     @property
     def message_retention_days(self) -> int: ...
     @property
@@ -69,20 +68,19 @@ async def run_retention(
     diary_keep_days: int | None = None,
     callback_max_age_days: int | None = None,
 ) -> PurgeStats:
-    """Удаляет из БД всё, что старше `retention_days` относительно `now`, и логирует итоги.
+    """Delete everything older than `retention_days` relative to `now` and log the totals.
 
-    `tz` — таймзона бота (persona.timezone): сутки, к которым привязаны датированные
-    state-ключи, считаются локально, а не по UTC.
+    `tz` is the bot timezone (persona.timezone): the days that dated state keys are
+    tied to are computed locally, not in UTC.
 
-    `chat_memory_keep_days` — свой, гораздо больший срок для долгой памяти чата
-    (CLAUDE.md, "долгая память чата"): пересказы живут дольше самих сообщений.
-    None — память не трогаем вовсе (так зовут тесты и любой старый вызов с тремя
-    аргументами).
+    `chat_memory_keep_days` is a separate, much longer period for the long-term chat
+    memory: summaries outlive the messages themselves. None leaves the memory
+    untouched (old callers and tests that pass three arguments).
 
-    `diary_keep_days` — срок фактов дневника дня (CLAUDE.md, "дневник дня"); None — не трогаем.
+    `diary_keep_days` is the retention of day-diary facts; None leaves them untouched.
 
-    Шутки чата живут тот же срок, что пересказы (`chat_memory_keep_days`); истории людей —
-    `callback_max_age_days` (CLAUDE.md, "шутки чата и истории людей"); None — не трогаем.
+    Chat jokes live as long as the summaries (`chat_memory_keep_days`); people's
+    threads live `callback_max_age_days`; None leaves them untouched.
     """
     cutoff = now - retention_days * 86400
     stats = await db.purge_older_than(cutoff, tz)
@@ -133,9 +131,9 @@ async def retention_loop(
     cfg_getter: Callable[[], _RetentionConfig],
     interval_sec: int = 3600,
 ) -> None:
-    """Бесконечный цикл ретеншна.
+    """Endless retention loop.
 
-    Отменяется через asyncio-отмену таска; CancelledError пробрасывается наружу.
+    Stopped by cancelling the task; CancelledError is propagated.
     """
     while True:
         try:

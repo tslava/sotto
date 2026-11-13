@@ -1,8 +1,8 @@
-"""Database: подключение, миграции и методы-репозиторий поверх SQLite.
+"""Database: connection, migrations and repository methods on top of SQLite.
 
-SQL пишется руками, без ORM. Схема живёт в schema.sql и применяется целиком,
-когда PRAGMA user_version == 0. Дальнейшие миграции — пронумерованные скрипты
-в MIGRATIONS, применяются по возрастанию номера версии.
+SQL is written by hand, without an ORM. The schema lives in schema.sql and is applied
+in full when PRAGMA user_version == 0. Further migrations are numbered scripts
+in MIGRATIONS, applied in ascending version order.
 """
 
 from __future__ import annotations
@@ -20,11 +20,11 @@ import aiosqlite
 
 from sotto.gate_types import RecentActivity, StateChange
 
-# Номерные миграции поверх исходной схемы (user_version == 1). Ключ — целевая
-# версия, значение — SQL-скрипт, применяемый через executescript. Скрипт для
-# версии 2 — тот же CREATE TABLE IF NOT EXISTS, что и в schema.sql (для свежих
-# БД таблицу уже создаёт schema.sql, здесь IF NOT EXISTS на случай, если кто-то
-# всё же дойдёт сюда с уже существующей таблицей).
+# Numbered migrations on top of the initial schema (user_version == 1). The key is the
+# target version, the value is an SQL script applied through executescript. The script
+# for version 2 is the same CREATE TABLE IF NOT EXISTS as in schema.sql (fresh
+# DBs already get the table from schema.sql; IF NOT EXISTS here covers the case
+# when someone reaches this point with the table already present).
 MIGRATIONS: dict[int, str] = {
     2: """
     CREATE TABLE IF NOT EXISTS life_events (
@@ -85,7 +85,7 @@ MIGRATIONS: dict[int, str] = {
 
 @dataclass(frozen=True, slots=True)
 class LifeEventRow:
-    """Событие жизни персонажа, заведённое владельцем через /life (CLAUDE.md, «события жизни»)."""
+    """A persona life event entered by the owner through /life."""
 
     id: int
     text: str
@@ -96,10 +96,10 @@ class LifeEventRow:
 
 @dataclass(frozen=True, slots=True)
 class ChatMemoryRow:
-    """Пересказ одного периода чата (CLAUDE.md, "долгая память чата").
+    """A recap of one chat period.
 
-    ``period_start`` включительно, ``period_end`` исключительно — обе границы
-    приходятся на локальную полночь (persona.timezone), см. chat_memory.py.
+    ``period_start`` is inclusive, ``period_end`` exclusive; both boundaries fall
+    on local midnight (persona.timezone), see chat_memory.py.
     """
 
     id: int
@@ -111,7 +111,7 @@ class ChatMemoryRow:
 
 @dataclass(frozen=True, slots=True)
 class SelfFactRow:
-    """Факт о собственных делах персонажа, достанный из его реплики (CLAUDE.md, "дневник дня")."""
+    """A fact about the persona's own doings extracted from its reply (day diary)."""
 
     id: int
     text: str
@@ -121,7 +121,7 @@ class SelfFactRow:
 
 @dataclass(frozen=True, slots=True)
 class JokeRow:
-    """Шутка чата, достанная недельным пересказом (CLAUDE.md, "шутки чата и истории людей")."""
+    """A chat joke extracted by the weekly recap."""
 
     id: int
     text: str
@@ -132,9 +132,9 @@ class JokeRow:
 
 @dataclass(frozen=True, slots=True)
 class VocabDictRow:
-    """Словарь словечек, загруженный владельцем (CLAUDE.md, "словечки из словаря").
+    """A dictionary of words loaded by the owner.
 
-    ``body`` — исходный YAML как есть: разбирает его vocab.py, БД только хранит."""
+    ``body`` is the source YAML as is: vocab.py parses it, the DB only stores it."""
 
     name: str
     body: str
@@ -144,7 +144,7 @@ class VocabDictRow:
 
 @dataclass(frozen=True, slots=True)
 class PeopleThreadRow:
-    """Незакрытая история человека для «ну как там?» (CLAUDE.md, "шутки чата и истории людей")."""
+    """An open thread of a person for the "so how did it go?" question."""
 
     id: int
     user_id: int
@@ -175,16 +175,16 @@ class PurgeStats:
     pending_replies: int
     filter_log_texts: int
     state_keys: int
-    # Пересказы долгой памяти чата живут по своему сроку (behaviour.chat_memory.keep_days),
-    # а не по message_retention_days, поэтому чистятся отдельным вызовом из run_retention —
-    # у поля есть дефолт, чтобы уже существующий код, собирающий PurgeStats позиционно,
-    # не ломался (CLAUDE.md, "долгая память чата").
+    # Long-term chat memory recaps live for their own period (behaviour.chat_memory.keep_days),
+    # not message_retention_days, so they are purged by a separate call from run_retention.
+    # The field has a default so that existing code that builds PurgeStats positionally
+    # does not break.
     chat_memory_deleted: int = 0
-    # Факты дневника дня (CLAUDE.md, "дневник дня") — тоже свой срок (diary.keep_days),
-    # чистятся отдельным вызовом из run_retention.
+    # Day diary facts also have their own period (diary.keep_days),
+    # purged by a separate call from run_retention.
     self_facts_deleted: int = 0
-    # Шутки чата и истории людей (CLAUDE.md, "шутки чата и истории людей"): шутки —
-    # по chat_memory.keep_days, истории — по callback.max_age_days.
+    # Chat jokes and people threads: jokes by
+    # chat_memory.keep_days, threads by callback.max_age_days.
     jokes_deleted: int = 0
     threads_deleted: int = 0
 
@@ -234,11 +234,11 @@ class VersionRow:
 
 @dataclass(frozen=True, slots=True)
 class PlaceRow:
-    """Одна строка таблицы places (schema.sql, PLAN.md этап 5).
+    """One row of the places table (see schema.sql).
 
-    price_level — из Google, ненадёжен и иногда отсутствует (PLAN.md, п.4),
-    поэтому int | None. quiet и fact проставляются руками/скриптом наполнения
-    (places_fill.py), а не Google — quiet всегда bool.
+    price_level comes from Google, is unreliable and sometimes missing,
+    hence int | None. quiet and fact are set by hand or by the fill script
+    (places_fill.py), not by Google; quiet is always a bool.
     """
 
     place_id: str
@@ -255,17 +255,17 @@ class PlaceRow:
 
 
 def _state_key_date_suffix(key: str) -> str | None:
-    """Суффикс после последнего ':' или None, если двоеточия в ключе нет."""
+    """The suffix after the last ':', or None if the key has no colon."""
     if ":" not in key:
         return None
     return key.rsplit(":", 1)[-1]
 
 
 def _parse_state_key_date(suffix: str) -> date | None:
-    """Дата, за которую отвечает суффикс ключа: YYYY-MM-DD или YYYY-Www (понедельник).
+    """The date that a key suffix stands for: YYYY-MM-DD or YYYY-Www (Monday).
 
-    Возвращает None, если суффикс не похож ни на одно из этих написаний —
-    такие ключи (например ":<user_id>") ретеншн не трогает.
+    Returns None if the suffix looks like neither of these forms:
+    such keys (e.g. ":<user_id>") are not touched by retention.
     """
     try:
         return date.fromisoformat(suffix)
@@ -295,10 +295,10 @@ class Database:
     def __init__(self, path: Path) -> None:
         self._path = path
         self._conn: aiosqlite.Connection | None = None
-        # Сериализует все пишущие методы (включая commit) — один aiosqlite-connection
-        # на процесс, конкурентные записи иначе гонятся друг за другом на уровне SQLite
-        # и могут перемежать многостейтментные операции вроде purge_older_than.
-        # Вызывающий код о сериализации не думает.
+        # Serializes all writing methods (including commit): one aiosqlite connection
+        # per process, concurrent writes would otherwise race at the SQLite level
+        # and could interleave multi-statement operations such as purge_older_than.
+        # Calling code does not think about serialization.
         self._write_lock = asyncio.Lock()
 
     async def connect(self) -> None:
@@ -458,9 +458,9 @@ class Database:
             )
             filter_log_texts_cleared = cursor.rowcount
 
-            # Сутки бота локальные (persona.timezone), а не UTC: суффикс :YYYY-MM-DD/:YYYY-Www
-            # сравнивается с датой cutoff в tz, иначе ключ "сегодняшнего" дня по Варшаве может
-            # удалиться на несколько часов раньше/позже, чем реально наступили эти сутки у бота.
+            # The bot's day is local (persona.timezone), not UTC: the :YYYY-MM-DD/:YYYY-Www suffix
+            # is compared with the cutoff date in tz, otherwise the key of "today" could
+            # be deleted several hours earlier or later than that day really begins for the bot.
             cutoff_date = datetime.fromtimestamp(cutoff, ZoneInfo(tz)).date()
             cursor = await conn.execute("SELECT key FROM state")
             state_rows = await cursor.fetchall()
@@ -527,11 +527,11 @@ class Database:
         return frozenset(int(row["user_id"]) for row in rows)
 
     async def display_names(self, user_ids: Sequence[int]) -> dict[int, str]:
-        """Последний (по created_at) display_name каждого user_id из messages.
+        """The latest (by created_at) display_name of each user_id from messages.
 
-        Пустой список -> {}. Один запрос для всех user_ids, отсортированный по
-        свежести (created_at, id DESC) — первое вхождение каждого user_id в
-        результате и есть самое свежее его имя.
+        An empty list -> {}. One query for all user_ids, ordered by
+        recency (created_at, id DESC): the first occurrence of each user_id in the
+        result is its freshest name.
         """
         if not user_ids:
             return {}
@@ -615,7 +615,7 @@ class Database:
         return [(str(row["reason"]), int(row["cnt"])) for row in rows]
 
     async def recent_reactions(self, limit: int) -> list[str]:
-        """Последние поставленные реакции (filter_log react:sent), хронологически."""
+        """The latest reactions set (filter_log react:sent), chronological."""
         conn = self._require_conn()
         cursor = await conn.execute(
             "SELECT candidate_text FROM filter_log WHERE stage = 'react' AND reason = 'react:sent' "
@@ -676,10 +676,10 @@ class Database:
             return cursor.lastrowid
 
     async def increment_state(self, key: str, by: int = 1) -> int:
-        """Атомарный read-modify-write int-счётчика в state, весь под write_lock.
+        """Atomic read-modify-write of an int counter in state, entirely under write_lock.
 
-        Не переиспользует get_state/set_state: их собственный захват write_lock
-        (asyncio.Lock не реентерабелен) привёл бы к дедлоку внутри уже взятого лока.
+        Does not reuse get_state/set_state: their own acquisition of write_lock
+        (asyncio.Lock is not reentrant) would deadlock inside an already held lock.
         """
         conn = self._require_conn()
         async with self._write_lock:
@@ -696,7 +696,7 @@ class Database:
             return new_value
 
     async def add_state_float(self, key: str, by: float) -> float:
-        """Атомарный read-modify-write float-счётчика в state, хранится как str(value)."""
+        """Atomic read-modify-write of a float counter in state, stored as str(value)."""
         conn = self._require_conn()
         async with self._write_lock:
             cursor = await conn.execute("SELECT value FROM state WHERE key = ?", (key,))
@@ -824,8 +824,8 @@ class Database:
         return int(row["max_created_at"])
 
     async def count_messages_today(self, chat_id: int, day_start: int) -> int:
-        """Сколько сообщений людей в чате с локальной полуночи (потолок присутствия,
-        CLAUDE.md, "меньше и разнообразнее"). ``day_start`` считает вызывающий —
+        """How many human messages there are in the chat since local midnight (the presence
+        cap). ``day_start`` is computed by the caller:
         ``timeutil.day_start(now, persona.timezone)``."""
         conn = self._require_conn()
         cursor = await conn.execute(
@@ -837,9 +837,9 @@ class Database:
         return int(row["cnt"]) if row is not None else 0
 
     async def count_bot_replies_today(self, day_start: int) -> int:
-        """Сколько реплик бота ушло в чат с локальной полуночи — знаменатель того же
-        потолка присутствия. Считаются все реплики, включая /life и /say: они —
-        присутствие бота в чате, хотя сами потолком и не ограничены."""
+        """How many bot replies went to the chat since local midnight: the denominator of the same
+        presence cap. All replies count, including /life and /say: they are
+        the bot's presence in the chat, even though they are not limited by the cap."""
         conn = self._require_conn()
         cursor = await conn.execute(
             "SELECT COUNT(*) AS cnt FROM bot_replies WHERE created_at >= ?",
@@ -849,9 +849,8 @@ class Database:
         return int(row["cnt"]) if row is not None else 0
 
     async def last_bot_reply_at(self) -> int | None:
-        """created_at последней реплики бота (bot_replies) — момент, от которого
-        responder._maybe_checkin (CLAUDE.md, "внимание как у живого человека:
-        вернулся проверить") считает "тему умершей" и берёт messages_since."""
+        """created_at of the last bot reply (bot_replies): the moment from which
+        responder._maybe_checkin considers the topic dead and takes messages_since."""
         conn = self._require_conn()
         cursor = await conn.execute("SELECT MAX(created_at) AS max_created_at FROM bot_replies")
         row = await cursor.fetchone()
@@ -859,12 +858,12 @@ class Database:
             return None
         return int(row["max_created_at"])
 
-    # -- этап 6: управление из телеграма -----------------------------------
+    # -- control from Telegram --------------------------------------------
 
     async def set_override(self, key: str, value: str, changed_by: int, now: int) -> str | None:
-        """UPSERT в config_overrides + строка в config_audit, одной транзакцией.
+        """UPSERT into config_overrides + a config_audit row, in one transaction.
 
-        Возвращает предыдущее значение (None, если ключ не был переопределён).
+        Returns the previous value (None if the key was not overridden).
         """
         conn = self._require_conn()
         async with self._write_lock:
@@ -886,9 +885,9 @@ class Database:
             return old_value
 
     async def delete_override(self, key: str, changed_by: int, now: int) -> str | None:
-        """DELETE из config_overrides + строка в config_audit (new_value=NULL), одной транзакцией.
+        """DELETE from config_overrides + a config_audit row (new_value=NULL), in one transaction.
 
-        Возвращает значение до удаления (None, если ключ и не был переопределён).
+        Returns the value before deletion (None if the key was not overridden either).
         """
         conn = self._require_conn()
         async with self._write_lock:
@@ -907,9 +906,9 @@ class Database:
     async def audit_stop(
         self, key: str, changed_by: int, now: int, new_value: str | None = None
     ) -> None:
-        """Строка в config_audit без изменения config_overrides — для /stop, /panic, /life, /say.
+        """A config_audit row without changing config_overrides, for /stop, /panic, /life, /say.
 
-        new_value — текст события/реплики для /life и /say; у переключателей None.
+        new_value is the event/reply text for /life and /say; None for toggles.
         """
         conn = self._require_conn()
         async with self._write_lock:
@@ -940,7 +939,7 @@ class Database:
             return cursor.rowcount > 0
 
     async def last_bot_replies(self, n: int) -> list[BotReplyRow]:
-        """Последние n реплик бота, новые первыми."""
+        """The last n bot replies, newest first."""
         conn = self._require_conn()
         cursor = await conn.execute(
             "SELECT id, tg_message_id, trigger, trigger_tg_message_id, text, prompt_version, "
@@ -991,10 +990,10 @@ class Database:
         return (int(row["version"]), str(row["body"]))
 
     async def add_prompt_version(self, body: str, note: str, now: int) -> int:
-        """Новая версия = max(version)+1, становится active, остальные active=0.
+        """New version = max(version)+1, becomes active, the others get active=0.
 
-        Одна транзакция: без неё конкурентный вызов мог бы дважды прочитать
-        один и тот же max(version) и оставить две активные версии.
+        One transaction: without it a concurrent call could read the same
+        max(version) twice and leave two active versions.
         """
         conn = self._require_conn()
         async with self._write_lock:
@@ -1039,7 +1038,7 @@ class Database:
         return (int(row["version"]), str(row["body_yaml"]))
 
     async def add_few_shot_version(self, body_yaml: str, note: str, now: int) -> int:
-        """Как add_prompt_version, но для few_shot_versions — независимая нумерация."""
+        """Like add_prompt_version, but for few_shot_versions: independent numbering."""
         conn = self._require_conn()
         async with self._write_lock:
             cursor = await conn.execute("SELECT MAX(version) AS max_version FROM few_shot_versions")
@@ -1098,15 +1097,14 @@ class Database:
     async def messages_since(
         self, chat_id: int, since: int, limit: int | None = None
     ) -> list[MessageRow]:
-        """Человеческие сообщения чата с created_at > since, хронологически.
+        """Human chat messages with created_at > since, chronological.
 
-        ``limit`` не задан (по умолчанию) — используется
-        ``responder._collect_addressed_items`` для восстановления накопленных
-        обращений к боту после рестарта процесса (когда ``_pending_info``
-        пуст), возвращает все подходящие строки. ``limit`` задан — используется
-        ``responder._maybe_checkin`` (CLAUDE.md, "внимание как у живого
-        человека: вернулся проверить"): последние ``limit`` строк, но всё
-        равно в хронологическом порядке.
+        Without ``limit`` (the default) it is used by
+        ``responder._collect_addressed_items`` to restore the accumulated
+        addresses to the bot after a process restart (when ``_pending_info``
+        is empty), and returns all matching rows. With ``limit`` it is used by
+        ``responder._maybe_checkin``: the last ``limit`` rows, but still in
+        chronological order.
         """
         conn = self._require_conn()
         if limit is None:
@@ -1166,23 +1164,23 @@ class Database:
         )
 
     async def prompt_version_bodies(self) -> list[str]:
-        """Тела всех сохранённых версий системного промпта (для сида PromptStore)."""
+        """Bodies of all stored system prompt versions (to seed PromptStore)."""
         conn = self._require_conn()
         cursor = await conn.execute("SELECT body FROM prompt_versions")
         rows = await cursor.fetchall()
         return [str(row["body"]) for row in rows]
 
     async def few_shot_version_bodies(self) -> list[str]:
-        """Тела всех сохранённых версий few-shot (для сида PromptStore)."""
+        """Bodies of all stored few-shot versions (to seed PromptStore)."""
         conn = self._require_conn()
         cursor = await conn.execute("SELECT body_yaml FROM few_shot_versions")
         rows = await cursor.fetchall()
         return [str(row["body_yaml"]) for row in rows]
 
-    # -- этап 5: заведения ---------------------------------------------------
+    # -- places ---------------------------------------------------------------
 
     async def upsert_place(self, row: PlaceRow) -> None:
-        """UPSERT по place_id (заполнение кэша, places_fill.py — другой агент)."""
+        """UPSERT by place_id (filling the cache, places_fill.py)."""
         conn = self._require_conn()
         async with self._write_lock:
             await conn.execute(
@@ -1213,7 +1211,7 @@ class Database:
             await conn.commit()
 
     async def places_all(self, *, operational_only: bool = True) -> list[PlaceRow]:
-        """Все заведения, по name. operational_only=True (дефолт) — только рабочие."""
+        """All places, by name. operational_only=True (the default) means only working ones."""
         conn = self._require_conn()
         query = (
             "SELECT place_id, name, district, category, rating, reviews, price_level, "
@@ -1244,19 +1242,19 @@ class Database:
         ]
 
     async def places_names(self) -> list[str]:
-        """Названия только рабочих заведений — белый список для filters.py."""
+        """Names of working places only: the whitelist for filters.py."""
         conn = self._require_conn()
         cursor = await conn.execute("SELECT name FROM places WHERE operational = 1 ORDER BY name")
         rows = await cursor.fetchall()
         return [str(row["name"]) for row in rows]
 
     async def mark_places_not_seen(self, seen_ids: Sequence[str], now: int) -> int:
-        """После прогона places_fill.py с Google — гасит места, которые были
-        operational, но в этом прогоне не встретились (закрылись, отфильтровались
-        по rating/reviews или просто не попали ни в один запрос): operational=0,
-        refreshed_at=now. Записи ``--manual-only`` (place_id с префиксом "manual:")
-        Google не находит никогда, поэтому они не тронуты независимо от seen_ids.
-        Возвращает число помеченных строк.
+        """After a places_fill.py run with Google: mark as non-operational the places that were
+        operational but were not met in this run (closed, filtered out
+        by rating/reviews or simply did not hit any query): operational=0,
+        refreshed_at=now. ``--manual-only`` records (place_id with the "manual:" prefix)
+        are never found by Google, so they are left alone regardless of seen_ids.
+        Returns the number of rows marked.
         """
         conn = self._require_conn()
         async with self._write_lock:
@@ -1278,7 +1276,7 @@ class Database:
             await conn.commit()
             return cursor.rowcount
 
-    # -- события жизни (/life, CLAUDE.md "события жизни") -------------------
+    # -- life events (/life) ------------------------------------------------
 
     async def insert_life_event(self, *, text: str, created_at: int) -> int:
         conn = self._require_conn()
@@ -1294,7 +1292,7 @@ class Database:
             return cursor.lastrowid
 
     async def life_events(self) -> list[LifeEventRow]:
-        """Все события, по created_at asc, id asc (старые сначала — как в промпте)."""
+        """All events, by created_at asc, id asc (oldest first, as in the prompt)."""
         conn = self._require_conn()
         cursor = await conn.execute(
             "SELECT id, text, created_at, announced_at, announced_tg_message_id "
@@ -1348,7 +1346,7 @@ class Database:
             )
             await conn.commit()
 
-    # -- долгая память чата (CLAUDE.md, "долгая память чата") ----------------
+    # -- long-term chat memory ------------------------------------------------
 
     async def insert_chat_memory(
         self, *, period_start: int, period_end: int, text: str, created_at: int
@@ -1366,10 +1364,10 @@ class Database:
             return cursor.lastrowid
 
     async def chat_memories(self, limit: int) -> list[ChatMemoryRow]:
-        """Последние ``limit`` пересказов, возвращаются хронологически (старые сначала).
+        """The last ``limit`` recaps, returned chronologically (oldest first).
 
-        ``limit <= 0`` -> пустой список: ``behaviour.chat_memory.in_prompt = 0``
-        означает «память в промпт не подмешивать», и лишнего запроса тут не нужно.
+        ``limit <= 0`` -> an empty list: ``behaviour.chat_memory.in_prompt = 0``
+        means "do not mix memory into the prompt", and no extra query is needed here.
         """
         if limit <= 0:
             return []
@@ -1410,8 +1408,8 @@ class Database:
         )
 
     async def chat_memory_count(self) -> int:
-        """Сколько пересказов лежит в БД всего — для строки /status; списком их
-        тянуть незачем (за год их набирается полсотни и больше)."""
+        """How many recaps there are in the DB in total, for the /status line; there is no need
+        to pull them as a list (over a year they add up to fifty or more)."""
         conn = self._require_conn()
         cursor = await conn.execute("SELECT COUNT(*) AS n FROM chat_memory")
         row = await cursor.fetchone()
@@ -1425,7 +1423,7 @@ class Database:
             return cursor.rowcount > 0
 
     async def last_chat_memory_end(self) -> int | None:
-        """max(period_end) — с этого момента начинается следующий период пересказа."""
+        """max(period_end): the next recap period starts from this moment."""
         conn = self._require_conn()
         cursor = await conn.execute("SELECT MAX(period_end) AS end FROM chat_memory")
         row = await cursor.fetchone()
@@ -1434,14 +1432,14 @@ class Database:
         return int(row["end"])
 
     async def purge_chat_memory_older_than(self, cutoff: int) -> int:
-        """Удаляет пересказы, чей период закончился раньше ``cutoff`` (по period_end)."""
+        """Delete recaps whose period ended before ``cutoff`` (by period_end)."""
         conn = self._require_conn()
         async with self._write_lock:
             cursor = await conn.execute("DELETE FROM chat_memory WHERE period_end < ?", (cutoff,))
             await conn.commit()
             return int(cursor.rowcount)
 
-    # -- дневник дня (CLAUDE.md, "дневник дня") ------------------------------
+    # -- day diary ------------------------------------------------------------
 
     async def insert_self_fact(
         self, *, text: str, bot_reply_tg_message_id: int | None, created_at: int
@@ -1459,7 +1457,7 @@ class Database:
             return cursor.lastrowid
 
     async def self_facts_since(self, since: int) -> list[SelfFactRow]:
-        """Факты с ``created_at >= since``, по возрастанию времени."""
+        """Facts with ``created_at >= since``, in ascending time order."""
         conn = self._require_conn()
         cursor = await conn.execute(
             "SELECT id, text, bot_reply_tg_message_id, created_at FROM self_facts "
@@ -1490,7 +1488,7 @@ class Database:
             await conn.commit()
             return int(cursor.rowcount)
 
-    # -- шутки чата и истории людей (CLAUDE.md, "шутки чата и истории людей") ----
+    # -- chat jokes and people threads --------------------------------------
 
     async def insert_joke(self, *, text: str, created_at: int) -> int:
         conn = self._require_conn()
@@ -1504,7 +1502,7 @@ class Database:
             return cursor.lastrowid
 
     async def jokes(self, limit: int) -> list[JokeRow]:
-        """Последние ``limit`` шуток, новые первыми."""
+        """The last ``limit`` jokes, newest first."""
         conn = self._require_conn()
         cursor = await conn.execute(
             "SELECT id, text, created_at, last_used_at, uses FROM chat_jokes "
@@ -1580,14 +1578,14 @@ class Database:
         ]
 
     async def open_people_threads(self) -> list[PeopleThreadRow]:
-        """Незакрытые истории, самые старые первыми."""
+        """Open threads, oldest first."""
         return await self._people_threads("WHERE closed = 0")
 
     async def people_threads_all(self) -> list[PeopleThreadRow]:
         return await self._people_threads("")
 
     async def close_people_thread(self, thread_id: int, now: int) -> None:
-        """Закрывает историю: ``asked_at = now``, ``closed = 1``."""
+        """Close a thread: ``asked_at = now``, ``closed = 1``."""
         conn = self._require_conn()
         async with self._write_lock:
             await conn.execute(
@@ -1613,7 +1611,7 @@ class Database:
             return int(cursor.rowcount)
 
     async def last_message_at_by_user(self, chat_id: int, user_id: int) -> int | None:
-        """Когда этот человек писал в чат в последний раз (None — никогда)."""
+        """When this person last wrote in the chat (None: never)."""
         conn = self._require_conn()
         cursor = await conn.execute(
             "SELECT MAX(created_at) AS max_created_at FROM messages "
@@ -1628,9 +1626,9 @@ class Database:
     async def user_id_by_display_name(
         self, chat_id: int, name: str, since: int, until: int
     ) -> int | None:
-        """user_id по ТОЧНОМУ совпадению display_name среди сообщений людей с
-        ``since <= created_at < until``. Под этим именем писали двое и больше —
-        None: история о человеке не должна достаться его тёзке (ревью Codex)."""
+        """user_id by an EXACT display_name match among human messages with
+        ``since <= created_at < until``. If two or more people wrote under this name,
+        None: a person's thread must not go to their namesake."""
         conn = self._require_conn()
         cursor = await conn.execute(
             "SELECT DISTINCT user_id FROM messages WHERE chat_id = ? AND is_bot = 0 "
@@ -1644,8 +1642,8 @@ class Database:
         return int(rows[0]["user_id"])
 
     async def first_message_at(self, chat_id: int) -> int | None:
-        """created_at самого раннего сообщения чата — точка отсчёта для догоняющего
-        прогона долгой памяти (chat_memory.run_due), когда пересказов ещё нет."""
+        """created_at of the earliest chat message: the starting point of the catch-up
+        run of long-term memory (chat_memory.run_due) when there are no recaps yet."""
         conn = self._require_conn()
         cursor = await conn.execute(
             "SELECT MIN(created_at) AS first FROM messages WHERE chat_id = ?", (chat_id,)
@@ -1663,11 +1661,10 @@ class Database:
         *,
         exclude_user_ids: Iterable[int] = (),
     ) -> list[MessageRow]:
-        """Человеческие сообщения чата за ``[start, end)``, хронологически.
+        """Human chat messages within ``[start, end)``, chronological.
 
-        ``exclude_user_ids`` — замьюченные участники: их сообщения в пересказ не
-        попадают вовсе (осознанное решение по приватности, CLAUDE.md, "долгая
-        память чата").
+        ``exclude_user_ids`` are muted participants: their messages never get
+        into the recap (a deliberate privacy decision).
         """
         conn = self._require_conn()
         excluded = sorted({int(user_id) for user_id in exclude_user_ids})
@@ -1700,8 +1697,8 @@ class Database:
         ]
 
     async def bot_replies_between(self, start: int, end: int) -> list[BotReplyRow]:
-        """Реплики бота за ``[start, end)``, хронологически — вторая половина
-        материала для пересказа периода."""
+        """Bot replies within ``[start, end)``, chronological: the second half of
+        the material for a period recap."""
         conn = self._require_conn()
         cursor = await conn.execute(
             "SELECT id, tg_message_id, trigger, trigger_tg_message_id, text, prompt_version, "
@@ -1725,10 +1722,10 @@ class Database:
             for row in rows
         ]
 
-    # -- словечки из словаря (CLAUDE.md, "словечки из словаря") ----------------
+    # -- dictionary words -------------------------------------------------------
 
     async def upsert_vocab_dict(self, name: str, body: str, now: int) -> None:
-        """Новый словарь включён; у существующего заменяется тело, ``enabled`` сохраняется."""
+        """A new dictionary is enabled; an existing one gets a new body, ``enabled`` is kept."""
         conn = self._require_conn()
         async with self._write_lock:
             await conn.execute(

@@ -1,29 +1,27 @@
-"""Реакции-эмодзи на чужие сообщения, срезанные гейтом по кубику (CLAUDE.md,
-"Интерфейсы: реакции").
+"""Emoji reactions to messages that the gate cut by dice.
 
-Решение владельца: когда гейт срезает сообщение по недетерминированной причине
-(``gate:dice`` или ``gate:ambient_cooldown``) — вместо полного молчания бот иногда
-ставит реакцию через Bot API ``setMessageReaction``. Дёшево: без вызова модели,
-без нового сообщения, эффект присутствия. Решение о реакции живёт снаружи гейта
-(``gate.py`` не меняется) — этот модуль вызывается из ``bot.py`` уже после того,
-как гейт вернул ``Verdict.DROP``.
+When the gate cuts a message for a non-deterministic reason (``gate:dice`` or
+``gate:ambient_cooldown``), instead of complete silence the bot sometimes sets a
+reaction through the Bot API ``setMessageReaction``. It is cheap: no model call,
+no new message, and it gives a presence effect. The reaction decision lives outside
+the gate (``gate.py`` is unchanged): this module is called from ``bot.py`` after
+the gate returned ``Verdict.DROP``.
 
-``pick_reaction`` — чистая функция, как и ``should_consider`` в ``gate.py``: на входе
-причина дропа, автор, снимок состояния, конфиг, ``rng`` и ``now``, на выходе — эмодзи
-или ``None``. Состояние не меняет, изменения делает вызывающий (``react``) после
-успешной отправки реакции.
+``pick_reaction`` is a pure function, like ``should_consider`` in ``gate.py``: the input is
+the drop reason, the author, a state snapshot, the config, ``rng`` and ``now``; the
+output is an emoji or ``None``. It does not change state; the caller (``react``)
+does that after the reaction is sent successfully.
 
-Решение владельца 16.09.2026 (CLAUDE.md, "Интерфейсы: реакции с задержкой и смыслом"):
-реакция за 0,3 секунды после сообщения выглядит механически, а выбор по кубику ставит
-💩 на что угодно. Поэтому поверх того же предфильтра появились два слоя:
+A reaction 0.3 seconds after a message looks mechanical, and a dice-based choice
+puts a reaction on anything. So two layers sit on top of the same prefilter:
 
-* ``ReactionScheduler`` — пауза ``delay_sec`` перед реакцией (человек сначала читает),
-  после паузы — перепроверка тех же детерминированных условий (кулдаун, потолок, тот же
-  автор), потому что за время паузы в чате могло случиться что угодно;
-* ``ReactionChooser`` — дешёвый вызов модели (тот же приём, что ``judge.Judge`` и
-  ``followup.FollowupChecker``): короткий промпт с контекстом чата и сообщением, ответ
-  строго JSON ``{"emoji": "<один из списка>"|null}``. При ``semantic`` кубик не бросается
-  вовсе — фильтром служит модель, а ``pick_reaction`` возвращает заглушку.
+* ``ReactionScheduler``: a ``delay_sec`` pause before the reaction (a person reads
+  first); after the pause the same deterministic conditions (cooldown, cap, same
+  author) are re-checked, because anything could have happened in the chat meanwhile;
+* ``ReactionChooser``: a cheap model call (the same approach as ``judge.Judge`` and
+  ``followup.FollowupChecker``): a short prompt with the chat context and the message,
+  and a strictly JSON answer ``{"emoji": "<one from the list>"|null}``. With ``semantic``
+  no dice is thrown at all: the model is the filter, and ``pick_reaction`` returns a stub.
 """
 
 from __future__ import annotations
@@ -52,36 +50,36 @@ from sotto.timeutil import day_key
 
 logger = logging.getLogger(__name__)
 
-# Свой счётчик вызовов модели на реакции: дешёвая проверка не должна съедать
-# потолок вызовов основной модели (тот же приём, что followup_calls/vision_count).
+# A separate model call counter for reactions: the cheap check must not eat the
+# call cap of the main model (same approach as followup_calls/vision_count).
 _COUNTER_KEY = "reaction_calls"
 
-# Обрезка текста сообщения в filter_log (react:declined) — как _LOG_TEXT_MAX_LEN в bot.py.
+# Truncation of the message text in filter_log (react:declined), like _LOG_TEXT_MAX_LEN in bot.py.
 _CANDIDATE_TEXT_MAX_LEN = 200
 
-# Обрезка обоснования модели в логе: оно может пересказывать сообщение участника.
+# Truncation of the model reason in the log: it may retell a participant's message.
 _REASON_LOG_MAX_LEN = 100
 
-# Слот {reply_to}: сообщение, на которое ответил автор. Без него модель читает
-# «А я на подработке 🌚» вне смысла и ставит 🤣 (живой промах 12.10).
+# The {reply_to} slot: the message the author replied to. Without it the model reads
+# a reply out of context and sets a laughing reaction on a complaint.
 _REPLY_TO_MAX_LEN = 300
 
 
 class _ReplyUnavailable(Enum):
-    """Цель реплая есть, но её не видно: вычищена retention, ещё не записана хендлером
-    (фото описывается) или без текста. Отдельно от «не ответ», чтобы модель знала, что
-    ей не хватает контекста, — промпт велит в таком случае null (ревью Codex 15.10)."""
+    """The reply target exists but is not visible: purged by retention, not yet written
+    by the handler (a photo is being described) or without text. Kept apart from "not a
+    reply" so the model knows it lacks context; the prompt says to answer null in that case."""
 
     UNAVAILABLE = "unavailable"
 
 
 REPLY_UNAVAILABLE: Final = _ReplyUnavailable.UNAVAILABLE
 
-# None — не ответ; MessageRow — цель найдена; REPLY_UNAVAILABLE — ответ, цели не видно.
+# None: not a reply; MessageRow: target found; REPLY_UNAVAILABLE: a reply with an invisible target.
 ReplyTarget = MessageRow | Literal[_ReplyUnavailable.UNAVAILABLE] | None
 
-# Дублирует вырезание разделителей из sanitize.normalize_text/prompt.py/judge.py —
-# на всякий случай ещё раз чистим то, что уходит в промпт выбора реакции.
+# Duplicates the delimiter stripping from sanitize.normalize_text/prompt.py/judge.py:
+# just in case, clean once more what goes into the reaction-choice prompt.
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 
@@ -91,19 +89,19 @@ _SLOT_RE = re.compile(r"\{(context|name|text|emoji|reply_to)\}")
 
 
 def _render_palette(allowed: Mapping[str, str]) -> str:
-    """Слот {emoji}: по строке «эмодзи — когда уместно» (решение владельца 05.11.2026:
-    без описаний модель различала только «смешно» и «одобряю» и ставила 🤣 почти всегда)."""
+    """The {emoji} slot: one line per "emoji: when it fits". Without descriptions the model
+    distinguished only "funny" and "approve" and used one laughing emoji almost always."""
     return "\n".join(f"{e} — {meaning}" if meaning else e for e, meaning in allowed.items())
 
 
 def palette_without_repeats(
     emoji: Mapping[str, str], recent: Sequence[str], max_repeat: int
 ) -> dict[str, str]:
-    """Палитра без эмодзи, которое стояло последние ``max_repeat`` раз подряд.
+    """The palette without an emoji that was used the last ``max_repeat`` times in a row.
 
-    Замер 05.11.2026 на 150 прошлых случаях: просьбу в промпте не повторяться модель
-    не слушает, поэтому повтор ограничивает код. ``recent`` — хронологически.
-    Единственное эмодзи палитры не убирается: пустой выбор хуже повтора."""
+    Measured on 150 past cases: the model ignores a request in the prompt not to
+    repeat itself, so the code limits repeats. ``recent`` is chronological.
+    The palette's only emoji is never removed: an empty choice is worse than a repeat."""
     palette = dict(emoji)
     if max_repeat <= 0 or len(recent) < max_repeat or len(palette) <= 1:
         return palette
@@ -135,28 +133,28 @@ def _strip_code_fence(text: str) -> str:
     return text
 
 
-# Причины, на которые вместо молчания иногда ставится реакция — все
-# недетерминированные: "кости" (п.11 гейта), кулдаун ambient (п.10) и отказ дешёвой
-# модели считать упоминание имени обращением (CLAUDE.md, "имя в падежах"): про Фёдора
-# говорили, влезать в разговор незачем, а хмыкнуть — ровно тот жест, который нужен.
-# Все прочие причины (panic/stop/muted/topic/night/logistics/injection/mention_cap/
-# ambient_cap...) — там решено молчать полностью, реакции нет никогда.
-# "gate:not_live" добавлена 22.09.2026 по разбору тишины: это самая частая причина
-# отказа (54 из 68 сообщений за двое суток), и без неё реакции почти не появлялись —
-# чат, в котором один человек пишет подряд, вообще не давал повода хмыкнуть.
+# Reasons for which a reaction is sometimes set instead of silence. All of them are
+# non-deterministic: "dice" (gate step 11), the ambient cooldown (step 10) and the cheap
+# model refusing to treat a mention of the name as an address: the bot was talked
+# about, there is no need to join the conversation, and a quiet nod is exactly the
+# gesture needed.
+# All other reasons (panic/stop/muted/topic/night/logistics/injection/mention_cap/
+# ambient_cap...) mean full silence, never a reaction.
+# "gate:not_live" is the most frequent refusal reason, and without it reactions almost
+# never appeared: a chat where one person writes in a row never gave a reason to nod.
 REACT_REASONS: frozenset[str] = frozenset(
     {"gate:dice", "gate:ambient_cooldown", "gate:not_live", "followup:name_no"}
 )
 
 
 class ReactionBotLike(Protocol):
-    """Узкий протокол вместо ``aiogram.Bot`` — тесты подделывают его без aiogram
-    (по образцу ``responder._BotLike``).
+    """A narrow protocol instead of ``aiogram.Bot``: tests fake it without aiogram
+    (modelled on ``responder._BotLike``).
 
-    ``reaction`` типизирован как ``list[ReactionTypeUnion] | None`` (тип реального
-    ``Bot.set_message_reaction``, не только ``ReactionTypeEmoji``): ``list`` в Python
-    инвариантен по параметру, так что более узкий тип здесь не прошёл бы структурную
-    проверку mypy при передаче настоящего ``aiogram.Bot`` в ``Deps.bot``.
+    ``reaction`` is typed as ``list[ReactionTypeUnion] | None`` (the type of the real
+    ``Bot.set_message_reaction``, not only ``ReactionTypeEmoji``): ``list`` in Python
+    is invariant in its parameter, so a narrower type here would fail the structural
+    mypy check when a real ``aiogram.Bot`` is passed into ``Deps.bot``.
     """
 
     async def set_message_reaction(
@@ -169,7 +167,7 @@ class ReactionBotLike(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class ReactionState:
-    """Снимок состояния реакций на момент решения (по образцу ``GateState``)."""
+    """Snapshot of the reaction state at decision time (modelled on ``GateState``)."""
 
     last_reaction_at: int | None
     last_reaction_user_id: int | None
@@ -177,8 +175,8 @@ class ReactionState:
 
 
 def _parse_int_state(key: str, raw: str | None) -> int | None:
-    """int(raw) с дефолтом None; мусор в значении -> WARNING в лог, не падать
-    (дублирует gate_state._parse_int_state — тот приватный к своему модулю)."""
+    """int(raw) with a None default; garbage in the value -> WARNING in the log, no crash
+    (duplicates gate_state._parse_int_state, which is private to its module)."""
     if raw is None:
         return None
     try:
@@ -197,17 +195,17 @@ def pick_reaction(
     rng: random.Random,
     now: int,
 ) -> str | None:
-    """Решить, ставить ли реакцию на срезанное сообщение, и какую.
+    """Decide whether to set a reaction on a cut message, and which one.
 
-    Порядок проверок (CLAUDE.md, "Интерфейсы: реакции"): enabled -> причина ->
-    потолок -> кулдаун -> тот же пользователь -> кубик. Кубик — последним, чтобы
-    ``rng`` тратился только когда реакция вообще возможна: тесты с фиксированным
-    seed так стабильнее (ровно как одиннадцатый шаг гейта — последний).
+    Order of checks: enabled -> reason -> cap -> cooldown -> same user -> dice. The dice
+    comes last so that ``rng`` is spent only when a reaction is possible at all:
+    tests with a fixed seed are more stable that way (just like step eleven of the
+    gate, which is the last).
 
-    При ``cfg.semantic`` (CLAUDE.md, "Интерфейсы: реакции с задержкой и смыслом")
-    шаг «кубик» пропускается и возвращается заглушка — первое из ``cfg.emoji``: фильтром
-    служит модель (``ReactionChooser``), а не вероятность, и конкретное эмодзи
-    выбирает тоже она — здесь важно лишь «реакция в принципе возможна».
+    With ``cfg.semantic`` the "dice" step is skipped and a stub is returned: the first
+    of ``cfg.emoji``. The model (``ReactionChooser``) is the filter instead of
+    probability and it also picks the concrete emoji; all that matters here is
+    "a reaction is possible in principle".
     """
     if not cfg.enabled:
         return None
@@ -227,8 +225,8 @@ def pick_reaction(
 
 
 async def load_reaction_state(db: Database, tz: str, now: int) -> ReactionState:
-    """Снимок state для pick_reaction. Сутки счётчика — по persona.timezone,
-    как у mention_count/ambient_count (timeutil.day_key)."""
+    """State snapshot for pick_reaction. The counter's day follows persona.timezone,
+    like mention_count/ambient_count (timeutil.day_key)."""
     last_reaction_at_raw = await db.get_state("last_reaction_at")
     last_reaction_user_id_raw = await db.get_state("last_reaction_user_id")
     count_key = day_key("reaction_count", now, tz)
@@ -251,10 +249,10 @@ async def react(
     tz: str,
     now: int,
 ) -> bool:
-    """Поставить реакцию и обновить состояние. Провал (реакции запрещены в чате,
-    сообщение уже удалено) -> WARNING + filter_log react:error, состояние не трогать.
+    """Set a reaction and update the state. A failure (reactions are forbidden in the chat,
+    the message is already deleted) -> WARNING + filter_log react:error, state is left alone.
 
-    Другие исключения не ловятся — их ловит общий except хендлера в bot.py.
+    Other exceptions are not caught: the handler's general except in bot.py catches them.
     """
     try:
         await bot.set_message_reaction(
@@ -293,16 +291,16 @@ async def react(
 
 @dataclass(frozen=True, slots=True)
 class _ChoiceVerdict:
-    """Разобранный ответ модели выбора реакции: ``emoji`` None — «реакция не нужна»."""
+    """A parsed answer of the reaction-choice model: ``emoji`` None means "no reaction needed"."""
 
     emoji: str | None
     reason: str
 
 
 def _parse_choice(raw: str) -> _ChoiceVerdict | None:
-    """Разбирает ответ так же строго и терпимо к обёрткам, как ``judge._parse_verdict``:
-    срез ```json``` обёрток, поиск первой "{" и ``json.JSONDecoder.raw_decode`` от неё.
-    Любой сбой или неверный тип ключа -> None (значит "реакцию не ставим")."""
+    """Parse the answer as strictly and as tolerant of wrappers as ``judge._parse_verdict``:
+    strip ```json``` wrappers, find the first "{" and ``json.JSONDecoder.raw_decode`` from it.
+    Any failure or a wrong key type -> None (meaning "no reaction")."""
     try:
         candidate = _strip_code_fence(raw.strip())
         start = candidate.find("{")
@@ -315,7 +313,7 @@ def _parse_choice(raw: str) -> _ChoiceVerdict | None:
         emoji_value = data.get("emoji")
         if emoji_value is not None and not isinstance(emoji_value, str):
             return None
-        # Luna иногда пишет null строкой: это отказ, а не эмодзи вне списка.
+        # Luna sometimes writes null as a string: that is a refusal, not an emoji outside the list.
         if isinstance(emoji_value, str) and emoji_value.strip().lower() == "null":
             emoji_value = None
 
@@ -327,22 +325,22 @@ def _parse_choice(raw: str) -> _ChoiceVerdict | None:
 
         return _ChoiceVerdict(emoji=emoji_value or None, reason=reason_value)
     except Exception:
-        # Ответ модели — недоверенный внешний текст: любой сбой разбора означает
-        # "реакции нет", а не падение.
+        # The model answer is untrusted external text: any parse failure means
+        # "no reaction", not a crash.
         return None
 
 
 class ReactionChooser:
-    """Дешёвый вызов модели: уместна ли реакция на это сообщение и какая.
+    """A cheap model call: is a reaction fitting for this message and which one.
 
-    Тот же приём, что ``judge.Judge``/``followup.FollowupChecker``: короткий промпт
-    из файла (``prompts/reaction.txt``) со слотами, данные внутри ``<<<CHAT ... >>>``,
-    ответ строго JSON. Считается своим счётчиком ``reaction_calls`` с собственным
-    потолком ``reactions.semantic_daily_cap`` — реакции не должны съедать бюджет
-    вызовов основной модели.
+    The same approach as ``judge.Judge``/``followup.FollowupChecker``: a short prompt
+    from a file (``prompts/reaction.txt``) with slots, data inside ``<<<CHAT ... >>>``,
+    a strictly JSON answer. Counted by its own ``reaction_calls`` counter with its own
+    cap ``reactions.semantic_daily_cap``: reactions must not eat the main model's
+    call budget.
 
-    Провал (пустая модель, ``LLMError``, невалидный JSON, эмодзи не из списка) —
-    ``None``: реакции просто не будет, как до этой фичи.
+    A failure (empty model, ``LLMError``, invalid JSON, an emoji not from the list) gives
+    ``None``: there is simply no reaction.
     """
 
     def __init__(
@@ -368,9 +366,9 @@ class ReactionChooser:
         now: int,
         reply_to: ReplyTarget = None,
     ) -> str | None:
-        """``allowed`` — эмодзи -> когда уместно; ``reply_to`` — сообщение, на которое
-        ответил автор: ``None`` — не ответ, ``REPLY_UNAVAILABLE`` — ответ, но цели не
-        видно."""
+        """``allowed`` maps emoji -> when it fits; ``reply_to`` is the message the author
+        replied to: ``None`` is not a reply, ``REPLY_UNAVAILABLE`` is a reply whose target
+        is not visible."""
         cfg = self._cfg_getter()
         reactions_cfg = cfg.behaviour.reactions
         model = reactions_cfg.model or cfg.llm.judge_model
@@ -410,13 +408,13 @@ class ReactionChooser:
         if verdict.emoji is None:
             logger.info("reaction chooser: none (%s)", verdict.reason[:_REASON_LOG_MAX_LEN])
             return None
-        # Модель может ответить «❤️» на «❤» из списка: вариационный селектор не считаем.
+        # The model may answer with a variation-selector form of a listed emoji: ignore it.
         chosen = verdict.emoji.replace("\ufe0f", "")
         if chosen not in {e.replace("\ufe0f", "") for e in allowed}:
             logger.warning("reaction chooser: emoji outside allowed list")
             return None
 
-        # Обоснование модели может пересказывать сообщение — в лог только его начало.
+        # The model reason may retell the message: only its beginning goes to the log.
         logger.info(
             "reaction chooser: %s (%s)", verdict.emoji, verdict.reason[:_REASON_LOG_MAX_LEN]
         )
@@ -424,16 +422,16 @@ class ReactionChooser:
 
 
 class ReactionScheduler:
-    """Ставит реакцию не сразу, а после паузы — и перепроверяет условия после неё.
+    """Set a reaction not at once but after a pause, and re-check the conditions after it.
 
-    ``schedule`` не ждёт: она заводит фоновую задачу (по образцу дебаунса в
-    ``responder.Responder``) и сразу возвращается, чтобы хендлер сообщения не
-    задерживал обработку чата на минуты. Задача спит ``delay_sec``, перечитывает
-    состояние (за паузу бот мог ответить, поставить другую реакцию или выбрать
-    потолок) и только потом решает окончательно.
+    ``schedule`` does not wait: it starts a background task (modelled on the debounce
+    in ``responder.Responder``) and returns immediately, so the message handler does
+    not hold up chat processing for minutes. The task sleeps ``delay_sec``, re-reads
+    the state (during the pause the bot could have replied, set another reaction or
+    hit the cap) and only then decides finally.
 
-    Незавершённые задачи при остановке процесса просто теряются: реакция —
-    необязательное украшение, восстанавливать её после рестарта незачем.
+    Unfinished tasks are simply lost when the process stops: a reaction is an
+    optional decoration, there is no point restoring it after a restart.
     """
 
     def __init__(
@@ -495,8 +493,8 @@ class ReactionScheduler:
         except asyncio.CancelledError:
             raise
         except Exception:
-            # Реакция — украшение: её падение не должно ронять ни хендлер (он уже
-            # вернулся), ни соседние задачи.
+            # A reaction is a decoration: its failure must not bring down the handler (it has
+            # already returned) or neighbouring tasks.
             logger.exception("reaction task failed on message %s", tg_message_id)
 
     async def _run_inner(
@@ -511,8 +509,8 @@ class ReactionScheduler:
         lo, hi = self._cfg_getter().behaviour.reactions.delay_sec
         await asyncio.sleep(self._rng.uniform(lo, hi))
 
-        # Конфиг перечитывается после паузы: за минуту-другую владелец мог поменять
-        # что угодно через /set, а действуют текущие значения, не снятые до сна.
+        # The config is re-read after the pause: in a minute or two the owner could have changed
+        # anything via /set, and the current values apply, not those taken before the sleep.
         cfg = self._cfg_getter()
         reactions_cfg = cfg.behaviour.reactions
         tz = cfg.persona.timezone
@@ -578,9 +576,9 @@ class ReactionScheduler:
         )
 
     async def _reply_target(self, chat_id: int, tg_message_id: int) -> ReplyTarget:
-        """Сообщение, на которое ответил автор: само сообщение уже записано хендлером
-        до гейта, ссылка на ответ лежит в нём. Ответ на реплику бота сюда не попадает —
-        такой реплай проходит гейт как обращение, а реакции ставятся только на срезы."""
+        """The message the author replied to: the message itself is already written by the handler
+        before the gate, and the reply link is in it. A reply to a bot message does not get here:
+        such a reply passes the gate as an address, and reactions are set only on cut messages."""
         message = await self._db.message_by_tg_id(chat_id, tg_message_id)
         if message is None or message.reply_to_tg_message_id is None:
             return None
@@ -589,9 +587,9 @@ class ReactionScheduler:
 
     @staticmethod
     def _recheck(state: ReactionState, cfg: ReactionsConfig, *, user_id: int, now: int) -> bool:
-        """Те же детерминированные проверки, что в ``pick_reaction``, но уже после
-        паузы и без кубика: за время сна бот мог поставить реакцию этому же человеку,
-        выбрать суточный потолок или начать кулдаун."""
+        """The same deterministic checks as in ``pick_reaction``, but after the
+        pause and without the dice: during the sleep the bot could have set a reaction for the
+        same person, hit the daily cap or started a cooldown."""
         if state.count_today >= cfg.daily_cap:
             return False
         if (
@@ -599,20 +597,20 @@ class ReactionScheduler:
             and state.last_reaction_at + cfg.cooldown_min * 60 > now
         ):
             return False
-        # Тот же человек подряд — реакция выглядела бы навязчивой.
+        # The same person in a row: the reaction would look intrusive.
         return state.last_reaction_user_id != user_id
 
     def _fallback_emoji(self, cfg: ReactionsConfig) -> str | None:
-        """Эмодзи без модели. При ``semantic: false`` кубик уже бросил
-        ``pick_reaction`` — остаётся только выбрать эмодзи. При ``semantic: true``
-        без чузера (LLM не настроен) ``pick_reaction`` кубик пропустил, поэтому
-        бросаем его здесь: иначе реакция ставилась бы на каждый подходящий срез."""
+        """An emoji without the model. With ``semantic: false`` the dice was already thrown by
+        ``pick_reaction``, so only the emoji remains to be chosen. With ``semantic: true``
+        and no chooser (LLM not configured) ``pick_reaction`` skipped the dice, so
+        it is thrown here: otherwise a reaction would be set on every suitable cut."""
         if cfg.semantic and self._rng.random() >= cfg.probability:
             return None
         return self._rng.choice(list(cfg.emoji))
 
     async def shutdown(self) -> None:
-        """Отменяет все ждущие задачи. Незавершённые реакции теряются — это нормально."""
+        """Cancel all waiting tasks. Unfinished reactions are lost, which is fine."""
         tasks = [task for task in self._tasks if not task.done()]
         for task in tasks:
             task.cancel()

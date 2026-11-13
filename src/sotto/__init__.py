@@ -1,4 +1,4 @@
-"""sotto — телеграм-бот-персонаж для одного чата."""
+"""sotto: a Telegram group-chat persona bot."""
 
 from importlib.metadata import PackageNotFoundError, version
 

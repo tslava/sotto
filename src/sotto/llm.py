@@ -1,13 +1,12 @@
-"""LLMClient — единственная точка вызова модели во всём проекте (CLAUDE.md, этап 3).
+"""LLMClient: the single place that calls the model in the whole project.
 
-Порядок проверок и побочных эффектов в call() — контракт: circuit -> calls_cap ->
-budget -> increment llm_calls (до запроса) -> POST. Ретраев нет ни на одном слое
-(PLAN.md, этап 3, «Защита бюджета»).
+The order of checks and side effects in call() is a contract: circuit -> calls_cap ->
+budget -> increment llm_calls (before the request) -> POST. There are no retries on
+any layer (budget protection).
 
-Зависимость от БД сведена к протоколу _StateStore (get_state/set_state/increment_state/
-add_state_float), а не к конкретному Database: increment_state/add_state_float пишутся
-параллельно другим агентом, а тесты этого модуля не должны от них зависеть — им достаточно
-структурного соответствия сигнатуре.
+The DB dependency is narrowed to the _StateStore protocol (get_state/set_state/
+increment_state/add_state_float) instead of the concrete Database, so tests of this
+module only need structural conformance to the signatures.
 """
 
 from __future__ import annotations
@@ -33,8 +32,8 @@ _TEMPERATURE = 0.8
 
 
 class _StateStore(Protocol):
-    """Подмножество методов Database, нужное LLMClient. См. db.py: get_state/set_state
-    уже есть; increment_state/add_state_float — по контракту CLAUDE.md, этап 3."""
+    """The subset of Database methods that LLMClient needs: get_state/set_state/
+    increment_state/add_state_float."""
 
     async def get_state(self, key: str) -> str | None: ...
 
@@ -54,7 +53,7 @@ class LLMResult:
 
 
 class LLMError(Exception):
-    """reason — один из "llm:timeout" | "llm:http" | "llm:budget" | "llm:calls_cap" |
+    """reason is one of "llm:timeout" | "llm:http" | "llm:budget" | "llm:calls_cap" |
     "llm:circuit_open" | "llm:empty"."""
 
     def __init__(self, reason: str) -> None:
@@ -62,8 +61,8 @@ class LLMError(Exception):
         self.reason = reason
 
 
-# Ключи и заголовок авторизации, если провайдер или прокси вдруг вернёт их в теле
-# ошибки: тело уходит в лог и владельцу в личку (ревью Codex 26.10).
+# Keys and the authorization header, in case the provider or a proxy echoes them in
+# the error body: the body goes to the log and to the owner in a private message.
 _SECRET_RE = re.compile(r"sk-or-[\w-]+|Bearer\s+\S+", re.IGNORECASE)
 _REDACTED = "***"
 
@@ -79,8 +78,8 @@ def _truncate_body(text: str) -> str:
 
 
 def _error_message(response: httpx.Response, api_key: str) -> str:
-    """``error.message`` из тела ответа OpenRouter, иначе начало тела; без секретов.
-    Секреты вырезаются до обрезки, чтобы от ключа не остался видимый кусок."""
+    """``error.message`` from the OpenRouter response body, else the start of the body; no secrets.
+    Secrets are cut out before truncation so no visible piece of a key is left."""
     try:
         data: Any = response.json()
         message = str(data["error"]["message"])
@@ -90,10 +89,10 @@ def _error_message(response: httpx.Response, api_key: str) -> str:
 
 
 class RefusalHook(Protocol):
-    """Тревога владельцу (CLAUDE.md, "Интерфейсы: тревога владельцу"), реализация —
-    alerts.OwnerAlerter.provider_refused. Зовётся на каждый не-2xx ответ провайдера;
-    что из них считать отказом, решает сама реализация. Времени не получает: ``now``
-    вызывающего бывает датой старого сообщения (описание фото), у тревоги свои часы."""
+    """Owner alert, implemented by alerts.OwnerAlerter.provider_refused. Called on
+    every non-2xx provider response; the implementation decides which of them count
+    as a refusal. It gets no time: the caller's ``now`` can be the date of an old
+    message (photo description), while the alert uses its own clock."""
 
     async def __call__(self, *, status: int, model: str, message: str) -> None: ...
 
@@ -130,10 +129,10 @@ class LLMClient:
         counter_key: str = "llm_calls",
         calls_cap: int | None = None,
     ) -> LLMResult:
-        """Обёртка над ``call_raw`` для текстовых сообщений (``content: str``).
+        """Wrapper over ``call_raw`` for text messages (``content: str``).
 
-        Существующие вызывающие (Responder, Judge, places_fill) работают только
-        с текстом — узкий тип параметра здесь сохранён, чтобы их код не менялся.
+        Existing callers (Responder, Judge, places_fill) work with text only; the
+        narrow parameter type is kept here so their code does not change.
         """
         return await self.call_raw(
             messages,
@@ -154,21 +153,21 @@ class LLMClient:
         counter_key: str = "llm_calls",
         calls_cap: int | None = None,
     ) -> LLMResult:
-        """То же самое, что ``call``, но ``content`` сообщения может быть не только
-        строкой — content-массивом ``[{"type": "text", ...}, {"type": "image_url", ...}]``
-        для запросов со зрением (``stickers_fill.py``, распознавание надписи на стикере).
-        Вся логика (бюджет, calls_cap, circuit, учёт трат) — здесь, единственная точка
-        вызова модели; ``call`` не дублирует её, только сужает тип.
+        """Same as ``call``, but a message ``content`` may be more than a string:
+        a content array ``[{"type": "text", ...}, {"type": "image_url", ...}]``
+        for vision requests (``stickers_fill.py``, reading the caption on a sticker).
+        All the logic (budget, calls_cap, circuit, spend accounting) lives here, the
+        single place that calls the model; ``call`` does not duplicate it, only
+        narrows the type.
 
-        ``counter_key``/``calls_cap`` (CLAUDE.md, "внимание как у живого человека") —
-        свой суточный счётчик попыток вместо общего ``llm_calls``, со своим потолком
-        (``None`` -> ``cfg.llm.daily_calls_cap``, как раньше). Нужны дешёвым проверкам
-        вроде followup-чекера, чтобы не съедать бюджет вызовов основной модели —
-        бюджет в долларах, circuit и increment-до-запроса при этом общие для всех
-        счётчиков."""
+        ``counter_key``/``calls_cap`` give a separate daily attempts counter instead
+        of the shared ``llm_calls``, with its own cap (``None`` ->
+        ``cfg.llm.daily_calls_cap``, as before). Cheap checks such as the followup
+        checker need it so they do not eat the main model's call budget; the dollar
+        budget, the circuit and increment-before-request stay shared by all counters."""
         if not model:
-            # Пустая модель — ошибка конфигурации (main_model ещё не выбран), а не
-            # сбой вызова: пусть решает вызывающий (Responder), ретраев тут нет.
+            # An empty model is a configuration error (main_model not chosen yet), not
+            # a call failure: the caller (Responder) decides; there are no retries here.
             raise ValueError("LLMClient.call: model must not be empty")
 
         cfg = self._cfg_getter()
@@ -191,7 +190,7 @@ class LLMClient:
         if spent >= cfg.llm.daily_budget_usd:
             raise LLMError("llm:budget")
 
-        # Считается по попыткам, не по успехам: инкремент строго до запроса.
+        # Counted per attempt, not per success: the increment happens strictly before the request.
         await self._db.increment_state(calls_key, by=1)
 
         body = {
@@ -227,8 +226,9 @@ class LLMClient:
             )
             await self._register_error(now, cfg)
             if is_refusal(response.status_code):
-                # Только отказы (402, 401…): свежий 429 или 5xx не должен затирать в /status
-                # настоящий отказ. Время по часам, а не now вызывающего (у фото — дата сообщения).
+                # Refusals only (402, 401...): a fresh 429 or 5xx must not overwrite the real
+                # refusal shown in /status. Time comes from the clock, not the caller's now
+                # (for photos that is the message date).
                 await self._db.set_state(
                     "llm_last_refusal", f"{self._clock()}|{response.status_code}"
                 )
@@ -264,9 +264,9 @@ class LLMClient:
         completion_tokens = int(usage.get("completion_tokens", 0) or 0)
         cost_raw = usage.get("cost")
         if cost_raw is None:
-            # Fallback-стоимость: используется, только если провайдер не вернул
-            # usage.cost. Цены из cfg.llm.price_in_usd_per_1m/price_out_usd_per_1m
-            # (за 1M токенов), меняются через /set без рестарта.
+            # Fallback cost: used only if the provider did not return
+            # usage.cost. Prices come from cfg.llm.price_in_usd_per_1m/price_out_usd_per_1m
+            # (per 1M tokens) and change via /set without a restart.
             cost = (
                 prompt_tokens * cfg.llm.price_in_usd_per_1m
                 + completion_tokens * cfg.llm.price_out_usd_per_1m
@@ -282,12 +282,12 @@ class LLMClient:
         else:
             cost = float(cost_raw)
 
-        # Реальный запрос уже состоялся и стоил денег независимо от того, что
-        # оказалось в content — считаем трату всегда.
+        # The real request already happened and cost money regardless of what
+        # ended up in content, so the spend is always counted.
         await self._db.add_state_float(spent_key, cost)
 
         if not text:
-            # Пустой ответ — не сбой сети, серию ошибок (streak) не трогаем.
+            # An empty answer is not a network failure; leave the error streak alone.
             raise LLMError("llm:empty")
 
         await self._db.set_state("llm_error_streak", "0")
@@ -315,7 +315,7 @@ class LLMClient:
                 message=_error_message(response, self._api_key),
             )
         except Exception:
-            # Тревога — побочный канал: её сбой не должен менять исход вызова модели.
+            # The alert is a side channel: its failure must not change the model call outcome.
             logger.exception("llm refusal hook failed")
 
     async def _register_error(self, now: int, cfg: Config) -> None:

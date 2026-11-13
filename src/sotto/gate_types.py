@@ -1,7 +1,7 @@
-"""Типы гейта (этап 2). Чистые данные, без I/O и без aiogram.
+"""Gate types. Pure data, no I/O and no aiogram.
 
-Гейт решает, рассматривать ли сообщение как повод для ответа. Он ничего не пишет:
-изменения состояния возвращаются в Decision, применяет их вызывающий код.
+The gate decides whether a message is a reason to reply. It writes nothing:
+state changes are returned in Decision and applied by the caller.
 """
 
 from __future__ import annotations
@@ -12,17 +12,17 @@ from typing import Protocol
 
 
 class Trigger(StrEnum):
-    MENTION = "mention"  # @username в тексте
-    REPLY = "reply"  # реплай на сообщение бота
-    NAME = "name"  # слово из persona.name_triggers
-    FOLLOWUP = "followup"  # без обращения, но дешёвая проверка признала адресованным боту
-    AMBIENT = "ambient"  # без обращения, внутрь живого разговора
+    MENTION = "mention"  # @username in the text
+    REPLY = "reply"  # reply to a bot message
+    NAME = "name"  # a word from persona.name_triggers
+    FOLLOWUP = "followup"  # no address, but a cheap check judged it addressed to the bot
+    AMBIENT = "ambient"  # no address, joining a live conversation
 
 
 class Verdict(StrEnum):
-    PASS = "pass"  # рассматривать: дальше дебаунс и генерация (этап 3)
-    QUEUE_NIGHT = "queue_night"  # обращение ночью: в night_queue, ответ утром
-    DROP = "drop"  # молчание, причина в reason
+    PASS = "pass"  # consider it: debounce and generation follow
+    QUEUE_NIGHT = "queue_night"  # addressed at night: into night_queue, answered in the morning
+    DROP = "drop"  # silence, the cause is in reason
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,14 +31,14 @@ class GateMessage:
     tg_message_id: int
     user_id: int
     is_bot: bool
-    text: str  # уже normalize_text
-    reply_to_bot: bool  # реплай на сообщение бота
+    text: str  # already normalize_text
+    reply_to_bot: bool  # reply to a bot message
     created_at: int  # unix seconds
 
 
 @dataclass(frozen=True, slots=True)
 class RecentActivity:
-    """Одно сообщение не-бота за окно live_talk. Нужно только кто и когда."""
+    """One non-bot message within the live_talk window. Only who and when matter."""
 
     user_id: int
     created_at: int
@@ -46,28 +46,27 @@ class RecentActivity:
 
 @dataclass(frozen=True, slots=True)
 class GateState:
-    """Снимок состояния на момент решения. Собирается из таблицы state и messages."""
+    """Snapshot of the state at decision time. Built from the state and messages tables."""
 
     panic: bool
     stop_until: int | None
     topic_cooldown_until: int | None
     muted_user_ids: frozenset[int]
     mention_count_today: int
-    last_mention_reply_at: int | None  # по чату
-    last_mention_reply_at_user: int | None  # по автору текущего сообщения
+    last_mention_reply_at: int | None  # per chat
+    last_mention_reply_at_user: int | None  # per author of the current message
     ambient_count_today: int  # ambient + spontaneous
     last_ambient_at: int | None
-    recent: tuple[RecentActivity, ...]  # не-бот сообщения за live_talk.window_min, включая текущее
-    # Горячее окно после /life и /say (CLAUDE.md, "горячее окно"): дефолты в конце —
-    # чтобы существующие позиционные вызовы (replay.py, тесты) не ломались, окно
-    # там не открывается (hot_until всегда None).
+    recent: tuple[RecentActivity, ...]  # non-bot messages in live_talk.window_min, with the current
+    # Hot window after /life and /say: defaults come last so that existing positional
+    # calls (replay.py, tests) keep working; the window is never opened there
+    # (hot_until is always None).
     hot_until: int | None = None
     hot_ambient_count: int = 0
-    # Потолок присутствия (CLAUDE.md, "меньше и разнообразнее"): сколько человеческих
-    # сообщений и сколько реплик бота уже было за локальные сутки. Дефолты нулевые и в
-    # конце — по той же причине, что и у горячего окна: существующие позиционные
-    # вызовы (replay.py, тесты) не ломаются, а нулевой человеческий счётчик оставляет
-    # боту только free_replies.
+    # Presence cap: how many human messages and bot replies there already were in the
+    # local day. Zero defaults come last for the same reason as for the hot window:
+    # existing positional calls (replay.py, tests) keep working, and a zero human
+    # counter leaves the bot only free_replies.
     human_messages_today: int = 0
     bot_replies_today: int = 0
 
@@ -75,19 +74,19 @@ class GateState:
 @dataclass(frozen=True, slots=True)
 class StateChange:
     key: str
-    value: str | None  # None = удалить ключ
+    value: str | None  # None = delete the key
 
 
 @dataclass(frozen=True, slots=True)
 class Decision:
     verdict: Verdict
-    trigger: Trigger | None  # при PASS и QUEUE_NIGHT
-    reason: str  # "gate:is_bot", "gate:night_queued", ... ; при PASS — "pass:<trigger>"
+    trigger: Trigger | None  # on PASS and QUEUE_NIGHT
+    reason: str  # "gate:is_bot", "gate:night_queued", ... ; on PASS "pass:<trigger>"
     state_changes: tuple[StateChange, ...] = ()
 
 
 class PatternsLike(Protocol):
-    """Интерфейс patterns.Patterns, чтобы гейт тестировался с подделкой."""
+    """Interface of patterns.Patterns, so the gate can be tested with a fake."""
 
     def topic_stop(self, text: str) -> str | None: ...
     def injection(self, text: str) -> str | None: ...

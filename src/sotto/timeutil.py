@@ -1,4 +1,4 @@
-"""Локальное время бота. Всё хранится в unix seconds, сутки и окна считаются в persona.timezone."""
+"""Bot local time. Everything is stored in unix seconds; days and windows use persona.timezone."""
 
 from __future__ import annotations
 
@@ -20,32 +20,32 @@ def local_date(ts: int, tz: str) -> date:
 
 
 def day_start(ts: int, tz: str) -> int:
-    """Unix-время локальной полуночи тех суток, в которые попал ts.
+    """Unix time of local midnight of the day that contains ts.
 
-    Нужен счётчикам «за сутки», которые считаются не по state-ключу с суффиксом даты
-    (``day_key``), а прямо по таблицам (messages/bot_replies): потолок присутствия,
-    CLAUDE.md, "меньше и разнообразнее".
+    Needed by "per day" counters that are computed straight from the tables
+    (messages/bot_replies) instead of a state key with a date suffix (``day_key``),
+    such as the presence cap.
     """
     zone = ZoneInfo(tz)
     return int(datetime.combine(local_date(ts, tz), time(0, 0), tzinfo=zone).timestamp())
 
 
 def day_key(prefix: str, ts: int, tz: str) -> str:
-    """Ключ state со суточным суффиксом: 'ambient_count:2026-09-10'."""
+    """State key with a daily suffix: 'ambient_count:2026-09-10'."""
     return f"{prefix}:{local_date(ts, tz).isoformat()}"
 
 
 def week_key(prefix: str, ts: int, tz: str) -> str:
-    """Ключ state с недельным суффиксом по ISO: 'spontaneous_count:2026-W37'."""
+    """State key with an ISO weekly suffix: 'spontaneous_count:2026-W37'."""
     year, week, _ = local_date(ts, tz).isocalendar()
     return f"{prefix}:{year}-W{week:02d}"
 
 
 def in_window(ts: int, tz: str, window: tuple[str, str]) -> bool:
-    """Попадает ли момент в окно ["HH:MM", "HH:MM") по локальному времени.
+    """Whether the moment falls into the ["HH:MM", "HH:MM") window in local time.
 
-    Начало включительно, конец исключительно. Окно через полночь ("23:00", "06:00")
-    поддерживается. Пустое окно (start == end) — всегда False.
+    Start is inclusive, end is exclusive. A window across midnight ("23:00", "06:00")
+    is supported. An empty window (start == end) is always False.
     """
     start, end = parse_hhmm(window[0]), parse_hhmm(window[1])
     now = local_dt(ts, tz).time().replace(tzinfo=None)
@@ -57,9 +57,9 @@ def in_window(ts: int, tz: str, window: tuple[str, str]) -> bool:
 
 
 def seconds_until(ts: int, tz: str, hhmm: str) -> int:
-    """Секунд от ts до ближайшего наступления hhmm по локальному времени.
+    """Seconds from ts to the next occurrence of hhmm in local time.
 
-    Если hhmm сегодня уже прошло — до завтрашнего. Ровно сейчас — 0.
+    If hhmm has already passed today, count to tomorrow's. Exactly now is 0.
     """
     zone = ZoneInfo(tz)
     now = local_dt(ts, tz)

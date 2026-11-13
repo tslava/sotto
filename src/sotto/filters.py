@@ -1,21 +1,22 @@
-"""Выходной фильтр — три слоя (PLAN.md, этап 4; CLAUDE.md, "Интерфейсы этапа 4").
+"""Output filter: three layers.
 
-Слой 1 (``layer_regex``) и слой 2 (``layer_rules``) — чистые синхронные функции,
-0 мс, без I/O. Слой 3 (LLM-судья, ``judge.py``) вызывается через ``check_output``
-только если слои 1-2 прошли или включён shadow mode — провал любого слоя означает
-молчание, ретраев нет. ``FilterContext``/``FilterVerdict`` — дата-классы контракта,
-``check_output`` — единственная точка входа для ``responder.py``.
+Layer 1 (``layer_regex``) and layer 2 (``layer_rules``) are pure synchronous functions,
+0 ms, no I/O. Layer 3 (the LLM judge, ``judge.py``) is called through ``check_output``
+only if layers 1-2 passed or shadow mode is on. A failure of any layer means
+silence, no retries. ``FilterContext``/``FilterVerdict`` are the contract dataclasses,
+``check_output`` is the single entry point for ``responder.py``.
 
-Нормализация слов для эхо/дедупа/утечки промпта — везде одна и та же: нижний
-регистр, ``ё`` -> ``е``, пунктуация вырезается, разбивка по пробелам
-(см. ``_normalize_words``). Белый список для "выдуманных заведений" и латиницы —
-``places_names`` + ``filters.places_whitelist`` + ``filters.known_places`` (заведения
-из CHARACTER.md раздел 7, по каждому слову) + ``filters.polish_words`` (словарь
-Фёдора) + районы из карточки + латинские токены, которые сами участники уже
-употребили в ``trigger_text``/``context_rows`` (раз человек сам назвал место или
-слово — бот не выдумывает, а повторяет). Для ``dedup:polish_freq`` белый список уже —
-``places_names``/``places_whitelist``/``known_places`` без ``polish_words``: польские
-слова там нарочно считаются латинскими токенами, это и есть цель правила.
+Word normalization for echo/dedup/prompt leak is the same everywhere: lower
+case, language-specific folding, punctuation stripped, split on whitespace
+(see ``_normalize_words``). The whitelist for "invented venues" and foreign-script words is
+``places_names`` + ``filters.places_whitelist`` + ``filters.known_places`` (venues
+from the persona card, word by word) + ``filters.polish_words`` (the persona's
+vocabulary) + districts + foreign-script tokens that participants themselves
+already used in ``trigger_text``/``context_rows`` (if a person named the place or
+word, the bot repeats it rather than inventing it). For ``dedup:polish_freq`` the
+whitelist is narrower: ``places_names``/``places_whitelist``/``known_places`` without
+``polish_words``: those foreign words deliberately count as foreign tokens there,
+which is the point of the rule.
 """
 
 from __future__ import annotations
@@ -44,16 +45,16 @@ _MARKDOWN_HEADER_RE = re.compile(r"(^|\n)\s*#")
 
 _EMOJI_RANGES = ((0x1F300, 0x1FAFF), (0x2600, 0x27BF))
 _EMOJI_CATEGORIES = frozenset({"So", "Sk"})
-# Вариационный селектор U+FE0F и цветовые модификаторы кожи U+1F3FB-U+1F3FF, сразу
-# следующие за эмодзи (напр. "👍️" или "👍🏻"), — часть того же символа, не
-# отдельный эмодзи (CLAUDE.md, правки этапа 4).
+# The variation selector U+FE0F and the skin-tone modifiers U+1F3FB-U+1F3FF that
+# directly follow an emoji (e.g. a thumbs-up with a modifier) are part of the same
+# symbol, not a separate emoji.
 _VARIATION_SELECTOR_16 = "\ufe0f"
 _SKIN_TONE_LO, _SKIN_TONE_HI = 0x1F3FB, 0x1F3FF
 
 _SENTENCE_SPLIT_RE = re.compile(r"[.!?…]+(?:\s|$)")
-# Фрагмент между разделителями [.!?…] считается предложением только от 3 слов
-# (CLAUDE.md, "regex:sentences") — рубленая байка из коротких фраз ("Дважды.",
-# "Бывает.") не должна ложно резаться как лекция из нескольких предложений.
+# A fragment between [.!?…] separators counts as a sentence only from 3 words:
+# a choppy story of short phrases ("Twice.", "It happens.") must not be falsely
+# cut as a multi-sentence lecture.
 _MIN_SENTENCE_WORDS = 3
 
 _PHONE_RE = re.compile(r"\+?\d[\d\s\-()]{8,}\d")
@@ -61,14 +62,14 @@ _PHONE_RE = re.compile(r"\+?\d[\d\s\-()]{8,}\d")
 
 @dataclass(frozen=True, slots=True)
 class _Script:
-    """Регулярки «чужого» алфавита: ``foreign_letters`` языка + ``filters.latin_extra_letters``."""
+    """Regexes of the "foreign" script: ``foreign_letters`` + ``filters.latin_extra_letters``."""
 
-    # Токен целиком из букв алфавита.
+    # A token made entirely of alphabet letters.
     token: re.Pattern[str]
-    # Слово от трёх букв; заглавная первая буква проверяется отдельно (грубый прокси
-    # "похоже на заведение", PLAN.md, этап 4: регуляркой заведение не распознать).
+    # A word of three or more letters; a capital first letter is checked separately (a rough
+    # proxy for "looks like a venue": a regex cannot recognize a venue).
     word: re.Pattern[str]
-    # Токен от двух букв — для частоты иностранных слов (dedup:polish_freq).
+    # A token of two or more letters, for the frequency of foreign words (dedup:polish_freq).
     two_plus: re.Pattern[str]
 
 
@@ -82,7 +83,7 @@ def _script(letters: str) -> _Script:
 
 
 def _foreign_script(ctx: FilterContext, lang: Language) -> _Script | None:
-    """None — язык не знает «чужого» алфавита: проверки латиницы и заведений молчат."""
+    """None: the language has no "foreign" script, so the latin and venue checks stay silent."""
     base = lang.foreign_letters
     if base is None:
         return None
@@ -96,7 +97,7 @@ _SLOT_MARKER_RE = re.compile(r"\{[a-z_]+\}")
 
 
 def _normalize_words(text: str, lang: Language) -> list[str]:
-    """``lang.fold`` (регистр, «ё», ударения), вырезать пунктуацию, split по пробелам."""
+    """``lang.fold`` (case, yo, accents), strip punctuation, split on whitespace."""
     cleaned = _NORMALIZE_STRIP_RE.sub(" ", lang.fold(text))
     return cleaned.split()
 
@@ -115,7 +116,7 @@ def _jaccard(a: set[tuple[str, ...]], b: set[tuple[str, ...]]) -> float:
 
 
 def _first_word(text: str) -> str:
-    """Первый пробельный токен текста, без обрамляющей пунктуации."""
+    """The first whitespace-delimited token of the text, without surrounding punctuation."""
     stripped = text.lstrip()
     match = re.match(r"\S+", stripped)
     if match is None:
@@ -128,12 +129,12 @@ def _fold(text: str, lang: Language) -> str:
 
 
 def _patterns_for(ctx: FilterContext) -> Patterns:
-    """Возвращает готовый Patterns вызывающего (``ctx.patterns``), если он задан.
+    """Return the caller's ready Patterns (``ctx.patterns``) if set.
 
-    Иначе собирает новый из ``ctx.cfg`` — медленный путь, годный только для тестов,
-    которые не передают ``patterns`` явно. ``check_output`` вызывает это ровно один
-    раз за проверку и передаёт результат в оба слоя, чтобы не компилировать один и
-    тот же набор регулярок дважды на каждый кандидат.
+    Otherwise build a new one from ``ctx.cfg``: a slow path, good only for tests
+    that do not pass ``patterns`` explicitly. ``check_output`` calls this exactly
+    once per check and hands the result to both layers, so the same set of
+    regexes is not compiled twice for every candidate.
     """
     if ctx.patterns is not None:
         return cast(Patterns, ctx.patterns)
@@ -146,7 +147,7 @@ def _latin_tokens_any(text: str, script: _Script) -> set[str]:
 
 
 def _words_of(phrases: list[str]) -> set[str]:
-    """Полная фраза (casefold) + каждое отдельное слово (casefold) из списка фраз."""
+    """The full phrase (casefold) + each separate word (casefold) from a list of phrases."""
     words: set[str] = set()
     for phrase in phrases:
         folded = phrase.casefold()
@@ -157,12 +158,12 @@ def _words_of(phrases: list[str]) -> set[str]:
 
 
 def _venue_whitelist(ctx: FilterContext, script: _Script) -> set[str]:
-    """Белый список для regex:venue и regex:latin (общий, см. докстринг модуля).
+    """Whitelist for regex:venue and regex:latin (shared, see the module docstring).
 
-    places_names + filters.places_whitelist + filters.known_places (заведения из
-    CHARACTER.md раздел 7, многословные названия — по каждому слову) + filters.districts +
-    filters.polish_words (словарь Фёдора) + латинские токены, которые сами участники
-    уже употребили в trigger_text/context_rows.
+    places_names + filters.places_whitelist + filters.known_places (venues from the
+    persona card, multi-word names word by word) + filters.districts +
+    filters.polish_words (the persona's vocabulary) + foreign-script tokens that
+    participants themselves already used in trigger_text/context_rows.
     """
     words = _words_of(
         [*ctx.places_names, *ctx.cfg.filters.places_whitelist, *ctx.cfg.filters.known_places]
@@ -177,11 +178,11 @@ def _venue_whitelist(ctx: FilterContext, script: _Script) -> set[str]:
 
 
 def _places_whitelist(ctx: FilterContext) -> set[str]:
-    """Более узкий белый список для dedup:polish_freq — места, не польские слова.
+    """Narrower whitelist for dedup:polish_freq: places, not foreign words.
 
-    places_names + filters.places_whitelist + filters.known_places, по словам (как
-    в _venue_whitelist). filters.polish_words сюда осознанно не входят: это и есть
-    латинские токены, чью частоту dedup:polish_freq ограничивает.
+    places_names + filters.places_whitelist + filters.known_places, word by word (as
+    in _venue_whitelist). filters.polish_words are deliberately not included: they
+    are exactly the foreign tokens whose frequency dedup:polish_freq limits.
     """
     return _words_of(
         [*ctx.places_names, *ctx.cfg.filters.places_whitelist, *ctx.cfg.filters.known_places]
@@ -189,7 +190,7 @@ def _places_whitelist(ctx: FilterContext) -> set[str]:
 
 
 # --------------------------------------------------------------------------- #
-# Слой 1 — regex:*
+# Layer 1: regex:*
 # --------------------------------------------------------------------------- #
 
 
@@ -213,17 +214,17 @@ def _has_emoji(text: str) -> bool:
 
 
 def _is_emoji_modifier(ch: str) -> bool:
-    """U+FE0F (вариационный селектор) или цветовой модификатор кожи U+1F3FB-U+1F3FF,
-    сразу следующий за базовым эмодзи ("👍️", "👍🏻") — часть того же символа."""
+    """U+FE0F (variation selector) or a skin-tone modifier U+1F3FB-U+1F3FF directly
+    following a base emoji is part of the same symbol."""
     if ch == _VARIATION_SELECTOR_16:
         return True
     return _SKIN_TONE_LO <= ord(ch) <= _SKIN_TONE_HI
 
 
 def _emoji_tokens(text: str) -> list[tuple[str, int]]:
-    """Список (базовый символ эмодзи, индекс конца граммемы) для каждого эмодзи в
-    тексте. Модификаторы (``_is_emoji_modifier``) сразу после базового символа
-    поглощаются тем же токеном и не считаются отдельным эмодзи."""
+    """List of (base emoji symbol, end index) for every emoji in the text.
+    Modifiers (``_is_emoji_modifier``) directly after the base symbol are absorbed
+    by the same token and do not count as a separate emoji."""
     tokens: list[tuple[str, int]] = []
     i = 0
     n = len(text)
@@ -301,10 +302,10 @@ def _check_echo(text: str, ctx: FilterContext, lang: Language) -> bool:
 
 
 def _prompt_leak_source_lines(system_prompt: str) -> list[str]:
-    """Только инструктивная часть промпта: строки-буллеты "- ..." (после strip) и
-    строки, содержащие "JSON" (блок про формат ответа). Биография ("одно пиво за
-    вечер", CHARACTER.md раздел 4) предназначена для пересказа персонажем и осознанно
-    не считается утечкой, даже если кандидат почти дословно её повторяет.
+    """Only the instructive part of the prompt: bullet lines "- ..." (after strip) and
+    lines containing "JSON" (the answer-format block). The biography is meant to be
+    retold by the character and is deliberately not counted as a leak, even if the
+    candidate repeats it almost verbatim.
     """
     return [
         line
@@ -333,7 +334,7 @@ def _allowed_emoji_set(ctx: FilterContext) -> frozenset[str]:
 
 
 def _check_emoji_disallowed(text: str, allowed: frozenset[str]) -> bool:
-    """regex:emoji — эмодзи вне filters.allowed_emoji."""
+    """regex:emoji: an emoji outside filters.allowed_emoji."""
     return any(ch not in allowed for ch, _ in _emoji_tokens(text))
 
 
@@ -351,11 +352,11 @@ def _check_latin_run(text: str, whitelist: set[str], script: _Script) -> bool:
 
 
 def layer_regex(text: str, ctx: FilterContext, patterns: Patterns) -> list[str]:
-    """Слой 1: регулярки, 0 мс. Порядок — как в CLAUDE.md, "Интерфейсы этапа 4".
+    """Layer 1: regexes, 0 ms. Order as in the output filter contract.
 
-    ``patterns`` собирается один раз в ``check_output`` (``_patterns_for``) и
-    передаётся сюда и в ``layer_rules`` — чтобы не компилировать regex дважды на
-    каждый кандидат.
+    ``patterns`` is built once in ``check_output`` (``_patterns_for``) and passed
+    here and to ``layer_rules``, so the regexes are not compiled twice for every
+    candidate.
     """
     reasons: list[str] = []
     lang = patterns.lang
@@ -395,7 +396,7 @@ def layer_regex(text: str, ctx: FilterContext, patterns: Patterns) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
-# Слой 2 — dedup:* / style:*
+# Layer 2: dedup:* / style:*
 # --------------------------------------------------------------------------- #
 
 
@@ -432,8 +433,8 @@ def _check_polish_freq(text: str, ctx: FilterContext, script: _Script) -> bool:
 
     if any(text_latin & reply_latin for reply_latin in last4_latin_sets):
         return True
-    # "раз в 5-6 реплик": хватает любого латинского токена в последних 4 репликах,
-    # даже если он не совпадает буквально с токеном кандидата.
+    # "once per 5-6 replies": any foreign-script token in the last 4 replies is enough,
+    # even if it does not literally match the candidate's token.
     return any(reply_latin for reply_latin in last4_latin_sets)
 
 
@@ -449,14 +450,14 @@ _SELF_ECHO_RECENT = 20
 
 
 def _check_self_echo(text: str, ctx: FilterContext, lang: Language) -> bool:
-    """dedup:self_echo — кандидат пересказывает свою же недавнюю байку.
+    """dedup:self_echo: the candidate retells its own recent story.
 
-    Нормализованная 4-грамма кандидата (без грамм из одних стоп-слов) сверяется
-    со словами последних ``_SELF_ECHO_RECENT`` ``ctx.recent_replies``: если все
-    четыре слова граммы встречаются среди слов одной и той же реплики — срез.
-    Сравнение по множеству слов, а не по дословному фрагменту (в отличие от
-    ``regex:echo``) — цель поймать пересказ той же байки другими словами/порядком,
-    не только буквальное повторение.
+    The normalized 4-gram of the candidate (excluding grams made of stop-words only)
+    is checked against the words of the last ``_SELF_ECHO_RECENT``
+    ``ctx.recent_replies``: if all four words of the gram occur among the words of
+    the same reply, the candidate is cut. The comparison is by word set, not by
+    verbatim fragment (unlike ``regex:echo``): the goal is to catch a retelling of
+    the same story in other words or order, not only a literal repetition.
     """
     grams = _ngrams(_normalize_words(text, lang), 4)
     grams = {gram for gram in grams if set(gram) - lang.stopwords}
@@ -470,14 +471,13 @@ def _check_self_echo(text: str, ctx: FilterContext, lang: Language) -> bool:
 
 
 def _check_motif(text: str, ctx: FilterContext, patterns: Patterns) -> bool:
-    """dedup:motif — кандидат тянет тот же реквизит, что уже был в последних репликах.
+    """dedup:motif: the candidate pulls the same prop that was in the last replies.
 
-    Страховка к слоту ``{avoid}`` промпта (CLAUDE.md, "меньше и разнообразнее",
-    мера 5): модель предупредили заранее, что жену/теплицу/гараж сейчас поминать
-    не надо, и если она всё равно их притащила — реплика режется. Окно
-    ``filters.motif_recent_window`` намеренно уже, чем окно ``{avoid}``
-    (``motif_avoid_window``): просить разнообразия можно широко, а резать —
-    только за совсем свежий повтор.
+    A safety net for the prompt's ``{avoid}`` slot: the model was warned in advance
+    not to mention certain props now, and if it brings them anyway, the reply is cut.
+    The window ``filters.motif_recent_window`` is deliberately narrower than the
+    ``{avoid}`` window (``motif_avoid_window``): asking for variety can be broad,
+    but cutting only for a very fresh repeat.
     """
     window = ctx.cfg.filters.motif_recent_window
     if window <= 0:
@@ -490,12 +490,11 @@ def _check_motif(text: str, ctx: FilterContext, patterns: Patterns) -> bool:
 
 
 def _check_story_quota(text: str, ctx: FilterContext, patterns: Patterns) -> bool:
-    """style:story_quota — байка, когда квота баек в окне уже выбрана.
+    """style:story_quota: a story when the story quota in the window is already used up.
 
-    «Байка не в каждом ответе, одна на несколько ответов» (CHARACTER.md раздел 3):
-    если в последних ``filters.story_window`` репликах историй уже
-    ``filters.story_max`` и больше, следующая история режется, а короткий ответ
-    по делу проходит.
+    "A story not in every answer, one per several answers": if the last
+    ``filters.story_window`` replies already hold ``filters.story_max`` stories or
+    more, the next story is cut, while a short to-the-point answer passes.
     """
     filters_cfg = ctx.cfg.filters
     markers = patterns.story_markers
@@ -508,23 +507,23 @@ def _check_story_quota(text: str, ctx: FilterContext, patterns: Patterns) -> boo
 
 
 def _check_emoji_count(text: str, allowed: frozenset[str], max_per_reply: int) -> bool:
-    """style:emoji_count — разрешённых эмодзи в реплике больше emoji_max_per_reply."""
+    """style:emoji_count: more allowed emoji in the reply than emoji_max_per_reply."""
     count = sum(1 for ch, _ in _emoji_tokens(text) if ch in allowed)
     return count > max_per_reply
 
 
 def _check_emoji_freq(text: str, recent_replies: list[str], window: int) -> bool:
-    """style:emoji_freq — в тексте есть эмодзи И хотя бы в одной из последних
-    ``window`` recent_replies тоже было эмодзи (правило «не чаще раза из пяти»
-    держит выходной фильтр, не промпт, см. CHARACTER.md раздел 3)."""
+    """style:emoji_freq: the text has an emoji AND at least one of the last
+    ``window`` recent_replies also had an emoji (the "not more than once in five"
+    rule is held by the output filter, not by the prompt)."""
     if window <= 0 or not _has_emoji(text):
         return False
     return any(_has_emoji(reply) for reply in recent_replies[-window:])
 
 
 def _check_vocab(text: str, ctx: FilterContext) -> bool:
-    """dedup:vocab — словечко из словаря, когда на сегодня их уже хватит. Словечко из
-    сообщения собеседника («что такое сырюка?») не считается: на вопрос отвечают."""
+    """dedup:vocab: a dictionary word when today's quota of them is already used up. A word
+    from the interlocutor's message ("what does X mean?") does not count: a question is answered."""
     if ctx.vocab is None or not ctx.vocab_over_quota:
         return False
     asked = set(ctx.vocab.find(ctx.trigger_text)) | ctx.vocab_allowed
@@ -532,7 +531,7 @@ def _check_vocab(text: str, ctx: FilterContext) -> bool:
 
 
 def layer_rules(text: str, ctx: FilterContext, patterns: Patterns) -> list[str]:
-    """Слой 2: детерминированные правила, 0 мс. ``patterns`` — см. ``layer_regex``."""
+    """Layer 2: deterministic rules, 0 ms. ``patterns``: see ``layer_regex``."""
     reasons: list[str] = []
     lang = patterns.lang
     script = _foreign_script(ctx, lang)
@@ -569,46 +568,46 @@ def layer_rules(text: str, ctx: FilterContext, patterns: Patterns) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
-# Контракт: FilterContext / FilterVerdict / check_output
+# Contract: FilterContext / FilterVerdict / check_output
 # --------------------------------------------------------------------------- #
 
 
 @dataclass(frozen=True, slots=True)
 class FilterContext:
     cfg: Config
-    recent_replies: list[str]  # последние 50 реплик бота, хронологически
-    context_rows: list[MessageRow]  # свежий контекст (context_window)
-    places_names: list[str]  # названия из places (этап 5; пока пусто)
-    participant_names: list[str] = field(default_factory=list)  # display_name авторов context_rows
+    recent_replies: list[str]  # the last 50 bot replies, chronological
+    context_rows: list[MessageRow]  # fresh context (context_window)
+    places_names: list[str]  # names from places
+    participant_names: list[str] = field(default_factory=list)  # display_name of context authors
     bot_names: list[str] = field(default_factory=list)  # persona.name, display_name, name_triggers
-    muted_names: list[str] = field(default_factory=list)  # display_name замьюченных участников
-    # Готовый Patterns от вызывающего; None -> собрать из cfg (медленно, только для тестов).
+    muted_names: list[str] = field(default_factory=list)  # display_name of muted participants
+    # The caller's ready Patterns; None -> build from cfg (slow, for tests only).
     patterns: PatternsLike | None = None
-    system_prompt: str = ""  # тело промпта для проверки утечки
-    trigger_text: str = ""  # сообщение-триггер ("" для ambient/spontaneous/morning)
+    system_prompt: str = ""  # prompt body, for the leak check
+    trigger_text: str = ""  # the trigger message ("" for ambient/spontaneous/morning)
     now: int = 0
-    # Словечки из словаря (CLAUDE.md, "словечки из словаря"): матчер и признак «на
-    # сегодня хватит» (vocab.vocab_over_quota). None/False — правило dedup:vocab молчит.
+    # Dictionary words: the matcher and the "today's quota is used up" flag
+    # (vocab.vocab_over_quota). None/False: the dedup:vocab rule stays silent.
     vocab: Vocab | None = None
     vocab_over_quota: bool = False
-    # Словечки, которые можно и сверх лимита: предложенные по просьбе «скажи
-    # по-дворовому» и свои недавние, когда их просят объяснить.
+    # Words allowed beyond the limit: those offered on request ("say it in
+    # slang") and its own recent ones when asked to explain them.
     vocab_allowed: frozenset[VocabEntry] = frozenset()
-    # Фрагменты пакета: префикс записей-стикеров, который motifs пропускает при подсчёте.
+    # Pack fragments: the sticker-entry prefix that motifs skips when counting.
     frag: Fragments = field(kw_only=True)
-    # Язык для запасного ``Patterns`` (когда ``patterns`` не передан); None -> английский.
+    # Language for the fallback ``Patterns`` (when ``patterns`` is not passed); None -> English.
     lang: Language | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
 class FilterVerdict:
     ok: bool
-    reason: str  # первая причина среза или "pass"
-    reasons: tuple[str, ...] = ()  # ВСЕ сработавшие причины (для shadow-статистики)
+    reason: str  # the first cut reason or "pass"
+    reasons: tuple[str, ...] = ()  # ALL reasons that fired (for shadow statistics)
 
 
 class _JudgeLike(Protocol):
-    """Узкий протокол вместо ``judge.Judge`` — этот модуль его не импортирует."""
+    """A narrow protocol instead of ``judge.Judge``: this module does not import it."""
 
     async def check(self, *, candidate: str, trigger_text: str, now: int) -> list[str]: ...
 
@@ -616,10 +615,10 @@ class _JudgeLike(Protocol):
 async def check_output(
     text: str, ctx: FilterContext, judge: _JudgeLike | None = None
 ) -> FilterVerdict:
-    """Собирает вердикт из трёх слоёв. Слой 3 вызывается только если слои 1-2
+    """Assemble the verdict from the three layers. Layer 3 is called only if layers 1-2
 
-    прошли (нечего резать) или включён shadow mode (считаем все слои для
-    статистики, но не режем без shadow-исключения из responder.py).
+    passed (nothing to cut) or shadow mode is on (all layers are counted for
+    statistics, but nothing is cut without the shadow exception in responder.py).
     """
     patterns = _patterns_for(ctx)
     reasons = layer_regex(text, ctx, patterns) + layer_rules(text, ctx, patterns)

@@ -1,7 +1,7 @@
-"""Pydantic-модели config.yaml (CHARACTER.md, раздел 6).
+"""Pydantic models of config.yaml.
 
-Диапазоны числовых полей (Field(ge=..., le=...)) разумны для персонажа-бота
-в одном чате и позже используются для валидации команды /set.
+Ranges of numeric fields (Field(ge=..., le=...)) are sensible for a bot persona
+in a single chat and are later used to validate the /set command.
 """
 
 import re
@@ -12,14 +12,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sotto.errors import OwnerError
 
 _HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-# OpenRouter model id: "provider/model", например "openai/gpt-4o-mini" или
-# "anthropic/claude-3.5-sonnet:beta" — используется и llm.main_model, и llm.judge_model.
+# OpenRouter model id: "provider/model", e.g. "openai/gpt-4o-mini" or
+# "anthropic/claude-3.5-sonnet:beta"; used by both llm.main_model and llm.judge_model.
 _MODEL_ID_RE = re.compile(r"^[\w.-]+/[\w.:-]+$")
 
 
-# Стандартный набор реакций Telegram Bot API (ReactionTypeEmoji.emoji). Всё остальное
-# (например 😂) Telegram отвергает с REACTION_INVALID. Это не filters.allowed_emoji: тот
-# список — для эмодзи в тексте реплик.
+# The standard set of Telegram Bot API reactions (ReactionTypeEmoji.emoji). Anything else
+# (e.g. a laughing-with-tears face) is rejected by Telegram with REACTION_INVALID. This is not
+# filters.allowed_emoji: that list is for emoji in reply text.
 TELEGRAM_REACTIONS: frozenset[str] = frozenset(
     {
         "👍",
@@ -147,7 +147,7 @@ class PersonaConfig(BaseModel):
 
 
 class LiveTalkConfig(BaseModel):
-    """Что считается «живым разговором» для ambient-реплик."""
+    """What counts as a "live conversation" for ambient replies."""
 
     min_messages: int = Field(
         default=2,
@@ -170,7 +170,7 @@ class LiveTalkConfig(BaseModel):
 
 
 class SpontaneousConfig(BaseModel):
-    """«Просто так» — бот пишет сам, без повода, когда в чате тихо."""
+    """Just because: the bot speaks on its own, without a reason, when the chat is quiet."""
 
     per_week: int = Field(
         default=2, ge=0, le=50, description="How many unprompted messages per week are allowed"
@@ -192,7 +192,7 @@ class SpontaneousConfig(BaseModel):
 
 
 class ReplyDelayBucket(BaseModel):
-    """Один бакет задержки ответа на обращение."""
+    """One bucket of the reply delay to an address."""
 
     weight: float = Field(
         ge=0.0, le=1.0, description="Weight of the bucket when picking a reply delay"
@@ -209,17 +209,16 @@ class ReplyDelayBucket(BaseModel):
 
 
 class ReactionsConfig(BaseModel):
-    """Реакции-эмодзи на чужие сообщения, срезанные гейтом по gate:dice/gate:ambient_cooldown.
+    """Emoji reactions to messages cut by the gate on gate:dice/gate:ambient_cooldown.
 
-    Вместо текстового ответа — только setMessageReaction: нового сообщения нет,
-    эффект присутствия есть (CLAUDE.md, "Интерфейсы: реакции"). С 16.09.2026
-    реакция ставится не мгновенно и не по кубику (CLAUDE.md, "Интерфейсы: реакции
-    с задержкой и смыслом"): сначала пауза ``delay_sec`` — человек сперва читает, —
-    потом при ``semantic`` дешёвая модель решает, уместна ли реакция и какая.
-    ``probability`` остаётся только для ``semantic: false`` (прежнее поведение).
-    ``emoji`` валидируется на уровне ``Config`` (см. ``Config._check_reactions_emoji_telegram``):
-    каждый элемент обязан входить в ``TELEGRAM_REACTIONS`` (набор реакций Bot API),
-    иначе ``/set behaviour.reactions.emoji`` падает с понятной ошибкой.
+    Instead of a text reply, only setMessageReaction: there is no new message,
+    but there is an effect of presence. The reaction is not set instantly and not by
+    dice: first a ``delay_sec`` pause (a person reads first), then with ``semantic`` a
+    cheap model decides whether a reaction fits and which one.
+    ``probability`` remains only for ``semantic: false`` (the old behaviour).
+    ``emoji`` is validated at the ``Config`` level (see ``Config._check_reactions_emoji_telegram``):
+    every element must be in ``TELEGRAM_REACTIONS`` (the Bot API reaction set),
+    otherwise ``/set behaviour.reactions.emoji`` fails with a clear error.
     """
 
     enabled: bool = Field(default=True, description="Enables emoji reactions instead of silence")
@@ -266,7 +265,7 @@ class ReactionsConfig(BaseModel):
     @field_validator("emoji", mode="before")
     @classmethod
     def _emoji_list_to_dict(cls, value: object) -> object:
-        # Прежний формат — список без описаний (`/set behaviour.reactions.emoji [👍, 🤣]`).
+        # The old format is a list without descriptions (`/set behaviour.reactions.emoji [👍, 🤣]`).
         if isinstance(value, list):
             return {str(e): "" for e in value}
         return value
@@ -276,9 +275,9 @@ class ReactionsConfig(BaseModel):
     def _validate_non_empty(cls, value: dict[str, str]) -> dict[str, str]:
         if not value:
             raise OwnerError("validation.emoji_empty")
-        # Клавиатура телефона дописывает вариационный селектор U+FE0F («❤️»), а в наборе
-        # реакций Telegram эмодзи без него («❤») — срезаем, чтобы /set не отвергал
-        # правильную реакцию и в Telegram уходила ровно та форма, что в наборе.
+        # A phone keyboard appends the variation selector U+FE0F to an emoji, while the Telegram
+        # reaction set has the emoji without it: strip it so /set does not reject a valid
+        # reaction and exactly the form from the set goes to Telegram.
         return {e.replace("\ufe0f", ""): meaning.strip() for e, meaning in value.items()}
 
     @field_validator("delay_sec")
@@ -291,11 +290,11 @@ class ReactionsConfig(BaseModel):
 
 
 class StickersConfig(BaseModel):
-    """Стикеры вместо текста — второй вызов дешёвой моделью (CLAUDE.md, "Интерфейсы:
-    стикеры"). Основная модель ничего не знает о каталоге; уже прошедший выходной
-    фильтр текст вместе с триггером и каталогом уходит второй, дешёвой модели
-    (``model`` или, если пусто, ``llm.judge_model``), которая либо называет номер
-    стикера, либо ``null`` — и тогда уходит текст как раньше.
+    """Stickers instead of text: a second call to a cheap model. The main model knows
+    nothing about the catalog; the text that already passed the output filter goes
+    together with the trigger and the catalog to a second, cheap model
+    (``model`` or, if empty, ``llm.judge_model``), which either names a sticker
+    number or ``null``, and then the text goes out as usual.
     """
 
     enabled: bool = Field(default=True, description="Enables sending stickers instead of text")
@@ -328,8 +327,8 @@ class StickersConfig(BaseModel):
 
 
 class HotWindowConfig(BaseModel):
-    """Горячее окно после `/life` и `/say` — полчаса живее обычного (CLAUDE.md,
-    "горячее окно после /life и /say"). Вне окна поведение не меняется ни на шаг.
+    """Hot window after `/life` and `/say`: livelier than usual for a while.
+    Outside the window the behaviour does not change at all.
     """
 
     enabled: bool = Field(default=True, description="Enables the hot window after /life and /say")
@@ -358,10 +357,10 @@ class HotWindowConfig(BaseModel):
 
 
 class FollowupConfig(BaseModel):
-    """Дешёвая семантическая проверка «это мне или про мою тему?» в горячем окне
-    (CLAUDE.md, "внимание как у живого человека"). Сообщения, которые обычный гейт
-    не признал прямым обращением, во время горячего окна дополнительно проверяются
-    маленькой моделью — «да» превращает их в обращение ``Trigger.FOLLOWUP``.
+    """Cheap semantic check "is this for me or about my topic?" in the hot window.
+    Messages that the ordinary gate did not recognize as a direct address are
+    additionally checked by a small model during the hot window; a "yes" turns them
+    into a ``Trigger.FOLLOWUP`` address.
     """
 
     enabled: bool = Field(
@@ -404,11 +403,11 @@ class FollowupConfig(BaseModel):
 
 
 class CheckinConfig(BaseModel):
-    """«Вернулся проверить» — раз в ``after_min`` минут после закрытия горячего
-    окна один вызов основной модели по всему, что написали после последней
-    реплики персонажа (CLAUDE.md, "внимание как у живого человека: вернулся
-    проверить"). Не путать с ``followup`` (дешёвая проверка ВНУТРИ окна) —
-    здесь окно уже закрыто, проверка идёт основной моделью и реже.
+    """Came back to check: ``after_min`` minutes after the hot window closes, one
+    call of the main model over everything written after the persona's last
+    reply. Not to be confused with ``followup`` (a cheap check INSIDE the window):
+    here the window is already closed, and the check is done by the main model and
+    less often.
     """
 
     enabled: bool = Field(
@@ -456,11 +455,11 @@ class CheckinConfig(BaseModel):
 
 
 class PresenceConfig(BaseModel):
-    """Потолок присутствия (CLAUDE.md, "меньше и разнообразнее"): за локальные сутки
-    бот не говорит больше, чем ``max_share`` от числа сообщений людей плюс
-    ``free_replies`` в запас. Под потолком проходят только реплаи на самого бота,
-    ``/life`` и ``/say`` — остальное (обращения по имени, ambient, «просто так»,
-    утренняя реплика, «вернулся проверить») молчит до конца суток.
+    """Presence cap: within a local day the bot does not say more than ``max_share``
+    of the number of human messages plus ``free_replies`` in reserve. Under the cap
+    only replies to the bot itself, ``/life`` and ``/say`` pass; everything else
+    (addresses by name, ambient, "just because", the morning reply, "came back to
+    check") stays silent until the end of the day.
     """
 
     enabled: bool = Field(default=True, description="Enables the daily presence cap of the bot")
@@ -478,20 +477,20 @@ class PresenceConfig(BaseModel):
     )
 
     def allowance(self, human_messages_today: int) -> int:
-        """Сколько реплик бот может себе позволить сегодня при таком числе сообщений людей."""
+        """How many replies the bot can afford today given this number of human messages."""
         return int(human_messages_today * self.max_share) + self.free_replies
 
     def over_cap(self, *, human_messages_today: int, bot_replies_today: int) -> bool:
-        """Потолок уже выбран (выключенный потолок — никогда)."""
+        """The cap is already reached (a disabled cap: never)."""
         if not self.enabled:
             return False
         return bot_replies_today >= self.allowance(human_messages_today)
 
 
 class ChatMemoryConfig(BaseModel):
-    """Долгая память чата (CLAUDE.md, "долгая память чата"): раз в неделю модель
-    сжимает прошедшие разговоры в несколько строк, пересказ живёт в БД дольше
-    самих сообщений (``message_retention_days``) и подмешивается в системный промпт.
+    """Long-term chat memory: once a week the model compresses past conversations
+    into a few lines; the recap lives in the DB longer than the messages themselves
+    (``message_retention_days``) and is mixed into the system prompt.
     """
 
     enabled: bool = Field(default=True, description="Enables recaps of past conversations")
@@ -543,9 +542,9 @@ class ChatMemoryConfig(BaseModel):
 
 
 class DiaryConfig(BaseModel):
-    """Дневник дня (CLAUDE.md, "дневник дня"): после каждой своей реплики дешёвая модель
-    достаёт из неё факт о собственных делах персонажа («пошёл в баню»), и факты дня
-    идут в системный промпт слотом {diary} — чтобы он не противоречил сам себе.
+    """Day diary: after each of its replies a cheap model extracts a fact about the
+    persona's own doings from it (e.g. "went to the sauna"), and the day's facts go
+    into the system prompt in the {diary} slot so that it does not contradict itself.
     """
 
     enabled: bool = Field(
@@ -576,8 +575,8 @@ class DiaryConfig(BaseModel):
 
 
 class JokesConfig(BaseModel):
-    """Шутки чата (CLAUDE.md, "шутки чата и истории людей"): недельный пересказ
-    достаёт словечки, которые чат подхватил, и они идут в системный промпт слотом {jokes}.
+    """Chat jokes: the weekly recap extracts the words that the chat picked up, and
+    they go into the system prompt in the {jokes} slot.
     """
 
     enabled: bool = Field(default=True, description="Enables the memory of the chat's shared jokes")
@@ -593,8 +592,8 @@ class JokesConfig(BaseModel):
 
 
 class VocabConfig(BaseModel):
-    """Словечки из словаря (CLAUDE.md, "словечки из словаря"): изредка и к месту предложить
-    модели пару слов из загруженного владельцем словаря, а мелькнувшее в разговоре — объяснить.
+    """Dictionary words: now and then, to the point, offer the model a couple of words
+    from the dictionary loaded by the owner, and explain those that came up in conversation.
     """
 
     enabled: bool = Field(
@@ -663,8 +662,8 @@ class VocabConfig(BaseModel):
 
 
 class CallbackConfig(BaseModel):
-    """«Ну как там?» (CLAUDE.md, "шутки чата и истории людей"): через несколько дней
-    персонаж сам спрашивает человека, чем кончилась история, о которой тот говорил.
+    """So how did it go?: a few days later the persona itself asks a person how the
+    story they told about ended.
     """
 
     enabled: bool = Field(
@@ -696,12 +695,11 @@ class CallbackConfig(BaseModel):
 
 
 class VisionConfig(BaseModel):
-    """Зрение на фото (CLAUDE.md, "Интерфейсы: зрение на фото"). Снимок из чата
-    описывается моделью со зрением одной-двумя фразами, и описание становится
-    текстом сообщения («[фото: ...]») — дальше гейт и генерация работают с ним как
-    с обычным текстом. Стоит денег, поэтому описывается не каждое фото: повод
-    (обращение или горячее окно), иногда кубик, и всегда под суточным потолком
-    со своим счётчиком ``vision_calls``.
+    """Vision for photos. A chat photo is described by a vision model in a sentence
+    or two, and the description becomes the message text ("[photo: ...]"); the gate
+    and generation then work with it as with ordinary text. It costs money, so not
+    every photo is described: a reason (an address or the hot window), sometimes
+    dice, and always under a daily cap with its own ``vision_calls`` counter.
     """
 
     enabled: bool = Field(default=True, description="Enables photo descriptions by a vision model")
@@ -741,15 +739,14 @@ class VisionConfig(BaseModel):
 
 
 class WeatherConfig(BaseModel):
-    """Погода как фон жизни персонажа (CLAUDE.md, "Интерфейсы: погода" и
-    "Интерфейсы: погода в другом месте"). Источник — Open-Meteo, публичный API
-    без ключа.
+    """Weather as the background of the persona's life. The source is Open-Meteo, a
+    public API with no key.
 
-    Координат домашней точки здесь НЕТ и в коде они не захардкожены: репозиторий
-    публичный, а где живёт владелец — его личные данные. Широта, долгота и
-    название лежат в ``.env`` (``WEATHER_LATITUDE``/``WEATHER_LONGITUDE``/
-    ``WEATHER_HOME_NAME``, см. settings.py). Не заданы — блок погоды пуст, а
-    погода по месту из вопроса всё равно работает.
+    The home point coordinates are NOT here and are not hardcoded in the code: the
+    repository is public, and where the owner lives is personal data. Latitude,
+    longitude and name live in ``.env`` (``WEATHER_LATITUDE``/``WEATHER_LONGITUDE``/
+    ``WEATHER_HOME_NAME``, see settings.py). If unset, the weather block is empty, while
+    weather for a place named in a question still works.
     """
 
     enabled: bool = Field(
@@ -780,8 +777,8 @@ class WeatherConfig(BaseModel):
         le=3650,
         description="Days the coordinates of a found place are remembered",
     )
-    # Язык и «домашняя страна» геокодера (раньше были зашиты в weather.py): язык названий
-    # места и страны, которые не дописываются к названию.
+    # The geocoder language and "home country" (formerly hardcoded in weather.py): the
+    # language of place names and the country that is not appended to a name.
     geocode_language: str = Field(
         default="en", description="Language code in which the geocoder returns place names"
     )
@@ -886,8 +883,8 @@ class BehaviourConfig(BaseModel):
         description="Weather as background in the system prompt; home coordinates are in .env",
     )
 
-    # Кулдаун = задержка, не отказ (решение владельца): обращение всегда получает
-    # ответ, кулдаун только сдвигает due_at на этапе responder (earliest).
+    # Cooldown = delay, not refusal: an address always gets an answer, the cooldown
+    # only shifts due_at in the responder (earliest).
     mention_cooldown_sec: int = Field(
         default=60,
         ge=0,
@@ -900,7 +897,7 @@ class BehaviourConfig(BaseModel):
         le=86400,
         description="Cooldown of a reply to a direct address, per chat, seconds",
     )
-    # Пока ребята наигрываются; потом снизить.
+    # While the chat members are still playing with it; lower later.
     mention_daily_cap: int = Field(
         default=50, ge=0, le=200, description="Daily limit of replies to direct addresses"
     )
@@ -996,8 +993,8 @@ class LlmConfig(BaseModel):
     max_tokens: int = Field(
         default=200, ge=1, le=4000, description="Token cap of the main model answer"
     )
-    # 50 обращений + 3 ambient + утро + "просто так" ≈ 55 основных вызовов и
-    # столько же судьи ≈ 110, потолок 150 с запасом.
+    # 50 addresses + 3 ambient + morning + "just because" is about 55 main calls and
+    # as many for the judge, about 110; a cap of 150 leaves headroom.
     daily_calls_cap: int = Field(
         default=150,
         ge=0,
@@ -1022,7 +1019,7 @@ class LlmConfig(BaseModel):
     alert_interval_hours: int = Field(
         default=24, ge=1, le=168, description="At most once per this many hours for one status code"
     )
-    # Fallback-цены за 1M токенов: используются, только если провайдер не вернул usage.cost.
+    # Fallback prices per 1M tokens: used only if the provider did not return usage.cost.
     price_in_usd_per_1m: float = Field(
         default=5.0,
         ge=0.0,
@@ -1111,9 +1108,8 @@ class PlacesConfig(BaseModel):
         return value
 
 
-# Стадии выходного фильтра, которые режут даже при filters.shadow: true
-# (CLAUDE.md, мера 4): повторы и сорванный стиль — ровно то, из-за чего чат
-# остановил бота, а shadow их пропускал.
+# Output filter stages that cut even with filters.shadow: true: repeats and broken
+# style are exactly what made a chat stop the bot, and shadow let them through.
 _ENFORCE_STAGES_DEFAULT = ["dedup", "style"]
 
 _REGEX_LIST_FIELDS = (
@@ -1129,9 +1125,8 @@ _REGEX_LIST_FIELDS = (
     "self_markers",
 )
 
-# Разрешённый набор эмодзи (решение владельца, CHARACTER.md раздел 3/4) — небольшой,
-# редко и к месту. Порядок фиксирован. 💩 и 👍 в этом чате значат «одобряю» (локальная
-# шутка про 💩), см. prompts/system.txt.
+# The allowed emoji set: small, used rarely and to the point. The order is fixed.
+# See prompts/system.txt for what the thumbs-up and the poop emoji mean in the chat.
 _ALLOWED_EMOJI_DEFAULT = ["🙁", "🙂", "😂", "😀", "🤪", "💩", "👍"]
 
 
@@ -1143,7 +1138,7 @@ class FiltersConfig(BaseModel):
         default_factory=list,
         description="Everyday brands that are not venues from the character card",
     )
-    # Разрешённые эмодзи для regex:emoji/style:emoji_* (CHARACTER.md раздел 3/4).
+    # Allowed emoji for regex:emoji/style:emoji_*.
     allowed_emoji: list[str] = Field(
         default_factory=lambda: list(_ALLOWED_EMOJI_DEFAULT),
         description="Emoji the character may use: a small set, rarely and to the point",
@@ -1151,17 +1146,17 @@ class FiltersConfig(BaseModel):
     emoji_max_per_reply: int = Field(
         default=1, ge=0, le=3, description="Maximum allowed emoji in one reply"
     )
-    # Если хотя бы в одной из последних N реплик было эмодзи — новое режется (style:emoji_freq).
+    # If at least one of the last N replies had an emoji, a new one is cut (style:emoji_freq).
     emoji_recent_window: int = Field(
         default=4, ge=0, le=20, description="Window of latest replies for the emoji frequency check"
     )
-    # Заведения из CHARACTER.md, раздел 7 — белый список regex:venue/regex:latin.
+    # Venues from the character card: the whitelist of regex:venue/regex:latin.
     known_places: list[str] = Field(
         default_factory=list,
         description="Venues from the character card, whitelist of regex:venue/regex:latin",
     )
-    # Польский словарь Фёдора — тот же белый список, а для dedup:polish_freq (наоборот)
-    # это и есть слова, чью частоту правило ограничивает.
+    # The persona's foreign vocabulary: the same whitelist, while for dedup:polish_freq (the
+    # other way round) these are exactly the words whose frequency the rule limits.
     polish_words: list[str] = Field(
         default_factory=list,
         description="Character's foreign-word list: whitelist and subject of dedup:polish_freq",
@@ -1206,19 +1201,19 @@ class FiltersConfig(BaseModel):
         default_factory=list,
         description="Assistant marker phrases, out of character (output filter)",
     )
-    # Сухие/раздражённые формулировки (style:grumpy, выходной фильтр) — добродушный
-    # персонаж не отмахивается от вопросов и не злится на повторы (CHARACTER.md раздел 3).
+    # Dry/irritated wording (style:grumpy, output filter): a good-natured
+    # character does not brush off questions and does not get angry at repeats.
     grumpy_markers: list[str] = Field(
         default_factory=list,
         description="Dry or irritated wording, out of character (output filter)",
     )
-    # Мера 4 контракта «меньше и разнообразнее»: shadow остаётся щадящим для новых
-    # слоёв, но дедуп и стиль режут всегда — иначе повторы уходят в чат.
+    # Shadow stays gentle for new layers, but dedup and style always cut:
+    # otherwise repeats go out to the chat.
     enforce_stages: list[str] = Field(
         default_factory=lambda: list(_ENFORCE_STAGES_DEFAULT),
         description="Output filter stages that cut the reply even with shadow: true",
     )
-    # Мера 5: реквизит (жена/теплица/гараж/девяностые) — метка -> регулярки.
+    # Props (recurring story topics): label -> regexes.
     motifs: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Motif label -> regexes of props the character keeps coming back to",
@@ -1259,10 +1254,10 @@ class FiltersConfig(BaseModel):
     @field_validator("motifs")
     @classmethod
     def _validate_motifs(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
-        """Регулярки мотивов компилируются с IGNORECASE, как и все остальные списки.
+        """Motif regexes are compiled with IGNORECASE, like all other lists.
 
-        Проверка здесь, а не в ``_validate_regex_list``: там валидатор получает
-        плоский ``list[str]``, а мотивы — словарь «метка -> список регулярок».
+        The check is here and not in ``_validate_regex_list``: that validator gets a
+        flat ``list[str]``, while motifs are a "label -> list of regexes" dict.
         """
         for label, patterns in value.items():
             for pattern in patterns:
@@ -1308,11 +1303,12 @@ class Config(BaseModel):
 
     @model_validator(mode="after")
     def _check_reactions_emoji_telegram(self) -> "Config":
-        """behaviour.reactions.emoji — подмножество TELEGRAM_REACTIONS.
+        """behaviour.reactions.emoji is a subset of TELEGRAM_REACTIONS.
 
-        Telegram принимает в реакциях только свой стандартный набор; всё прочее
-        (😂 и т.п.) даёт REACTION_INVALID, и реакция молча не ставится. Поэтому
-        проверяем по набору Bot API, а не по filters.allowed_emoji (тот — для текста).
+        Telegram accepts only its own standard set in reactions; anything else
+        (e.g. a laughing face) gives REACTION_INVALID and the reaction is silently
+        not set. So we check against the Bot API set, not against filters.allowed_emoji
+        (that one is for text).
         """
         bad = [e for e in self.behaviour.reactions.emoji if e not in TELEGRAM_REACTIONS]
         if bad:

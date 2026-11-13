@@ -1,13 +1,12 @@
-"""Парсер экспорта чата из Telegram Desktop (result.json) для реплея гейта.
+"""Parser for a Telegram Desktop chat export (result.json), used by the gate replay.
 
-Формат экспорта: корень — объект с "name", "type", "id", "messages": [...].
-Сообщение может быть "message" (обычное) или "service" (служебное, например смена
-названия чата) — служебные пропускаются. Порядок и детали разбора полей — см.
-CLAUDE.md, раздел "Интерфейсы этапа 2".
+Export format: the root is an object with "name", "type", "id", "messages": [...].
+A message can be "message" (regular) or "service" (e.g. a chat rename); service
+messages are skipped.
 
-Чистая функция, без сети и без БД. Битые записи (нет id или date) пропускаются
-с WARNING в лог, а не роняют весь парсинг — экспорт за месяц почти наверняка
-содержит хотя бы одну аномалию (стёртое сообщение, старый формат и т.п.).
+Pure function, no network and no DB. Broken records (no id or date) are skipped
+with a WARNING in the log instead of failing the whole parse: a month-long export
+almost certainly contains at least one anomaly (a deleted message, an old format, etc.).
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ from sotto.sanitize import normalize_text, sanitize_display_name
 
 logger = logging.getLogger(__name__)
 
-# from_id в экспорте — "user123456789" или "channel123": буквенный префикс + число.
+# from_id in the export is "user123456789" or "channel123": a letter prefix plus a number.
 _FROM_ID_RE = re.compile(r"(\d+)$")
 
 
@@ -41,7 +40,7 @@ class ExportMessage:
 
 
 def _extract_user_id(from_id: object) -> int:
-    """ "userNNN"/"channelNNN" -> NNN; при отсутствии или незнакомом формате -> 0."""
+    """ "userNNN"/"channelNNN" -> NNN; missing or unfamiliar format -> 0."""
     if not isinstance(from_id, str):
         return 0
     match = _FROM_ID_RE.search(from_id)
@@ -49,7 +48,7 @@ def _extract_user_id(from_id: object) -> int:
 
 
 def _extract_text(raw_text: object) -> str:
-    """text — либо строка, либо список строк/{"type":..., "text":...}; склеить подряд."""
+    """text is either a string or a list of strings/{"type":..., "text":...}; join them in order."""
     if isinstance(raw_text, str):
         return raw_text
     if isinstance(raw_text, list):
@@ -66,7 +65,7 @@ def _extract_text(raw_text: object) -> str:
 
 
 def _media_placeholder(raw: dict[str, Any], frag: Fragments) -> str | None:
-    """Плейсхолдер для медиа без подписи, иначе None. Порядок — как в CLAUDE.md."""
+    """Placeholder for media without a caption, else None."""
     if isinstance(raw.get("photo"), str):
         return frag.text("placeholders.photo")
     media_type = raw.get("media_type")
@@ -84,7 +83,7 @@ def _media_placeholder(raw: dict[str, Any], frag: Fragments) -> str | None:
 
 
 def _parse_created_at(raw: dict[str, Any], tz: str, tg_message_id: int) -> int | None:
-    """unix seconds: приоритет у "date_unixtime", иначе "date" (наивный ISO в tz)."""
+    """unix seconds: "date_unixtime" takes priority, otherwise "date" (naive ISO in tz)."""
     unixtime_raw = raw.get("date_unixtime")
     if isinstance(unixtime_raw, str):
         try:
@@ -130,7 +129,7 @@ def _parse_message(raw: dict[str, Any], tz: str, frag: Fragments) -> ExportMessa
         text = placeholder
 
     user_id = _extract_user_id(raw.get("from_id"))
-    # reserved пустой: парсер не знает имя бота, вызывающий код (replay.py) пере-санитизирует.
+    # reserved is empty: the parser does not know the bot name; the caller (replay.py) re-sanitizes.
     display_name = sanitize_display_name(raw.get("from"), user_id, reserved=set(), frag=frag)
 
     reply_to_raw = raw.get("reply_to_message_id")
@@ -147,8 +146,8 @@ def _parse_message(raw: dict[str, Any], tz: str, frag: Fragments) -> ExportMessa
 
 
 def parse_export(path: Path, tz: str, *, frag: Fragments) -> list[ExportMessage]:
-    """Читает result.json Telegram Desktop и возвращает сообщения, отсортированные
-    по (created_at, id). Служебные сообщения и битые записи пропускаются."""
+    """Read a Telegram Desktop result.json and return the messages sorted
+    by (created_at, id). Service messages and broken records are skipped."""
     data: Any = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expected a JSON object at top level")
@@ -163,7 +162,7 @@ def parse_export(path: Path, tz: str, *, frag: Fragments) -> list[ExportMessage]
             logger.warning("export_parser: skipping non-object message entry: %r", raw)
             continue
         if raw.get("type") != "message":
-            continue  # "service" и прочее — служебные, пропускаются молча
+            continue  # "service" and anything else is skipped silently
         parsed = _parse_message(raw, tz, frag)
         if parsed is not None:
             result.append(parsed)

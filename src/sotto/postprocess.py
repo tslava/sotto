@@ -1,17 +1,16 @@
-"""Мягкая пост-обработка кандидата ДО выходного фильтра (CLAUDE.md,
-"Интерфейсы: пост-обработка").
+"""Soft post-processing of the candidate BEFORE the output filter.
 
-Решение владельца по живому чату: эмодзи в конце почти каждой реплики и
-типографские тире (модель их скопировала из самого промпта) — это косметика,
-а не нарушение характера. Молчать из-за них — слишком дорого, поэтому такие
-вещи правятся руками, детерминированно, а не срезаются выходным фильтром
-(``filters.py``). ``responder.py`` зовёт ``soften`` один раз, сразу после
-``parse_reply`` и проверки ``speak``, до сборки ``FilterContext``/``check_output``
-— дальше везде используется уже поправленный текст.
+An emoji at the end of almost every reply and typographic dashes (the model
+copies them from the prompt itself) are cosmetics, not a character violation.
+Staying silent over them is too costly, so they are fixed by hand,
+deterministically, instead of being cut by the output filter (``filters.py``).
+``responder.py`` calls ``soften`` once, right after ``parse_reply`` and the
+``speak`` check, before ``FilterContext``/``check_output`` are built; everything
+after uses the already corrected text.
 
-Чистые функции, без I/O. Детект эмодзи — те же примитивы, что ``regex:emoji`` в
-``filters.py`` (``_is_emoji_char``/``_is_emoji_modifier``, реимпортированы отсюда,
-цикла импорта нет: ``filters.py`` этот модуль не импортирует).
+Pure functions, no I/O. Emoji detection uses the same primitives as ``regex:emoji``
+in ``filters.py`` (``_is_emoji_char``/``_is_emoji_modifier``, re-imported here;
+no import cycle: ``filters.py`` does not import this module).
 """
 
 from __future__ import annotations
@@ -24,9 +23,9 @@ from sotto.config_models import FiltersConfig
 from sotto.filters import _has_emoji, _is_emoji_char, _is_emoji_modifier
 from sotto.fragments import Fragments
 
-# «—» U+2014, «–» U+2013, «‒» U+2012, «―» U+2015 -> дефис-минус «-». Пробелы вокруг
-# не в классе символов, поэтому не трогаются; дефис в словах («по-русски») уже «-»
-# и не совпадает с классом.
+# U+2014, U+2013, U+2012 and U+2015 dashes -> hyphen-minus "-". Spaces around are
+# not in the character class, so they are left alone; a hyphen inside words
+# is already "-" and does not match the class.
 _DASH_CHARS = "—–‒―"
 _DASH_RE = re.compile(f"[{_DASH_CHARS}]")
 
@@ -37,20 +36,20 @@ _SPACE_BEFORE_PUNCT_RE = re.compile(r" +([.,!?…:;])")
 @dataclass(frozen=True)
 class Fixed:
     text: str
-    # причины в стиле filter_log: "fix:dash", "fix:emoji_freq", "fix:emoji_count"
+    # reasons in filter_log style: "fix:dash", "fix:emoji_freq", "fix:emoji_count"
     fixes: tuple[str, ...]
 
 
 def normalize_dashes(text: str) -> str:
-    """Типографские тире -> дефис-минус «-». Пробелы вокруг и дефис в словах не трогаются."""
+    """Typographic dashes -> hyphen-minus "-". Spaces and hyphens inside words stay."""
     return _DASH_RE.sub("-", text)
 
 
 def _emoji_spans(text: str) -> list[tuple[int, int]]:
-    """Индексы (start, end) каждого эмодзи в тексте вместе с модификаторами
-    (вариационный селектор, тон кожи) — та же классификация символов, что у
-    regex:emoji в filters.py, но со своим обходом (там хелпер отдаёт (char, end),
-    без start)."""
+    """Indexes (start, end) of every emoji in the text together with modifiers
+    (variation selector, skin tone): the same character classification as
+    regex:emoji in filters.py, but with its own traversal (there the helper returns
+    (char, end), without start)."""
     spans: list[tuple[int, int]] = []
     i = 0
     n = len(text)
@@ -79,15 +78,15 @@ def _remove_spans(text: str, spans: list[tuple[int, int]]) -> str:
 
 
 def _cleanup(text: str) -> str:
-    """После удаления эмодзи: схлопнуть повторы пробелов, снять пробел перед
-    знаком препинания ("слово ," -> "слово,"), strip()."""
+    """After removing emoji: collapse repeated spaces, drop the space before
+    punctuation ("word ," -> "word,"), strip()."""
     cleaned = _MULTI_SPACE_RE.sub(" ", text)
     cleaned = _SPACE_BEFORE_PUNCT_RE.sub(r"\1", cleaned)
     return cleaned.strip()
 
 
 def strip_emoji(text: str) -> str:
-    """Убрать ВСЕ эмодзи (вместе с модификаторами), без двойных/висячих пробелов."""
+    """Remove ALL emoji (with modifiers), leaving no double or dangling spaces."""
     spans = _emoji_spans(text)
     if not spans:
         return text
@@ -95,7 +94,7 @@ def strip_emoji(text: str) -> str:
 
 
 def keep_first_emoji(text: str) -> str:
-    """Оставить только первое эмодзи, остальные убрать тем же способом, что strip_emoji."""
+    """Keep only the first emoji and remove the rest the same way as strip_emoji."""
     spans = _emoji_spans(text)
     if len(spans) <= 1:
         return text
@@ -105,8 +104,8 @@ def keep_first_emoji(text: str) -> str:
 def _recent_has_emoji(recent_replies: Sequence[str], window: int, frag: Fragments) -> bool:
     if window <= 0:
         return False
-    # Записи стикеров в recent_bot_replies («[стикер #N] текст надписи») эмодзи не
-    # содержат, но на будущее пропускаются явно (CLAUDE.md); префикс — из пакета.
+    # Sticker entries in recent_bot_replies ("[sticker #N] caption text") contain no
+    # emoji, but are skipped explicitly for the future; the prefix comes from the pack.
     sticker_prefix = frag.prefix("placeholders.sticker_tag")
     candidates = [
         reply for reply in recent_replies[-window:] if not reply.startswith(sticker_prefix)
@@ -122,10 +121,10 @@ def _count_allowed_emoji(text: str, allowed_emoji: Sequence[str]) -> int:
 def soften(
     text: str, *, recent_replies: Sequence[str], cfg: FiltersConfig, frag: Fragments
 ) -> Fixed:
-    """Порядок правок: normalize_dashes -> emoji_freq -> emoji_count (см. CLAUDE.md).
+    """Order of fixes: normalize_dashes -> emoji_freq -> emoji_count.
 
-    ``recent_replies`` — хронологически, последние записи свежие (как
-    ``db.recent_bot_replies``); записи-стикеры при подсчёте эмодзи пропускаются.
+    ``recent_replies`` is chronological, the last entries are the freshest (like
+    ``db.recent_bot_replies``); sticker entries are skipped when counting emoji.
     """
     fixes: list[str] = []
 

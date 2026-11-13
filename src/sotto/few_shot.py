@@ -1,4 +1,4 @@
-"""few_shot.yaml: загрузка примеров реплик персонажа и их рендер в промпт."""
+"""few_shot.yaml: load example replies of the persona and render them into the prompt."""
 
 import json
 from pathlib import Path
@@ -30,8 +30,8 @@ def load_few_shot(path: Path) -> list[FewShot]:
 
 
 def render_few_shot(items: list[FewShot]) -> str:
-    """Каждый пример: "Имя: реплика" и на следующей строке компактный JSON.
-    Примеры разделяются пустой строкой (CHARACTER.md, раздел 5)."""
+    """Each example: a "Name: text" line followed by a compact JSON line.
+    Examples are separated by a blank line."""
     blocks = []
     for item in items:
         payload = {"speak": item.speak, "text": item.text}

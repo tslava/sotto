@@ -1,4 +1,4 @@
-"""Сборка GateState из БД (state + messages) для одного решения гейта."""
+"""Assemble GateState from the DB (state + messages) for a single gate decision."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_int_state(key: str, raw: str | None) -> int | None:
-    """int(raw) с дефолтом None; мусор в значении -> WARNING в лог, не падать."""
+    """int(raw) with a None default; garbage in the value -> WARNING in the log, no crash."""
     if raw is None:
         return None
     try:
@@ -69,10 +69,10 @@ async def load_gate_state(db: Database, cfg: Config, msg: GateMessage, now: int)
     hot_ambient_count_raw = await db.get_state("hot_ambient_count")
     hot_ambient_count = _parse_int_state_default_zero("hot_ambient_count", hot_ambient_count_raw)
 
-    # Потолок присутствия (CLAUDE.md, "меньше и разнообразнее") считается не по
-    # state-счётчику, а прямо по таблицам: сообщения людей и реплики бота с локальной
-    # полуночи. Так потолок переживает любые ручные правки state и сразу учитывает
-    # /life, /say и всё, что записалось мимо счётчиков ambient/mention.
+    # The presence cap is computed straight from the tables rather than from a state
+    # counter: human messages and bot replies since local midnight. That way the cap
+    # survives manual state edits and immediately counts /life, /say and anything
+    # written bypassing the ambient/mention counters.
     midnight = day_start(now, tz)
     human_messages_today = await db.count_messages_today(msg.chat_id, midnight)
     bot_replies_today = await db.count_bot_replies_today(midnight)
