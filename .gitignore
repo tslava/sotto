@@ -9,7 +9,8 @@ __pycache__/
 .ruff_cache/
 .idea/
 
-# Свои словари словечек (/words) живут в БД бота, не в репо; пример — vocab.example.yaml
+# Your own word dictionaries (/words) live in the bot's database, not in the repo;
+# an example is personas/demo/vocab.example.yaml
 vocab*.yaml
 !vocab.example.yaml
 

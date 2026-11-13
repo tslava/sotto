@@ -1,214 +1,148 @@
 # Changelog
 
-Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [SemVer](https://semver.org/lang/ru/),
-мажор 0 пока персонаж в обкатке: минор за фичу, патч за правку поведения и багфиксы.
-У каждой версии два блока. **Для чата** — три-пять строк по-русски без технических слов, их владелец
-публикует в чат сам (`/changelog` в личке отдаёт этот блок). **Для владельца** — что поменялось в конфиге,
-командах и промпте, со ссылками на PR. Раздел `Unreleased` пополняется каждым PR, который меняет поведение.
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
+While the major version is 0: minor for a feature, patch for behaviour tweaks and bug fixes.
+This file is the engine changelog (config keys, commands, prompts, internals) and is what
+`/changelog owner` shows. Chat-facing release notes live in each persona pack's `chat_notes.md`.
 
 ## [Unreleased]
 
-### Для чата
+### Notes
 
-- Снаружи ничего не меняется.
+- Persona packs: everything persona-specific (`config.yaml`, `few_shot.yaml`, `stickers.yaml`, `places_manual.yaml`, `prompts/`, `pack.yaml`) lives in the directory named by `PERSONA_DIR`. Config layering: engine defaults, then the pack's `config.yaml`, then runtime overrides. `python -m sotto.packcheck <dir> [--boot] [--db bot.db --seed-dry-run] [--locale-parity]` validates a pack.
+- Fragments: engine wording that goes into model prompts or the DB (situations, block headers, placeholders such as `[photo]`/`[sticker #N]`/"Participant N", weather line pieces, vocab text, `places_fill`/`stickers_fill` prompts) moved from code to the pack's `fragments.yaml` (schema `fragments.FRAGMENT_SPEC`; a pack with a missing or broken file does not start).
+- Language modules: `sotto.lang` (ru/en) holds the language-dependent matching (name declension, vocab stemming, text rules); a pack selects its language in `pack.yaml`.
+- Owner-UI catalog: everything the bot writes to the owner in DMs (`/help`, `/status`, command replies, provider alerts, errors) comes from `locales/<code>/*.yaml`; a pack may ship its own `locale/<code>/`, missing keys fall back to English. Config key descriptions (`/get <key>`) are English in the engine.
+- Neutral engine defaults: persona-bound defaults (birth year and district, places search queries and geocoder language, vocab markers, reaction descriptions) are no longer in the engine; packs set them explicitly in `config.yaml`.
+- English demo persona in `personas/demo` (enabled with `ALLOW_DEMO_PERSONA=true` when no `PERSONA_DIR` is set); the process refuses to start without either.
+- Golden harness in `tools/golden`: compares assembled prompts and outputs for a pack before and after engine changes.
+- The `CONFIG_PATH`, `FEW_SHOT_PATH`, `PROMPT_PATH`, `*_PROMPT_PATH`, `STICKERS_PATH` and `CHANGELOG_PATH` variables are no longer read (one startup WARNING if set); `replay` gained `--persona`, `places_fill` and `stickers_fill` take paths from the pack.
+- Tests, docs and code comments are now English; the package was renamed `trolobot` -> `sotto`.
+- `/changelog` reads chat notes from the pack's `chat_notes.md` (`tools/split_changelog.py` builds one from an old-style changelog); `/changelog owner` shows this file.
 
-### Для владельца
+## [0.9.1] - 2026-11-05
 
-- Персона вынесена в пакет: `config.yaml`, `few_shot.yaml`, `stickers.yaml`, `places_manual.yaml`, `prompts/` и `pack.yaml` лежат в каталоге, который задаёт `PERSONA_DIR` (в репозитории пока `personas/_legacy_ru`). Без `PERSONA_DIR` процесс не стартует; `ALLOW_DEMO_PERSONA=true` разрешает демо-персону. `python -m sotto.packcheck <каталог> [--boot] [--db bot.db --seed-dry-run]` проверяет пакет, сборку процесса и то, что рестарт не заведёт новую версию промпта.
-- Тексты, которые движок подставляет в промпты моделей и пишет в БД (ситуации, заголовки блоков, плейсхолдеры `[фото]`/`[стикер #N]`/«Участник N», кусочки строки погоды, словечки, промпты `places_fill` и `stickers_fill`), переехали из кода в `fragments.yaml` пакета (70 ключей, схема `fragments.FRAGMENT_SPEC`; пакет без файла или с кривым файлом не стартует, `packcheck` называет ключи). Результат для `_legacy_ru` и реальной персоны тот же: golden-сравнение без отличий. `tools/extract_fragments.py` создаёт файл из исходников до этого PR.
-- Из кода в `config.yaml` пакета переехали язык и «домашняя страна» геокодера (`behaviour.weather.geocode_language`, `home_country_codes`, `home_country_names`) и привязка Google Places (`places.search_center`, `region_code`, `language_code`, `default_district`, `district_aliases`, `quiet_keywords`, `outskirts_keywords`); дефолты в движке прежние, значения не меняются.
-- Всё, что бот пишет владельцу в личку (`/help`, `/status`, ответы команд, тревога о сбое провайдера, ошибки), переехало из кода в каталог: английский `locales/en/*.yaml` в движке, свой `locale/<код>/` в пакете по желанию (чего нет, берётся из английского). `personas/_legacy_ru/locale/ru/` — прежние русские литералы дословно, для проверки golden. `/changelog` берёт блок для чата из `chat_notes.md` пакета (`tools/split_changelog.py` делает его из `CHANGELOG.md`), без файла — как раньше. `packcheck --locale-parity` сверяет каталог пакета с английским.
-- Переменные `CONFIG_PATH`, `FEW_SHOT_PATH`, `PROMPT_PATH`, `*_PROMPT_PATH`, `STICKERS_PATH`, `CHANGELOG_PATH` больше не читаются: если заданы, на старте один WARNING, значение игнорируется. `replay` получил `--persona`, `places_fill` и `stickers_fill` берут конфиг и пути по умолчанию из пакета.
-- Описания ключей конфига (`/get <ключ>`) в движке теперь английские (`Field(description=...)`); русские тексты пака лежат в `locale/ru/config_keys.yaml` (сгенерирован из прежних описаний, `/get` отвечает тем же). Ошибки валидаторов конфига (`/set behaviour.quiet_window ...`) идут через каталог (`validation.yaml`). Дефолты движка, привязанные к персонажу (год рождения и район, запросы и привязка поиска заведений, язык геокодера и домашняя страна, маркеры словечек, описания реакций), стали нейтральными: пак задаёт их в `config.yaml` явно (`tools/extract_filter_defaults.py` дописывает недостающие). Подстановки `/ex add` без сообщения-повода переехали в `fragments.yaml` (`placeholders.ex_add_name`, `placeholders.ex_add_user`); `packcheck` требует, чтобы `ship` покрывал все обязательные файлы пака.
+### Notes
 
-## [0.9.1] — 2026-11-05
+- Vocab words: over the previous three weeks the chat saw none. The mechanism worked, but the "use one if it fits" hint was never followed by the model (0 of 8 on a replay of past cases). Now, when the dice roll hits (`behaviour.vocab.probability` 0.15, daily cap `daily_cap` 2 and `recent_window` 10 replies pause unchanged), the prompt says "use one of these words in this reply", pick the fitting one and do not change the thought for it. `behaviour.vocab.offer_size` 3 -> 8: with three random words the model forced an unfitting one. Replay of the same 8 cases, two runs each: a word used in 12 of 16, in the rest the model found nothing fitting (#28).
+- Vocab matching: nouns ending in "-mya" decline from the "-en" stem, so they no longer collide with similar shorter words (#28).
 
-### Для чата
+## [0.9.0] - 2026-11-05
 
-- Фёдор наконец начал вставлять свои дворовые словечки. Редко, не чаще пары раз в день, и только к месту.
+### Notes
 
-### Для владельца
+- Reactions: `behaviour.reactions.emoji` is now a dict "emoji: when appropriate"; the description goes to the reaction-choosing model. Default palette: 🤣 😁 👍 💩 🔥 👏 🍾. The old list form (`/set behaviour.reactions.emoji [👍, 🤣]`) is still accepted, without descriptions. One emoji at most `behaviour.reactions.max_repeat` (2) times in a row, after that it is removed from the choice (asking in the prompt was ignored by the model). `prompts/reaction.txt` rewritten for the palette, an ordinary on-topic message gets null. Motivation: in a 10-day window 21 of 29 reactions were 🤣 and 8 were 👍. Replay on the same 150 cases: 22 reactions, 😁 14, 🤣 4, 🔥 2, 👍 2 (#27).
+- Provider refusal alerts: an OpenRouter refusal (4xx except 408 and 429: out of credits, key rejected, model not found) sends the owner a DM with the code, model, provider message and what to do. At most once per `llm.alert_interval_hours` (24) per status code; disable with `llm.alert_owner: false`. Motivation: a 402 went unnoticed for four days because cheap models kept succeeding and resetting the error streak. Sending is a background task, chat replies do not wait for it; a failed send retries in an hour. The API key and auth tokens are redacted from the alert and from logs (#27).
+- `/status`: the circuit-breaker line shows "last provider refusal: 402 at HH:MM dd.mm" or "none in 24h" (#27).
 
-- Словечки: за 17.10–05.11 в чате не прозвучало ни одного. Механика работала, но предложение «можешь, только если само ложится» модель не исполняла никогда: замер на 8 прошлых случаях — 0 из 8. Теперь, когда выпал кубик (`behaviour.vocab.probability` 0.15, потолок `daily_cap` 2 в сутки и пауза `recent_window` 10 реплик — без изменений), промпт говорит «в этой реплике употреби одно из этих словечек», выбрать подходящее и не менять ради него мысль. `behaviour.vocab.offer_size` 3 → 8: с тремя случайными словами модель притягивала неподходящее. Замер на тех же 8 случаях, по два прогона: словечко в 12 из 16, в остальных модель не нашла подходящего (#28).
-- Поиск словечек: «кремя» больше не путается с «крем» — слова на «-мя» склоняются от основы на «-ен» (кремени, кременем) (#28).
+## [0.8.1] - 2026-10-18
 
-## [0.9.0] — 2026-11-05
+### Notes
 
-### Для чата
+- A request inside an addressed message (the dictionary name, or `behaviour.vocab.request_markers`) puts `request_size` (5) words into the prompt without the dice, daily cap or pause; the filter lets them through (#26).
+- "Didn't get it", "what does it mean" (`vocab.explain_markers`) within `explain_window_min` (30) minutes after a reply containing a vocab word passes the gate as a followup (`followup:vocab_explain` in `/why`); the meanings of that reply's words go first in the prompt, and the filter does not cut an explanation containing them. A reply to another person, or "didn't get it" after more than `explain_max_between` (2) other messages, is not treated as a question to the bot (#26).
 
-- Реакции у Фёдора стали разнообразнее: кроме 🤣 и 👍 он может улыбнуться 😁, оценить 🔥, похвалить 👏 или поздравить 🍾. Ставит по-прежнему редко и только к месту.
-- Если Фёдор замолчит из-за сбоя, владелец узнает об этом сразу, а не через несколько дней тишины.
+## [0.8.0] - 2026-10-18
 
-### Для владельца
+### Notes
 
-- Реакции: `behaviour.reactions.emoji` теперь словарь «эмодзи: когда уместно», описание уходит модели выбора реакции. По умолчанию 🤣 😁 👍 💩 🔥 👏 🍾. Прежний формат списком (`/set behaviour.reactions.emoji [👍, 🤣]`) по-прежнему принимается, без описаний. Одно эмодзи не больше `behaviour.reactions.max_repeat` (2) раз подряд — дальше его нет в выборе (просьбу в промпте модель не слушала). `prompts/reaction.txt` переписан под палитру, обычная реплика в тему — null. Повод: за 26.10–05.11 из 29 реакций 21 была 🤣, 8 — 👍, 💩 не ставилась с середины октября. Замер на тех же 150 случаях: 22 реакции, 😁 14, 🤣 4, 🔥 2, 👍 2 (#27).
+- `/ask <text>` in the owner DM: what the persona would answer if addressed in the chat. Same prompt with fresh chat context, same model, post-processing and output filter; nothing is sent to the chat and nothing is written to the DB (no `filter_log`, replies, counters, diary or vocab). The model call is real and counts toward the daily budget. The reply shows the text, or why it would stay silent, and what the filter flagged (#25).
+- Prompt assembly moved out of `Responder._generate_and_send` into `_build_prompt`, shared by live replies and the preview (#25).
 
-- Отказ OpenRouter (4xx, кроме 408 и 429: кончились кредиты, ключ не принят, модель не найдена) — бот пишет тебе в личку: код, модель, ответ провайдера и что делать. Не чаще раза в `llm.alert_interval_hours` (24) на код ответа, выключается `llm.alert_owner: false`. Повод: 22–26.10 OpenRouter отвечал 402, бот молчал четыре дня, а «ошибок подряд» в `/status` было 0 — дешёвые модели проходили и сбрасывали серию. Отправка — фоновая, ответы в чате её не ждут; не ушла — повтор через час. Ключ и токены авторизации из ответа провайдера вырезаются и в тревоге, и в логах (#27).
-- `/status`: в строке предохранителя — «последний отказ провайдера: 402 в 13:28 26.10» или «нет за сутки» (#27).
+## [0.7.0] - 2026-10-17
 
-## [0.8.1] — 2026-10-18
+### Notes
 
-### Для чата
+- Vocab dictionaries: upload a YAML file to the bot's DM with the caption `/words` (format in `vocab.example.yaml`); `/words`, `/words show|on|off|rm <name>`. Stored in the DB (table `vocab_dicts`, migration 6), not in the repo. The `{vocab}` slot in the system prompt carries the meanings of words that came up in conversation and, occasionally, 3 words to choose from. No new model calls.
+- The limit is enforced beyond the prompt hint: the output filter `dedup:vocab` cuts a reply with a vocab word if the daily cap is already reached or the word appeared in the last `recent_window` replies (except a word from the interlocutor's question). The model sees meanings of its own words only on direct address.
+- `behaviour.vocab.*`: `probability` 0.15, `daily_cap` 2, `recent_window` 10, `offer_size` 3, `meaning_context` 5, `max_meanings` 3. `/status`: a vocab line.
+- Prompt: the persona's biography gained a hometown detail; PromptStore creates a new prompt version by itself.
 
-- Попросите Фёдора сказать что-нибудь по-дворовому, и он скажет. А если после его словечка написать «не понял» или «что это значит», он объяснит, даже если не звать его по имени.
+## [0.6.2] - 2026-10-15
 
-### Для владельца
+### Notes
 
-- Просьба в обращении (имя словаря: «по-дворовому»; или `behaviour.vocab.request_markers`) — `request_size` (5) словечек в промпт без кубика, суточного потолка и паузы; фильтр их пропускает (#26).
-- «Не понял», «что это значит», «в смысле» (`vocab.explain_markers`) в течение `explain_window_min` (30) минут после его реплики со словечком — проходит гейт как followup (`followup:vocab_explain` в `/why`); в промпте значения его словечек первыми, объяснение с ними фильтр не режет. Не считается вопросом ему реплай на другого человека и «не понял» после того, как люди написали больше `explain_max_between` (2) сообщений (#26).
+- Reactions are chosen by `openai/gpt-6-luna` instead of `llm.judge_model` (`gpt-5.4-nano`): on 52 past cases nano put a laughing reaction on complaints, on a joking status and on a photo without a description. `reactions.max_tokens` 120 -> 600 (cap 200 -> 1000): Luna and Haiku think first, and at 120 tokens the JSON did not finish, at 400 only occasionally. Haiku 5.5 with reasoning produced no reaction in 52, without reasoning 5 (#23).
+- `prompts/reaction.txt`: "almost always null"; the laughing reaction only when the author is joking; always null on a complaint, failure, trouble, kids in earnest and the unclear (a photo without description, a link, a video). Removed the "cheap way to show presence" line (#23).
+- New slot `{reply_to}`: the message the author replied to, even if it is older than the `context_messages` window. If the reply target is not visible (purged, not yet recorded), the model gets "a reply to a message that is not visible" and declines instead of reading the reply as a standalone phrase (#23).
+- `"emoji": "null"` as a string is parsed as a refusal, not as an emoji outside the list (#23).
 
-## [0.8.0] — 2026-10-18
+## [0.6.1] - 2026-10-12
 
-### Для чата
+### Notes
 
-- Снаружи ничего не меняется: владелец теперь может проверить, что ответил бы Фёдор, не дёргая чат.
+- Ambient replies no longer get an empty situation: `prompt.SITUATION_AMBIENT` says respond to the last message, to the topic, or turn it, and do not start your own story (otherwise `speak=false`). Gate and probabilities unchanged (#22).
+- `few_shot.yaml`: talk about self only in answers to questions about the persona; answers to things said to someone else are rewritten as a reaction about the interlocutor; three such examples and one silence example added (21 instead of 17). After deploy PromptStore creates a new few-shot version (#22).
+- Diary: the `{diary}` slot header is neutral ("Your affairs today ... do not bring it up yourself"), `prompts/diary.txt` rejects memories, "usually happens" and exaggerations. Wrong old facts can be removed with `/diary rm N` (#22).
+- `/status` metric: "about self for 3 days: ambient X/Y, addressed X/Y, other X/Y"; markers are `filters.self_markers`. Cuts nothing (#22).
 
-### Для владельца
+## [0.6.0] - 2026-10-09
 
-- `/ask <текст>` в личке: что ответил бы Фёдор, если бы ты обратился к нему в чате. Тот же промпт со свежим контекстом чата, та же модель, пост-обработка и выходной фильтр; в чат ничего не уходит, в базу ничего не пишется (ни `filter_log`, ни реплик, ни счётчиков, дневника и словечек). Вызов модели настоящий и идёт в дневной бюджет. Ответ показывает реплику, или почему промолчал бы, и что отметил фильтр (#25).
-- Сборка промпта вынесена из `Responder._generate_and_send` в `_build_prompt` — общая для живого ответа и предпросмотра (#25).
+### Notes
 
-## [0.7.0] — 2026-10-17
+- Reactions: `reactions.max_tokens` 40 -> 120 (the model answer was truncated, 163 of 262 answers did not parse); default `emoji` `["👍", "💩", "🤣"]` because 😂 is not in Telegram's reaction set (`REACTION_INVALID`). `reactions.emoji` is now validated against `TELEGRAM_REACTIONS`, not `filters.allowed_emoji`; a broken model answer is visible in a WARNING (#21).
+- Replies and `@` mentions pass under the presence cap (`gate.PRESENCE_EXEMPT`); name address does not (#21).
+- `topic_cooldown` is checked only for ambient: direct addresses see it neither in the gate nor in recheck. A stop-topic message is still `gate:topic`; the stop list is unchanged (#21).
+- A direct address hitting `llm:http`/`llm:timeout` is postponed once by 2-5 minutes (`send:llm_retry`) instead of going silent (#21).
+- Motif `factory` added to `filters.motifs`; the prompt gained a "do not steer the talk to yourself" line; the checkin prefilter uses the same criteria as the main model (16 of 16 "yes" over two weeks ended in silence from the main model) (#21).
+- Daily diary: `behaviour.diary.*`, table `self_facts` (migration 4), a cheap model extracts a fact about the persona from every text reply (counter `diary_calls`), slot `{diary}` after `{life}`, `/diary [rm N]`, a `/status` line, `DIARY_PROMPT_PATH` (#21).
+- Chat jokes and callbacks: `behaviour.jokes.*`, `behaviour.callback.*`, tables `chat_jokes`/`people_threads` (migration 5), two extra calls in the weekly summary (`prompts/memory_jokes.txt`, `prompts/memory_threads.txt`), slot `{jokes}` after `{chat_memory}`, trigger `callback` (`send:callback`), `/jokes [rm N]`, `/people [rm N]`, a `/status` line. Notes about people are kept up to `callback.max_age_days`; muted users are excluded (#21).
+- Long-memory safety: diary facts, jokes and threads that trip `injection`/`model_talk`/assistant markers are not saved (`Patterns.unsafe_note`); a thread is not attached to a namesake; a new address is not collapsed into a pending item whose generation is already running (previously this could double-reply) (#21).
+- Silence thresholds relaxed after reviewing two quiet days (1 reply per 68 messages): `live_talk.min_messages` 3 -> 2, `live_talk.window_min` 10 -> 20, `ambient_probability` 0.15 -> 0.25, `stickers.min_replies_between` 4 -> 2; `gate:not_live` added to `REACT_REASONS` (the most common refusal reason, 54 of 68, previously gave not even a reaction); the reaction prompt no longer says "in most cases no" (the model refused 4 of 4). The presence cap (15% + 2) is unchanged and stays as a safety net (#21).
+- Delayed, meaningful reactions: `behaviour.reactions.delay_sec` (20-120 s), `semantic: true` (a cheap model picks the emoji instead of the dice), `model` (empty -> `llm.judge_model`), `max_tokens`, `semantic_daily_cap` (40, counter `reaction_calls`), `context_messages` (6); default `emoji` `["👍", "💩", "😂"]` (#16).
+- `probability` only applies with `semantic: false` (the old behaviour); prompt `prompts/reaction.txt`, path `REACTION_PROMPT_PATH` (#16).
+- `filter_log` gained `react:recheck` (conditions diverged during the pause) and `react:declined` (the model said no); `/status` shows `semantic calls <N>/<cap>` (#16).
+- `behaviour.hot_window.minutes` defaults to 10 (was 30) (#15).
+- Weather as background in the system prompt: slot `{weather}` (after `{chat_memory}`, before `{life}`), source Open-Meteo (public API, no key), settings `behaviour.weather.*` (`enabled`, `ttl_min`, `timeout_sec`). Home coordinates live only in `.env`: `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, `WEATHER_HOME_NAME` (the repo is public, `config.yaml` has none); if unset there is no weather block and a startup WARNING.
+- Weather for a place named in the question: `behaviour.weather.place_lookup`/`lookup_model` (empty -> `llm.judge_model`)/`lookup_max_tokens`/`lookup_daily_cap` (counter `weather_calls`)/`geocode_ttl_days`, trigger regexes `filters.weather_request`, prompt `prompts/weather_place.txt` (path `WEATHER_PLACE_PROMPT_PATH`), Open-Meteo geocoder. Called only on a direct address; `/why` shows `weather:place`, `weather:no_place`, `weather:not_found`. `/status` shows a weather line with the update time.
+- Name in cases: new module `morph.py` (`name_pattern`/`name_forms`); `patterns.name_trigger` compiles each trigger from `persona.name_triggers` into all singular cases using a closed list of endings, while false positives (words that merely start with the same letters) still do not match. The letter "yo" is not normalised in code: forms are built for both spellings separately (#19).
+- A name address is confirmed by a cheap model: `behaviour.followup.name_check` (true), `behaviour.followup.name_check_max_tokens` (60), prompt `prompts/name_check.txt` (path `NAME_CHECK_PROMPT_PATH`), `FollowupChecker.check_name`. Uses the same `followup_calls` counter and the same `followup.daily_cap`; if the check cannot run (no model, `LLMError`, not JSON) the message counts as an address and gets a reply. A reply to the bot and `@username` are never checked by the model (#19).
+- `/why` shows `followup:name_yes` and `followup:name_no`; `followup:name_no` is in `reactions.REACT_REASONS`, so a reaction is possible instead of a reply (#19).
+- Cheap prefilter before "come back to check": `behaviour.checkin.prefilter`/`prefilter_max_tokens`, `FollowupChecker.check_batch`, prompt `prompts/checkin_prefilter.txt`; `send:checkin_prefilter_no`/`send:checkin_prefilter_yes` in `/why`. Saves main-model calls when nobody wrote anything addressed since the last reply (#17).
 
-### Для чата
+## [0.5.0] - 2026-09-16
 
-- У Фёдора иногда проскакивают дворовые словечки: он, оказывается, вырос в научном городке. Нечасто и к месту, а если спросить, что значит, объяснит.
+### Notes
 
-### Для владельца
+- Presence cap `behaviour.presence` (15% of human messages + 2 free), `gate:presence_cap`, `send:presence_cap`; `/status` shows `presence` (#12).
+- Pause `behaviour.min_gap_sec` (300); the hot window opens only after `/life` and `/say` (`hot_window.open_on_any_reply: false`) (#12).
+- "Come back to check" waits for quiet (`checkin.quiet_min` 10) and re-verifies addressing with a cheap model (#12).
+- `filters.enforce_stages: [dedup, style]`: these stages cut even with `shadow: true` (#12).
+- Props and stories: `filters.motifs`, slot `{avoid}` in the prompt, `dedup:motif`, `style:story_quota`; prompt v10, few-shot v6 (#12).
+- `/status`: an expired stop is shown as "none" (#13).
+- `/changelog [owner|<version>]` in the DM, version in `/status`, `CHANGELOG.md` and SemVer tags (#14).
 
-- Словари словечек: YAML-файл боту в личку с подписью `/words` (формат — `vocab.example.yaml`), `/words`, `/words show|on|off|rm <имя>`. Хранятся в БД (таблица `vocab_dicts`, миграция 6), не в репозитории. Слот `{vocab}` в системном промпте: значение словечек, мелькнувших в разговоре, и изредка 3 слова на выбор. Новых вызовов модели нет.
-- Лимит держит не только подсказка: выходной фильтр `dedup:vocab` режет реплику со словечком, если за сутки их уже `daily_cap` или словечко звучало в последних `recent_window` репликах (кроме словечка из вопроса собеседника). Значения своих словечек модель видит только при обращении.
-- `behaviour.vocab.*`: `probability` 0.15, `daily_cap` 2, `recent_window` 10, `offer_size` 3, `meaning_context` 5, `max_meanings` 3. `/status`: строка «словечки».
-- Промпт: персонаж вырос в научном городке (там же институт и НИИ). PromptStore заведёт новую версию промпта сам.
+## [0.4.0] - 2026-09-15
 
-## [0.6.2] — 2026-10-15
+### Notes
 
-### Для чата
+- `/life <text>`: news goes to the chat at once and into memory for good, slot `{life}`; `/life list | rm | post`; `/say <text>` verbatim (#10).
+- Attention rhythm: hot window `behaviour.hot_window`, cheap "is this for me?" check `behaviour.followup`, return visit `behaviour.checkin`; `Trigger.FOLLOWUP`, triggers `life`, `say`, `checkin` (#10).
+- Long chat memory `behaviour.chat_memory`: weekly summaries, slot `{chat_memory}`, `/memory list | rm | run` (#11).
+- Photo vision `behaviour.vision`: the description goes into `messages.text` as `[photo: ...]`, own cap `vision_calls` (#11).
+- `LLMClient.call` gained `counter_key`/`calls_cap`; DB migrations up to `user_version` 3 (#10, #11).
 
-- Фёдор ставит реакции реже и к месту: смеётся, только когда правда шутят, и не смеётся, когда кто-то жалуется или рассказывает про беду. Если не понял, о чём речь, просто читает дальше.
+## [0.3.0] - 2026-09-14
 
-### Для владельца
+### Notes
 
-- Реакции выбирает `openai/gpt-6-luna` вместо `llm.judge_model` (`gpt-5.4-nano`): на 52 прошлых случаях nano ставила 🤣 на жалобы («снова двойка, за что»), на «А я на подработке 🌚» и на фото без описания. `reactions.max_tokens` 120 → 600 (потолок 200 → 1000): Luna и Haiku сначала думают, и на 120 токенах JSON не дописывался, на 400 — изредка. Haiku 5.5 с размышлением не поставила ни одной реакции из 52, без размышления — 5 (#23).
-- `prompts/reaction.txt`: «почти всегда null»; 🤣 — только когда автор шутит; всегда null на жалобу, неудачу, беду, детей всерьёз и непонятное (фото без описания, ссылка, видео). Убрано «дешёвый способ показать, что он рядом» (#23).
-- Новый слот `{reply_to}`: сообщение, на которое ответил автор, даже если оно старше окна `context_messages`. Если цели реплая не видно (вычищена, ещё не записана), модель получает «ответ на сообщение, которого не видно» и отказывается, а не читает реплай как самостоятельную фразу (#23).
-- `"emoji": "null"` строкой разбирается как отказ, а не как эмодзи вне списка (#23).
+- Stickers: a second call to a cheap model, catalog `stickers.yaml`, `stickers_fill.py`, `behaviour.stickers` (#7).
+- Post-processing `postprocess.py`: typographic dashes -> hyphen, frequent emoji removed before the filter; `style:emoji_position` removed; prompt v7 (#8).
+- `/get <key>` shows a card with description, type and range from `Field(description)`; `/help`; chat commands in the help text (#9).
 
-## [0.6.1] — 2026-10-12
+## [0.2.0] - 2026-09-12
 
-### Для чата
+### Notes
 
-- Фёдор меньше рассказывает про себя. Когда влезает в разговор сам, отвечает про то, о чём вы говорите: подколет, удивится или спросит. Про НИИ, внука и огурцы — когда спросите.
+- Persona: a biography canon, humour and playing along, few-shot rewritten (#1, #3, #5).
+- Emoji reactions on a dice-based filter cut, `behaviour.reactions` (#6).
+- `/resume` resets the LLM circuit breaker; a runbook for the OpenRouter limit (#4). The image has no uv at runtime (#2).
 
-### Для владельца
+## [0.1.0] - 2026-09-10
 
-- Ambient больше не идёт с пустой ситуацией: `prompt.SITUATION_AMBIENT` — отозваться на последнее, на тему или повернуть её, свой случай не начинать (иначе `speak=false`). Гейт и вероятности не менялись (#22).
-- `few_shot.yaml`: про себя — только в ответах на вопросы про него; ответы на сказанное не ему переписаны на реакцию про собеседника, добавлены три таких примера и один пример молчания (21 вместо 17). После деплоя PromptStore заведёт новую версию few-shot (#22).
-- Дневник: заголовок слота `{diary}` нейтральный («Твои дела сегодня… сам об этом не заговаривай»), `prompts/diary.txt` отсекает воспоминания, «обычно бывает» и преувеличения. Старые неверные факты можно убрать `/diary rm N` (#22).
-- Метрика `/status`: «о себе за 3 сут: ambient X/Y, обращения X/Y, прочее X/Y», маркеры — `filters.self_markers`. Ничего не режет (#22).
+### Notes
 
-## [0.6.0] — 2026-10-09
-
-### Для чата
-
-- Фёдор знает погоду: что за окном, что днём и что завтра, можно спросить и про другой город.
-- Слышит своё имя в любом падеже, а если о нём просто говорят мимоходом, не влезает. Позовёте через @ — ответит, даже если за день уже наговорился.
-- Снова ставит реакции 👍, 💩 и 🤣, не мгновенно, а прочитав, и только к месту.
-- Помнит, что сам сегодня о себе рассказывал, и не противоречит себе. Меньше про завод и меньше «а вот у меня».
-- Запоминает шутки и словечки чата и иногда возвращает их к месту, а через несколько дней может спросить, чем кончилась ваша история.
-
-### Для владельца
-
-- Реакции: `reactions.max_tokens` 40 → 120 (ответ модели обрезался, 163 из 262 ответов не разбирались), `emoji` по умолчанию `["👍", "💩", "🤣"]` — 😂 не входит в набор реакций Telegram (`REACTION_INVALID`). Валидация `reactions.emoji` теперь по `TELEGRAM_REACTIONS`, а не по `filters.allowed_emoji`; битый ответ модели виден в WARNING (#21).
-- Под потолком присутствия проходят реплай и `@` (`gate.PRESENCE_EXEMPT`); имя — нет (#21).
-- `topic_cooldown` проверяется только для ambient: обращения его не видят ни в гейте, ни в recheck. Сообщение со стоп-темой по-прежнему `gate:topic`, стоп-лист не менялся (#21).
-- Обращение при `llm:http`/`llm:timeout` один раз переносится на 2–5 минут (`send:llm_retry`) вместо молчания (#21).
-- Мотив `завод` в `filters.motifs`; в промпте строка «не своди разговор к себе»; предфильтр checkin — те же критерии, что у основной модели (16 из 16 «да» за две недели заканчивались молчанием Opus) (#21).
-- Дневник дня: `behaviour.diary.*`, таблица `self_facts` (миграция 4), дешёвая модель достаёт факт о себе из каждой текстовой реплики (счётчик `diary_calls`), слот `{diary}` после `{life}`, `/diary [rm N]`, строка в `/status`, `DIARY_PROMPT_PATH` (#21).
-- Шутки чата и «ну как там?»: `behaviour.jokes.*`, `behaviour.callback.*`, таблицы `chat_jokes`/`people_threads` (миграция 5), два доп. вызова в недельном пересказе (`prompts/memory_jokes.txt`, `prompts/memory_threads.txt`), слот `{jokes}` после `{chat_memory}`, триггер `callback` (`send:callback`), `/jokes [rm N]`, `/people [rm N]`, строка в `/status`. Заметки о людях хранятся до `callback.max_age_days`, замьюченные не попадают (#21).
-- Защита долгой памяти: факты дневника, шутки и истории, в которых срабатывают `injection`/`model_talk`/маркеры ассистента, не сохраняются (`Patterns.unsafe_note`); история не привязывается к тёзке; новое обращение не схлопывается в pending, по которому уже идёт генерация (раньше это могло дать двойной ответ) (#21).
-- Ослаблены пороги молчания после разбора двух тихих суток (1 реплика на 68 сообщений): `live_talk.min_messages` 3 → 2, `live_talk.window_min` 10 → 20, `ambient_probability` 0.15 → 0.25, `stickers.min_replies_between` 4 → 2; `gate:not_live` добавлена в `REACT_REASONS` (самая частая причина отказа, 54 из 68, раньше не давала даже реакции); промпт реакций больше не говорит «в большинстве случаев нет» (модель отказывала 4 раза из 4). Потолок присутствия (15% + 2) не менялся и остаётся страховкой (#21).
-- Реакции с задержкой и смыслом: `behaviour.reactions.delay_sec` (20–120 с), `semantic: true` (выбор эмодзи дешёвой моделью вместо кубика), `model` (пусто → `llm.judge_model`), `max_tokens`, `semantic_daily_cap` (40, счётчик `reaction_calls`), `context_messages` (6); дефолт `emoji` — `["👍", "💩", "😂"]` (#16).
-- `probability` работает только при `semantic: false` (прежнее поведение); промпт `prompts/reaction.txt`, путь — `REACTION_PROMPT_PATH` (#16).
-- `filter_log` пополнился `react:recheck` (условия разошлись за время паузы) и `react:declined` (модель сказала «не нужно»); `/status` показывает `semantic calls <N>/<cap>` (#16).
-- `behaviour.hot_window.minutes` по умолчанию 10 (было 30) (#15).
-- Погода фоном в системном промпте: слот `{weather}` (после `{chat_memory}`, перед `{life}`), источник Open-Meteo (публичный API, ключа не нужно), настройки `behaviour.weather.*` (`enabled`, `ttl_min`, `timeout_sec`). Координаты домашней точки — только в `.env`: `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, `WEATHER_HOME_NAME` (репозиторий публичный, в `config.yaml` их нет); не заданы — блока погоды нет и на старте WARNING.
-- Погода по месту из вопроса: `behaviour.weather.place_lookup`/`lookup_model` (пусто → `llm.judge_model`)/`lookup_max_tokens`/`lookup_daily_cap` (счётчик `weather_calls`)/`geocode_ttl_days`, регулярки повода `filters.weather_request`, промпт `prompts/weather_place.txt` (путь — `WEATHER_PLACE_PROMPT_PATH`), геокодер Open-Meteo. Вызов только на прямое обращение; в `/why` — `weather:place`, `weather:no_place`, `weather:not_found`. `/status` показывает строку «погода: …, обновлена HH:MM».
-- Имя в падежах: новый модуль `morph.py` (`name_pattern`/`name_forms`), `patterns.name_trigger` компилирует каждый триггер из `persona.name_triggers` во все падежи единственного числа закрытым списком окончаний («Федора», «Фёдору», «Феде», «отца», «дедом», «батюшки»), ложные срабатывания («федерация», «дедлайн», «Федяев», «отечество», «батюшкам») по-прежнему не матчатся. Буква «ё» в коде не нормализуется — формы строятся для «фёдор» и «федор» отдельно (#19).
-- Обращение по имени подтверждает дешёвая модель: `behaviour.followup.name_check` (true), `behaviour.followup.name_check_max_tokens` (60), промпт `prompts/name_check.txt` (путь — `NAME_CHECK_PROMPT_PATH`), `FollowupChecker.check_name`. Считается тем же счётчиком `followup_calls` и тем же потолком `followup.daily_cap`; не смогли проверить (нет модели, `LLMError`, не JSON) — считаем обращением и отвечаем. Реплай на бота и `@username` модель не проверяет никогда (#19).
-- В `/why` — `followup:name_yes` и `followup:name_no`; `followup:name_no` добавлена в `reactions.REACT_REASONS`, так что вместо ответа возможна реакция (#19).
-- Дешёвый предфильтр перед «вернулся проверить»: `behaviour.checkin.prefilter`/`prefilter_max_tokens`, `FollowupChecker.check_batch`, промпт `prompts/checkin_prefilter.txt`; `send:checkin_prefilter_no`/`send:checkin_prefilter_yes` в `/why`. Экономит вызовы основной модели, когда после последней реплики никто не написал ничего адресованного (#17).
-
-## [0.5.0] — 2026-09-16
-
-### Для чата
-
-- Фёдор стал говорить заметно реже: не больше примерно каждого седьмого сообщения от вас, плюс пара реплик в день сверх того. Между своими сообщениями держит паузу хотя бы пять минут.
-- Возвращается «проверить чат» только когда в нём тихо, и отвечает лишь на то, что явно ему.
-- Меньше повторяется: следит, чтобы не тянуть в каждый ответ жену, теплицу, гараж и девяностые, и байку рассказывает не в каждом ответе.
-- В чужие планы и поездки больше не напрашивается.
-
-### Для владельца
-
-- Потолок присутствия `behaviour.presence` (15% от сообщений людей + 2 свободных), `gate:presence_cap`, `send:presence_cap`; `/status` показывает `presence` (#12).
-- Пауза `behaviour.min_gap_sec` (300); горячее окно только после `/life` и `/say` (`hot_window.open_on_any_reply: false`) (#12).
-- «Вернулся проверить» ждёт тишины `checkin.quiet_min` (10) и перепроверяет адресность дешёвой моделью (#12).
-- `filters.enforce_stages: [dedup, style]` — эти стадии режут даже при `shadow: true` (#12).
-- Реквизит и байки: `filters.motifs`, слот `{avoid}` в промпте, `dedup:motif`, `style:story_quota`; промпт v10, few-shot v6 (#12).
-- `/status`: истёкший стоп показывается как «нет» (#13).
-- `/changelog [owner|<версия>]` в личке, версия в `/status`, `CHANGELOG.md` и SemVer-теги (#14).
-
-## [0.4.0] — 2026-09-15
-
-### Для чата
-
-- Фёдор видит фото: описывает себе снимок и может на него отреагировать.
-- Помнит, о чём вы говорили в прошлые недели, а не только последние полчаса.
-- Иногда сам рассказывает новости из своей жизни.
-
-### Для владельца
-
-- `/life <текст>`: новость сразу в чат и в память навсегда, слот `{life}`; `/life list | rm | post`; `/say <текст>` дословно (#10).
-- Ритм внимания: горячее окно `behaviour.hot_window`, дешёвая проверка «это мне?» `behaviour.followup`, возвращение `behaviour.checkin`; `Trigger.FOLLOWUP`, триггеры `life`, `say`, `checkin` (#10).
-- Долгая память чата `behaviour.chat_memory`: недельные пересказы, слот `{chat_memory}`, `/memory list | rm | run` (#11).
-- Зрение на фото `behaviour.vision`: описание в `messages.text` как `[фото: …]`, свой потолок `vision_calls` (#11).
-- `LLMClient.call` получил `counter_key`/`calls_cap`; миграции БД до `user_version` 3 (#10, #11).
-
-## [0.3.0] — 2026-09-14
-
-### Для чата
-
-- Фёдор иногда отвечает стикером вместо текста, не чаще раза в день.
-- Эмодзи ставит к месту, а не в конец каждой фразы; длинные тире из его речи исчезли.
-
-### Для владельца
-
-- Стикеры: второй вызов дешёвой моделью, каталог `stickers.yaml`, `stickers_fill.py`, `behaviour.stickers` (#7).
-- Пост-обработка `postprocess.py`: тире → дефис, частое эмодзи убирается до фильтра; `style:emoji_position` удалён; промпт v7 (#8).
-- `/get <ключ>` — карточка с описанием, типом и диапазоном из `Field(description)`; `/help`; чатовые команды в справке (#9).
-
-## [0.2.0] — 2026-09-12
-
-### Для чата
-
-- Фёдор стал добродушнее: подыгрывает шуткам, не ворчит и не отмахивается.
-- Вместо молчания иногда ставит реакцию 👍 или 💩.
-
-### Для владельца
-
-- Персонаж: «участок» вместо działka, канон биографии, юмор и подыгрывание, few-shot переписан (#1, #3, #5).
-- Реакции-эмодзи на срез по кубику `behaviour.reactions` (#6).
-- `/resume` сбрасывает предохранитель LLM; RUNBOOK про лимит OpenRouter (#4). Образ без uv в рантайме (#2).
-
-## [0.1.0] — 2026-09-10
-
-### Для чата
-
-- В чате появился Отец Фёдор.
-
-### Для владельца
-
-- Этапы 1–7 плана: каркас и БД, гейт и реплей, генерация и отправка, выходной фильтр из трёх слоёв, заведения, управление из телеграма, эксплуатация. Деплой на Hetzner через GitHub Actions.
+- Plan stages 1-7: skeleton and DB, gate and replay, generation and sending, a three-layer output filter, venues, control from Telegram, operations. Deployed to a VPS through GitHub Actions.
 
 [Unreleased]: https://github.com/tslava/sotto/compare/v0.9.1...HEAD
 [0.9.1]: https://github.com/tslava/sotto/compare/v0.9.0...v0.9.1
@@ -219,8 +153,8 @@
 [0.6.2]: https://github.com/tslava/sotto/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/tslava/sotto/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/tslava/sotto/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/tslava/sotto/releases/tag/v0.5.0
+[0.5.0]: https://github.com/tslava/sotto/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/tslava/sotto/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/tslava/sotto/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tslava/sotto/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/tslava/sotto/commits/v0.1.0
+[0.1.0]: https://github.com/tslava/sotto/releases/tag/v0.1.0
