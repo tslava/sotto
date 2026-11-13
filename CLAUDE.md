@@ -2370,6 +2370,45 @@ class OwnerAlerter:
 #   или «нет за сутки».
 ```
 
+## Интерфейсы: пакет персоны
+
+Всё, что делает бота конкретным персонажем (конфиг, промпты, few-shot, стикеры, заведения, тексты
+для чата), лежит в каталоге-пакете, который выбирает `PERSONA_DIR`. Движок читает пакет один раз при
+старте; смена пакета — рестарт. Модуль-глобального «активного пакета» нет.
+
+```python
+# persona.py
+class PackError(ValueError)
+@dataclass(frozen=True) class Persona: root, manifest, config_path, few_shot_path, prompts: Mapping[str, str],
+    stickers_path, places_manual_path, chat_notes: str, legacy_changelog: str, frag: Fragments, lang: Language,
+    catalog: Catalog, revision: str                 # revision из <root>/.revision, иначе "dev"
+    def config_layers(self) -> list[Path]           # слои конфига снизу вверх; пока один config.yaml
+    def prompt_errors(self) -> list[str]            # слоты промптов против fragments.PROMPT_SLOTS
+def load_persona(path: Path) -> Persona             # структура пакета: pack.yaml (format: 1), config.yaml, few_shot.yaml,
+                                                    # prompts/<13 имён>.txt; PackError на любой изъян
+def resolve_persona_dir(persona_dir: Path | None, allow_demo: bool) -> Path   # нет PERSONA_DIR и нет ALLOW_DEMO_PERSONA -> PackError
+def persona_from_env() -> Persona                   # для CLI без BOT_TOKEN (replay, places_fill, stickers_fill)
+
+# config.py: load_config(layers: Path | Mapping | Sequence[Path | Mapping], overrides=None) — слои сливаются
+# вглубь, списки и скаляры верхнего слоя заменяют нижние; ConfigStore(persona, db), PromptStore(persona, db).
+# stores.py: PromptStore.plan_seed() -> SeedPlan(prompt|few_shot: "keep"|"seed", sha256, активные версии) —
+# то же решение, что load() выполняет; build_seed_plan/decide_seed — чистое ядро для packcheck.
+# app.py: load_startup_persona(settings) -> Persona (SystemExit при PackError, до БД и Telegram);
+# wiring.py: build_llm_stack(...) — вся проводка LLM-компонентов, общая для app.main и packcheck --boot.
+# Settings: persona_dir, allow_demo_persona; устаревшие *_path (DEPRECATED_PATH_FIELDS) игнорируются с WARNING.
+# Responder/OwnerAlerter/Deps получают необязательный persona=...; Patterns(..., lang=None).
+```
+
+`python -m sotto.packcheck DIR [--boot] [--db PATH --seed-dry-run [--allow-seed prompt|few_shot]]`:
+структура и слоты, конфиг, few-shot, стикеры, заведения; `--boot` собирает проводку процесса на временной БД
+без сети; `--seed-dry-run` открывает БД только на чтение и падает (код 3), если рестарт завёл бы новую
+версию промпта или few-shot. Коды выхода: 0 ок, 1 пакет неверен, 2 использование/БД, 3 сид. Печатает
+имена файлов и числа, не тексты пакета.
+
+Пока `Fragments` и `Catalog` — заглушки с итоговым API (пустые без `fragments.yaml` и `locale/`): тексты
+движка по-прежнему в коде, переезд в пакет — отдельный шаг. Временный пакет тестов — `personas/_legacy_ru`
+(`tests/packs.py`, фикстуры `tests/conftest.py`).
+
 ## Конвенции
 
 - Все времена — unix seconds (`int`), таймзона только при показе и при вычислении «суток»

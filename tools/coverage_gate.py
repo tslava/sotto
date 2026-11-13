@@ -34,6 +34,7 @@ NEW_MODULES: tuple[str, ...] = (
     "src/sotto/fragments.py",
     "src/sotto/i18n.py",
     "src/sotto/packcheck.py",
+    "src/sotto/wiring.py",
     "src/sotto/lang/__init__.py",
     "src/sotto/lang/base.py",
     "src/sotto/lang/en.py",

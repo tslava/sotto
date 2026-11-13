@@ -8,6 +8,15 @@
 
 ## [Unreleased]
 
+### Для чата
+
+- Снаружи ничего не меняется.
+
+### Для владельца
+
+- Персона вынесена в пакет: `config.yaml`, `few_shot.yaml`, `stickers.yaml`, `places_manual.yaml`, `prompts/` и `pack.yaml` лежат в каталоге, который задаёт `PERSONA_DIR` (в репозитории пока `personas/_legacy_ru`). Без `PERSONA_DIR` процесс не стартует; `ALLOW_DEMO_PERSONA=true` разрешает демо-персону. `python -m sotto.packcheck <каталог> [--boot] [--db bot.db --seed-dry-run]` проверяет пакет, сборку процесса и то, что рестарт не заведёт новую версию промпта.
+- Переменные `CONFIG_PATH`, `FEW_SHOT_PATH`, `PROMPT_PATH`, `*_PROMPT_PATH`, `STICKERS_PATH`, `CHANGELOG_PATH` больше не читаются: если заданы, на старте один WARNING, значение игнорируется. `replay` получил `--persona`, `places_fill` и `stickers_fill` берут конфиг и пути по умолчанию из пакета.
+
 ## [0.9.1] — 2026-11-05
 
 ### Для чата
