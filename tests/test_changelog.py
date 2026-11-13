@@ -1,4 +1,8 @@
-"""Парсинг CHANGELOG.md (CLAUDE.md, "Интерфейсы: версии и changelog")."""
+"""Parsing of CHANGELOG.md (the legacy Keep-a-Changelog format) and of a pack's chat_notes.md.
+
+The legacy format keys on Russian block headers ("### Для чата" / "### Для владельца"), so the
+fixtures below keep those headers literally (PR-8: changelog.py still parses them) while all the
+prose is English. The tests against the legacy pack's real CHANGELOG.md stay for tests/lang."""
 
 from __future__ import annotations
 
@@ -67,25 +71,26 @@ def test_latest_release_none_for_empty_text() -> None:
     assert latest_release("") is None
 
 
+# PR-8: the legacy parser still keys on the Russian block headers.
 def test_parse_changelog_accepts_em_dash_and_hyphen() -> None:
     text = (
         "## [Unreleased]\n\n"
         "### Для чата\n\n### Для владельца\n\n"
         "## [1.2.0] — 2026-01-02\n\n"
-        "### Для чата\n\nЕмдэш.\n\n### Для владельца\n\nЕмдэш-владелец.\n\n"
+        "### Для чата\n\nEm dash.\n\n### Для владельца\n\nEm dash owner.\n\n"
         "## [1.1.0] - 2026-01-01\n\n"
-        "### Для чата\n\nДефис.\n\n### Для владельца\n\nДефис-владелец.\n"
+        "### Для чата\n\nHyphen.\n\n### Для владельца\n\nHyphen owner.\n"
     )
 
     releases = parse_changelog(text)
 
     assert [r.version for r in releases] == ["1.2.0", "1.1.0"]
-    assert releases[0].for_chat == "Емдэш."
-    assert releases[1].for_chat == "Дефис."
+    assert releases[0].for_chat == "Em dash."
+    assert releases[1].for_chat == "Hyphen."
 
 
 def test_parse_changelog_release_missing_blocks_returns_empty_strings() -> None:
-    text = "## [1.0.0] — 2026-01-01\n\nБез разделов вовсе.\n"
+    text = "## [1.0.0] — 2026-01-01\n\nNo sections at all.\n"
 
     releases = parse_changelog(text)
 
@@ -95,31 +100,31 @@ def test_parse_changelog_release_missing_blocks_returns_empty_strings() -> None:
 def test_parse_changelog_strips_trailing_link_references() -> None:
     text = (
         "## [1.0.0] — 2026-01-01\n\n"
-        "### Для чата\n\nТекст.\n\n"
-        "### Для владельца\n\nОписание.\n\n"
+        "### Для чата\n\nText.\n\n"
+        "### Для владельца\n\nDescription.\n\n"
         "[1.0.0]: https://example.com/releases/tag/v1.0.0\n"
     )
 
     releases = parse_changelog(text)
 
-    assert releases[0].for_owner == "Описание."
+    assert releases[0].for_owner == "Description."
     assert "https://example.com" not in releases[0].for_owner
 
 
 def test_parse_changelog_ignores_unreleased_entirely() -> None:
     text = (
         "## [Unreleased]\n\n"
-        "### Для чата\n\nНе должно попасть в результат.\n\n"
-        "### Для владельца\n\nТоже не должно.\n\n"
+        "### Для чата\n\nMust not reach the result.\n\n"
+        "### Для владельца\n\nNeither must this.\n\n"
         "## [1.0.0] — 2026-01-01\n\n"
-        "### Для чата\n\nРелиз.\n\n### Для владельца\n\nРелиз-владелец.\n"
+        "### Для чата\n\nRelease.\n\n### Для владельца\n\nRelease owner.\n"
     )
 
     releases = parse_changelog(text)
 
     assert len(releases) == 1
     assert releases[0].version == "1.0.0"
-    assert "Не должно" not in releases[0].for_chat
+    assert "Must not" not in releases[0].for_chat
 
 
 NOTES = """## [1.2.0] - 2026-02-01

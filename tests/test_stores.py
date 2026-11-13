@@ -1,4 +1,4 @@
-"""ConfigStore и PromptStore (этап 6): горячий /set, валидация, версии промпта/few-shot."""
+"""ConfigStore and PromptStore: hot /set, validation, prompt and few-shot versions."""
 
 from __future__ import annotations
 
@@ -14,7 +14,11 @@ from sotto.db import Database
 from sotto.errors import OwnerError
 from sotto.persona import Persona, load_persona
 from sotto.stores import ConfigStore, PromptStore, build_seed_plan, decide_seed
-from tests.packs import LEGACY_PACK
+from tests.packs import DEMO_PACK, LEGACY_PACK
+
+
+def _demo() -> Persona:
+    return load_persona(DEMO_PACK)
 
 
 def _legacy() -> Persona:
@@ -30,7 +34,7 @@ def _with_system(persona: Persona, text: str) -> Persona:
 
 
 def _write_minimal_config(path: Path) -> None:
-    # Пустой yaml -> все поля Config берутся из дефолтов pydantic-моделей.
+    # An empty yaml: every Config field comes from the pydantic model defaults.
     path.write_text("", encoding="utf-8")
 
 
@@ -39,7 +43,7 @@ async def _make_config_store(tmp_path: Path) -> tuple[ConfigStore, Database]:
     await db.connect()
     config_path = tmp_path / "config.yaml"
     _write_minimal_config(config_path)
-    store = ConfigStore(replace(_legacy(), config_path=config_path), db)
+    store = ConfigStore(replace(_demo(), config_path=config_path), db)
     await store.load()
     return store, db
 
@@ -61,11 +65,11 @@ async def test_set_valid_key_changes_get(tmp_path: Path) -> None:
 async def test_set_valid_key_rebuilds_patterns(tmp_path: Path) -> None:
     store, db = await _make_config_store(tmp_path)
     try:
-        assert store.patterns().topic_stop("виджет xyz123 виджет") is None
+        assert store.patterns().topic_stop("widget xyz123 widget") is None
 
         await store.set("filters.topic_stop", "[xyz123]", changed_by=1, now=1000)
 
-        assert store.patterns().topic_stop("виджет xyz123 виджет") is not None
+        assert store.patterns().topic_stop("widget xyz123 widget") is not None
     finally:
         await db.close()
 
@@ -77,7 +81,7 @@ async def test_set_invalid_value_raises_and_does_not_write_override(tmp_path: Pa
             await store.set("behaviour.daily_cap", "9999", changed_by=1, now=1000)
 
         assert await db.get_overrides() == {}
-        assert store.get().behaviour.daily_cap == 3  # дефолт не изменился
+        assert store.get().behaviour.daily_cap == 3  # the default did not change
     finally:
         await db.close()
 
@@ -86,7 +90,7 @@ async def test_set_persona_key_raises_without_writing(tmp_path: Path) -> None:
     store, db = await _make_config_store(tmp_path)
     try:
         with pytest.raises(OwnerError, match="persona") as info:
-            await store.set("persona.name", "Вася", changed_by=1, now=1000)
+            await store.set("persona.name", "Vince", changed_by=1, now=1000)
         assert info.value.code == "set_persona"
 
         assert await db.get_overrides() == {}
@@ -196,7 +200,22 @@ async def test_describe_reads_the_description_from_the_packs_catalog(tmp_path: P
         info = store.describe("behaviour.daily_cap")
 
         assert info is not None
-        # The legacy pack's ru catalog, not the English Field.description.
+        # The demo pack ships no locale: the engine's English catalog, not Field.description.
+        assert info.description == "Daily limit of ambient and unprompted replies together"
+    finally:
+        await db.close()
+
+
+# Stays Russian: pins the legacy pack's ru catalog (tests/lang).
+async def test_describe_reads_the_description_from_the_legacy_ru_catalog(tmp_path: Path) -> None:
+    db = Database(tmp_path / "bot.db")
+    await db.connect()
+    store = ConfigStore(_legacy(), db)
+    await store.load()
+    try:
+        info = store.describe("behaviour.daily_cap")
+
+        assert info is not None
         assert info.description == "Суточный лимит ambient и «просто так» вместе"
     finally:
         await db.close()
@@ -229,7 +248,7 @@ async def test_set_validator_error_is_an_owner_error_with_the_key(tmp_path: Path
 
         assert caught.value.code == "validation.time"
         assert caught.value.params["key"] == "behaviour.quiet_window"
-        assert caught.value.render(_legacy().catalog) == (
+        assert caught.value.render(_demo().catalog) == (
             "behaviour.quiet_window: invalid time '25:00', expected HH:MM"
         )
         assert "behaviour.quiet_window" not in await db.get_overrides()
@@ -240,11 +259,11 @@ async def test_set_validator_error_is_an_owner_error_with_the_key(tmp_path: Path
 async def test_set_bot_username_enables_mentions_bot(tmp_path: Path) -> None:
     store, db = await _make_config_store(tmp_path)
     try:
-        assert store.patterns().mentions_bot("привет @example_persona_bot как дела") is False
+        assert store.patterns().mentions_bot("hello @example_persona_bot how are you") is False
 
         store.set_bot_username("example_persona_bot")
 
-        assert store.patterns().mentions_bot("привет @example_persona_bot как дела") is True
+        assert store.patterns().mentions_bot("hello @example_persona_bot how are you") is True
     finally:
         await db.close()
 
@@ -252,12 +271,12 @@ async def test_set_bot_username_enables_mentions_bot(tmp_path: Path) -> None:
 # -- PromptStore -----------------------------------------------------------------
 
 _FEW_SHOT_SEED = """\
-- name: Юля
-  user: "привет"
+- name: Julia
+  user: "hello"
   speak: true
-  text: "И тебе привет."
-- name: Гена
-  user: "лол"
+  text: "Hello to you too."
+- name: Gene
+  user: "lol"
   speak: false
 """
 
@@ -269,7 +288,7 @@ async def _make_prompt_store(
     await db.connect()
     few_shot_path = tmp_path / "few_shot.yaml"
     few_shot_path.write_text(_FEW_SHOT_SEED, encoding="utf-8")
-    persona = _with_system(replace(_legacy(), few_shot_path=few_shot_path), prompt_body)
+    persona = _with_system(replace(_demo(), few_shot_path=few_shot_path), prompt_body)
     store = PromptStore(persona, db)
     return store, db, persona
 
@@ -283,7 +302,7 @@ async def test_load_empty_db_seeds_version_1_from_files(tmp_path: Path) -> None:
         assert store.system_prompt() == "system v1"
         assert store.few_shot_version() == 1
         assert len(store.examples()) == 2
-        assert "И тебе привет." in store.few_shot_text()
+        assert "Hello to you too." in store.few_shot_text()
 
         versions = await db.prompt_versions()
         assert len(versions) == 1
@@ -326,10 +345,10 @@ async def test_load_unchanged_prompt_file_does_not_add_version(tmp_path: Path) -
 async def test_rollback_prompt_to_1_restores_body(tmp_path: Path) -> None:
     store, db, persona = await _make_prompt_store(tmp_path)
     try:
-        await store.load()  # версия 1, "system v1"
+        await store.load()  # version 1, "system v1"
 
         store = PromptStore(_with_system(persona, "system v2"), db)
-        await store.load()  # версия 2, активная
+        await store.load()  # version 2, active
         assert store.prompt_version() == 2
 
         ok = await store.rollback_prompt(1)
@@ -340,48 +359,48 @@ async def test_rollback_prompt_to_1_restores_body(tmp_path: Path) -> None:
 
         missing = await store.rollback_prompt(999)
         assert missing is False
-        # неудачный rollback не меняет текущую версию
+        # a failed rollback does not change the current version
         assert store.prompt_version() == 1
     finally:
         await db.close()
 
 
 async def test_load_after_rollback_does_not_reseed_new_version(tmp_path: Path) -> None:
-    """Баг: /rollback 1, затем рестарт (новый load()) с файлом всё ещё на v2 тексте
-    раньше засевал v3 из файла и тем самым отменял откат — load() сравнивал файл
-    только с активной версией, а после отката активная (v1) отличается от файла
-    (v2). Исправлено: файл сравнивается ВСЕМИ сохранёнными версиями."""
+    """A bug: /rollback 1 followed by a restart (a new load()) with the file still holding the v2
+    text used to seed a v3 from the file and thereby undo the rollback: load() compared the file
+    only with the active version, and after a rollback the active one (v1) differs from the file
+    (v2). Fixed: the file is compared with ALL stored versions."""
     store, db, persona = await _make_prompt_store(tmp_path)
     try:
-        await store.load()  # версия 1, "system v1"
+        await store.load()  # version 1, "system v1"
 
         store = PromptStore(_with_system(persona, "system v2"), db)
-        await store.load()  # версия 2, активная, файл теперь "system v2"
+        await store.load()  # version 2, active, the file is now "system v2"
         assert store.prompt_version() == 2
 
         ok = await store.rollback_prompt(1)
         assert ok is True
         assert store.prompt_version() == 1
 
-        # Рестарт процесса: новый PromptStore на тех же файле и БД. Файл на диске
-        # всё ещё содержит "system v2" (никто его не откатывал), но это тело уже
-        # есть среди сохранённых версий — новая версия не должна завестись, и
-        # активной должна остаться версия 1 (результат отката).
+        # A process restart: a new PromptStore on the same file and DB. The file on disk
+        # still holds "system v2" (nobody rolled it back), but that body is already among
+        # the stored versions: no new version may appear, and version 1 (the result of the
+        # rollback) must stay active.
         restarted = PromptStore(_with_system(persona, "system v2"), db)
         await restarted.load()
 
         assert restarted.prompt_version() == 1
         assert restarted.system_prompt() == "system v1"
         versions = await db.prompt_versions()
-        assert len(versions) == 2  # версия 3 не появилась
+        assert len(versions) == 2  # no version 3 appeared
     finally:
         await db.close()
 
 
 async def test_load_new_file_text_after_rollback_still_adds_version(tmp_path: Path) -> None:
-    """Если после отката файл на диске меняют на текст, которого ещё нет ни в одной
-    версии, load() всё равно должен завести новую версию (а не молча остаться на
-    откаченной) — сравнение идёт по телу, а не по факту "был ли откат"."""
+    """If after a rollback the file on disk is changed to a text no version has yet, load() must
+    still create a new version (not silently stay on the rolled-back one): the comparison is by
+    body, not by whether a rollback happened."""
     store, db, persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()
@@ -407,7 +426,7 @@ async def test_add_example_bumps_few_shot_version_and_is_findable(tmp_path: Path
         assert store.few_shot_version() == 1
 
         new_version = await store.add_example(
-            name="Тёма", user="что делаешь", text="Ничего особенного.", now=1000
+            name="Tim", user="what are you doing", text="Nothing special.", now=1000
         )
 
         assert new_version == 2
@@ -416,14 +435,14 @@ async def test_add_example_bumps_few_shot_version_and_is_findable(tmp_path: Path
         examples = store.examples()
         assert len(examples) == 3
         added = examples[-1]
-        assert added.name == "Тёма"
-        assert added.user == "что делаешь"
+        assert added.name == "Tim"
+        assert added.user == "what are you doing"
         assert added.speak is True
-        assert added.text == "Ничего особенного."
+        assert added.text == "Nothing special."
 
-        assert "Ничего особенного." in store.few_shot_text()
+        assert "Nothing special." in store.few_shot_text()
 
-        # active_few_shot должен отражать новую версию в БД
+        # active_few_shot must reflect the new version in the DB
         active = await db.active_few_shot()
         assert active is not None
         assert active[0] == 2
@@ -436,7 +455,7 @@ async def test_remove_example_index_1_removes_last_added(tmp_path: Path) -> None
     try:
         await store.load()
         await store.add_example(
-            name="Тёма", user="что делаешь", text="Ничего особенного.", now=1000
+            name="Tim", user="what are you doing", text="Nothing special.", now=1000
         )
         assert store.few_shot_version() == 2
 
@@ -446,32 +465,31 @@ async def test_remove_example_index_1_removes_last_added(tmp_path: Path) -> None
         assert store.few_shot_version() == 3
         examples = store.examples()
         assert len(examples) == 2
-        assert all(e.text != "Ничего особенного." for e in examples)
+        assert all(e.text != "Nothing special." for e in examples)
     finally:
         await db.close()
 
 
 async def test_concurrent_add_example_serializes_and_keeps_both(tmp_path: Path) -> None:
-    """Без asyncio.Lock два параллельных add_example читают один и тот же
-    self.examples() до того, как любой из них запишет новую версию — потерялся
-    бы один добавленный пример, и версий стало бы +1 вместо +2. С локом оба
-    вызова исполняются строго по очереди."""
+    """Without the asyncio.Lock, two parallel add_example calls read the same self.examples()
+    before either writes a new version: one added example would be lost and the version count
+    would grow by 1 instead of 2. With the lock both calls run strictly in turn."""
     store, db, _persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()
         assert store.few_shot_version() == 1
 
         versions = await asyncio.gather(
-            store.add_example(name="Тёма", user="что делаешь", text="Ничего.", now=1000),
-            store.add_example(name="Ксюша", user="как сам", text="Бывает.", now=1001),
+            store.add_example(name="Tim", user="what are you doing", text="Nothing.", now=1000),
+            store.add_example(name="Kate", user="how are you", text="Happens.", now=1001),
         )
 
         assert sorted(versions) == [2, 3]
         assert store.few_shot_version() == 3
 
         texts = {e.text for e in store.examples()}
-        assert "Ничего." in texts
-        assert "Бывает." in texts
+        assert "Nothing." in texts
+        assert "Happens." in texts
 
         all_versions = await db.few_shot_version_bodies()
         assert len(all_versions) == 3
@@ -547,8 +565,21 @@ async def test_config_store_patterns_carry_the_persona_language(tmp_path: Path) 
     store, db = await _make_config_store(tmp_path)
     try:
         assert store.patterns().lang is not None
-        assert store.patterns().lang.code == "ru"
+        assert store.patterns().lang.code == "en"
         store.set_bot_username("x_bot")  # rebuilds the patterns
         assert store.patterns().lang is not None
+    finally:
+        await db.close()
+
+
+# Stays Russian: the legacy pack's language (tests/lang).
+async def test_config_store_patterns_carry_the_legacy_pack_language(tmp_path: Path) -> None:
+    db = Database(tmp_path / "bot.db")
+    await db.connect()
+    store = ConfigStore(_legacy(), db)
+    await store.load()
+    try:
+        assert store.patterns().lang is not None
+        assert store.patterns().lang.code == "ru"
     finally:
         await db.close()

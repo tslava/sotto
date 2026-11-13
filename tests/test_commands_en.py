@@ -1,8 +1,8 @@
-"""Owner commands with the English catalog (the production owner UI after the cutover).
+"""Owner commands with the English catalog (the production owner UI).
 
-The Russian texts are pinned by tests/test_commands.py against the legacy pack; here the same
-handlers run with ``locales/en``: exact lines for the commands that carry logic, plus a sweep that
-no answer to a data-free command contains Cyrillic.
+tests/test_commands.py pins the handlers against the demo pack; here the same handlers run with
+the engine catalog (``locales/en``) and the bare default Config: exact lines for the commands that
+carry logic, plus a sweep that no answer to a data-free command contains Cyrillic.
 """
 
 from __future__ import annotations

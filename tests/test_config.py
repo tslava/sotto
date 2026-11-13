@@ -1,4 +1,4 @@
-"""load_config: реальный config.yaml, overrides, ошибки, возраст."""
+"""load_config: the demo pack's real config.yaml, overrides, errors, age."""
 
 import json
 from datetime import date
@@ -19,13 +19,26 @@ from sotto.config_models import (
     ReplyDelayBucket,
 )
 from sotto.lang import default_config_layer
-from tests.packs import LEGACY_PACK, RU
+from tests.packs import DEMO_PACK, LEGACY_PACK, RU
 
-CONFIG_PATH = LEGACY_PACK / "config.yaml"
+CONFIG_PATH = DEMO_PACK / "config.yaml"
+LEGACY_CONFIG_PATH = LEGACY_PACK / "config.yaml"
 
 
 def test_load_real_config_without_errors() -> None:
     cfg = load_config(CONFIG_PATH)
+
+    assert isinstance(cfg, Config)
+    assert cfg.persona.name == "Gus"
+    assert cfg.persona.display_name == "Gus Marlow"
+    assert cfg.behaviour.daily_cap == 3
+    assert cfg.filters.shadow is True
+    assert "Tesco" in cfg.filters.places_whitelist
+
+
+# Stays Russian: the legacy pack's config (tests/lang).
+def test_load_legacy_pack_config_without_errors() -> None:
+    cfg = load_config(LEGACY_CONFIG_PATH)
 
     assert isinstance(cfg, Config)
     assert cfg.persona.name == "Фёдор"
@@ -37,6 +50,18 @@ def test_load_real_config_without_errors() -> None:
 
 def test_load_real_config_filters_pattern_lists() -> None:
     cfg = load_config(CONFIG_PATH)
+
+    assert r"\bwar\b" in cfg.filters.topic_stop
+    assert r"\bbrexit\b" in cfg.filters.topic_stop
+    assert r"\b\d{1,2}[:.]\d{2}\b" in cfg.filters.logistics
+    assert "certainly!" in cfg.filters.assistant_markers
+    assert "The Lantern Room" in cfg.filters.known_places
+    assert cfg.filters.polish_words == []
+
+
+# Stays Russian: the legacy pack's Russian pattern lists (tests/lang).
+def test_load_legacy_pack_filters_pattern_lists() -> None:
+    cfg = load_config(LEGACY_CONFIG_PATH)
 
     # The generic marker lists live in the language module; the pack spells them out too.
     for key, expected in RU.default_filters().items():
@@ -63,6 +88,15 @@ def test_load_real_config_motifs_and_story_defaults_match() -> None:
     assert cfg.filters.story_window == default_filters.story_window
     assert cfg.filters.story_max == default_filters.story_max
 
+    assert "clocks" in cfg.filters.motifs
+    assert r"\bthe shed\b" in cfg.filters.motifs["shed"]
+    assert r"\bI remember\b" in cfg.filters.story_markers
+
+
+# Stays Russian: the legacy pack's Russian motifs and story markers (tests/lang).
+def test_legacy_pack_motifs_and_story_markers() -> None:
+    cfg = load_config(LEGACY_CONFIG_PATH)
+
     assert "жена" in cfg.filters.motifs
     assert r"\bгараж" in cfg.filters.motifs["гараж"]
     assert r"\bкак-то раз\b" in cfg.filters.story_markers
@@ -70,17 +104,17 @@ def test_load_real_config_motifs_and_story_defaults_match() -> None:
 
 def test_invalid_regex_in_motifs_raises_with_pattern_and_label() -> None:
     with pytest.raises(ValidationError) as exc_info:
-        FiltersConfig(motifs={"жена": [_INVALID_REGEX]})
+        FiltersConfig(motifs={"clocks": [_INVALID_REGEX]})
 
     assert _INVALID_REGEX in str(exc_info.value)
-    assert "жена" in str(exc_info.value)
+    assert "clocks" in str(exc_info.value)
 
 
 def test_motifs_override_via_set_parses_yaml_mapping() -> None:
-    """/set filters.motifs — такой же YAML, как у списков регулярок."""
-    cfg = load_config(CONFIG_PATH, {"filters.motifs": "{рыбалка: ['\\bрыбалк']}"})
+    """/set filters.motifs takes the same YAML as the regex lists."""
+    cfg = load_config(CONFIG_PATH, {"filters.motifs": "{fishing: ['\\bfish']}"})
 
-    assert cfg.filters.motifs == {"рыбалка": [r"\bрыбалк"]}
+    assert cfg.filters.motifs == {"fishing": [r"\bfish"]}
 
 
 def test_describe_key_dict_of_lists() -> None:
@@ -90,12 +124,21 @@ def test_describe_key_dict_of_lists() -> None:
 
     assert info is not None
     assert info.type_name == "dict[str, list[str]]"
-    assert "жена" in info.value
+    assert "clocks" in info.value
 
 
 def test_load_real_config_carries_the_places_queries() -> None:
     # The engine default of places.queries is empty: the pack's config.yaml lists them.
     cfg = load_config(CONFIG_PATH)
+
+    assert PlacesConfig().queries == []
+    assert "pub Kettle Hill Brindlemoor" in cfg.places.queries
+    assert "restaurant Fenwick Green" in cfg.places.queries
+
+
+# Stays Russian-pack data: the legacy pack's own place queries (tests/lang).
+def test_load_legacy_pack_carries_the_places_queries() -> None:
+    cfg = load_config(LEGACY_CONFIG_PATH)
 
     assert PlacesConfig().queries == []
     assert "restauracja Bórnik" in cfg.places.queries
@@ -127,12 +170,12 @@ def test_override_bool_and_list() -> None:
         CONFIG_PATH,
         {
             "filters.shadow": "false",
-            "persona.name_triggers": "[федя, дед]",
+            "persona.name_triggers": "[gus, old man]",
         },
     )
 
     assert cfg.filters.shadow is False
-    assert cfg.persona.name_triggers == ["федя", "дед"]
+    assert cfg.persona.name_triggers == ["gus", "old man"]
 
 
 def test_nested_override() -> None:
@@ -193,9 +236,9 @@ def test_reply_delay_bucket_weights_within_tolerance_ok() -> None:
 def test_persona_age() -> None:
     cfg = load_config(CONFIG_PATH)
 
-    assert cfg.persona.age(date(2026, 9, 10)) == 52
-    assert cfg.persona.age(date(2026, 4, 11)) == 51
-    assert cfg.persona.age(date(2026, 4, 12)) == 52
+    assert cfg.persona.age(date(2026, 9, 10)) == 61
+    assert cfg.persona.age(date(2026, 3, 8)) == 60
+    assert cfg.persona.age(date(2026, 3, 9)) == 61
 
 
 def test_flatten_config_roundtrip_keys() -> None:
@@ -203,13 +246,13 @@ def test_flatten_config_roundtrip_keys() -> None:
     flat = flatten_config(cfg)
 
     assert flat["behaviour.daily_cap"] == "3"
-    assert flat["persona.name"] == "Фёдор"
+    assert flat["persona.name"] == "Gus"
     assert flat["filters.shadow"] == "true"
 
 
-# --- FiltersConfig: валидация регулярок -------------------------------------------
+# --- FiltersConfig: regex validation -------------------------------------------
 
-_INVALID_REGEX = "\\bвойн[а-я*"  # незакрытая скобка/класс символов
+_INVALID_REGEX = "\\bwar[a-z*"  # an unclosed bracket / character class
 
 
 @pytest.mark.parametrize(
@@ -231,7 +274,7 @@ def test_invalid_regex_in_real_config_via_override_raises() -> None:
     assert _INVALID_REGEX in str(exc_info.value)
 
 
-# --- LlmConfig: main_model/judge_model — "" или "provider/model" -----------------
+# --- LlmConfig: main_model/judge_model are "" or "provider/model" -----------------
 
 
 def test_llm_model_id_accepts_empty_string() -> None:
@@ -248,23 +291,23 @@ def test_llm_model_id_accepts_provider_slash_model() -> None:
 @pytest.mark.parametrize("field_name", ["main_model", "judge_model"])
 def test_llm_model_id_rejects_value_without_slash(field_name: str) -> None:
     with pytest.raises(ValidationError) as exc_info:
-        LlmConfig(**{field_name: "мусор"})
+        LlmConfig(**{field_name: "garbage"})
 
-    assert "мусор" in str(exc_info.value)
+    assert "garbage" in str(exc_info.value)
 
 
 def test_set_llm_main_model_garbage_via_override_raises() -> None:
     with pytest.raises(ValueError) as exc_info:
-        load_config(CONFIG_PATH, {"llm.main_model": "мусор"})
+        load_config(CONFIG_PATH, {"llm.main_model": "garbage"})
 
     assert "llm.main_model" in str(exc_info.value)
 
 
 def test_assistant_markers_are_not_validated_as_regex() -> None:
-    # assistant_markers — фразы, а не регулярки: строка с "особыми" символами regex
-    # (например незакрытая скобка) не должна валиться на валидаторе.
-    cfg = FiltersConfig(assistant_markers=["(это не закрытая скобка"])
-    assert cfg.assistant_markers == ["(это не закрытая скобка"]
+    # assistant_markers are phrases, not regexes: a string with "special" regex characters
+    # (say, an unclosed bracket) must not fail the validator.
+    cfg = FiltersConfig(assistant_markers=["(this is an unclosed bracket"])
+    assert cfg.assistant_markers == ["(this is an unclosed bracket"]
 
 
 # --- describe_key ------------------------------------------------------------------
@@ -408,7 +451,7 @@ def test_describe_key_all_leaf_keys_have_short_description() -> None:
 
 
 def test_reactions_emoji_laugh_not_in_telegram_set_rejected() -> None:
-    """😂 есть в allowed_emoji, но не в наборе реакций Telegram (REACTION_INVALID)."""
+    """😂 is in allowed_emoji but not in the Telegram reaction set (REACTION_INVALID)."""
     with pytest.raises(ValidationError, match=r"validation\.emoji_not_telegram"):
         Config.model_validate(
             {"behaviour": {"reactions": {"emoji": ["👍", "😂"]}}},
@@ -422,7 +465,7 @@ def test_reactions_emoji_rofl_accepted_without_allowed_emoji() -> None:
 
 
 def test_reactions_emoji_variation_selector_is_stripped() -> None:
-    """С клавиатуры приходит «❤️» (с U+FE0F), в наборе Telegram — «❤»."""
+    """The keyboard sends "❤️" (with U+FE0F) while the Telegram set has "❤"."""
     cfg = Config.model_validate({"behaviour": {"reactions": {"emoji": ["👍", "❤\ufe0f"]}}})
     assert list(cfg.behaviour.reactions.emoji) == ["👍", "❤"]
 
@@ -538,6 +581,7 @@ def test_bare_config_has_neutral_persona_and_empty_pack_lists() -> None:
     assert cfg.filters.enforce_stages == ["dedup", "style"]
 
 
+# Stays Russian: the Russian language layer (tests/lang).
 def test_language_layer_sits_below_the_pack_config(tmp_path: Path) -> None:
     layer = default_config_layer(RU)
     pack = tmp_path / "config.yaml"
@@ -555,11 +599,11 @@ def test_language_layer_sits_below_the_pack_config(tmp_path: Path) -> None:
 def test_persona_layers_are_language_defaults_then_the_pack_file() -> None:
     from sotto.persona import load_persona
 
-    persona = load_persona(LEGACY_PACK)
+    persona = load_persona(DEMO_PACK)
     layers = persona.config_layers()
 
     assert layers[0] == default_config_layer(persona.lang)
-    assert layers[1] == LEGACY_PACK / "config.yaml"
+    assert layers[1] == CONFIG_PATH
     assert load_config(layers) == load_config(CONFIG_PATH)
 
 

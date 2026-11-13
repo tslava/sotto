@@ -1,10 +1,11 @@
-"""Тесты для sotto.commands: диспетчер команд без сети и без реального Bot.
+"""Tests for sotto.commands: the command dispatcher, with no network and no real Bot.
 
-Message/Chat/User собираются напрямую, как в tests/test_bot.py. Хендлер достаётся
-из router и вызывается напрямую. ConfigStore/PromptStore/Database подделаны через
-классы, структурно подходящие под Protocol'ы commands.py (_ConfigStoreLike,
-_PromptStoreLike, _DbLike) — им не нужно наследоваться, только иметь нужные методы.
-Message.answer перехватывается фикстурой `sent`, чтобы не дёргать реальный Bot API.
+Message/Chat/User are built directly, as in tests/test_bot.py. The handler is taken from the
+router and called directly. ConfigStore/PromptStore/Database are faked with classes that
+structurally match the Protocols of commands.py (_ConfigStoreLike, _PromptStoreLike, _DbLike):
+they need no inheritance, only the right methods. Message.answer is intercepted by the `sent`
+fixture so the real Bot API is never called. The persona is the English demo pack, so every
+owner-facing answer comes from the English catalog (locales/en).
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import pytest
 from aiogram.types import Chat, Document, Message, MessageEntity, PhotoSize, User
 
 from sotto.commands import build_commands_router
-from sotto.config import KeyInfo
+from sotto.config import KeyInfo, load_config
 from sotto.config_models import Config
 from sotto.db import (
     ChatMemoryRow,
@@ -30,7 +31,7 @@ from sotto.db import (
     SelfFactRow,
 )
 from sotto.few_shot import FewShot
-from sotto.fragments import Fragments
+from sotto.fragments import Fragments, load_valid_fragments
 from sotto.patterns import Patterns
 from sotto.persona import Persona, load_persona
 from sotto.responder import PreviewOutcome, SendOutcome
@@ -38,17 +39,25 @@ from sotto.settings import Settings
 from sotto.timeutil import day_key, local_dt
 from sotto.vocab import VocabStore
 from sotto.weather import Place, Weather
-from tests.packs import LEGACY_FRAG, LEGACY_PACK, legacy_config
+from tests.packs import DEMO_PACK
+
+DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
+
+
+def demo_config() -> Config:
+    """The demo pack's parsed config: the English persona with its filter lists."""
+    return load_config(load_persona(DEMO_PACK).config_layers())
+
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
 ADMIN_ID = 555
 BOT_USER_ID = 999
-BOT_USERNAME = "fedorbot"
+BOT_USERNAME = "gusbot"
 NOW = datetime(2026, 1, 10, 12, 0, tzinfo=UTC)
 
 
-# --- подделки Database/ConfigStore/PromptStore -----------------------------------
+# --- fakes of Database/ConfigStore/PromptStore -----------------------------------
 
 
 @dataclass
@@ -97,8 +106,7 @@ class FakeDb:
     bot_replies_store: list[FakeBotReplyRow] = field(default_factory=list)
     jokes_store: dict[int, JokeRow] = field(default_factory=dict)
     threads_store: dict[int, PeopleThreadRow] = field(default_factory=dict)
-    # Потолок присутствия (CLAUDE.md, "меньше и разнообразнее"): /status считает его по
-    # таблицам, здесь — просто два числа.
+    # Presence cap: /status computes it from the tables; here it is just two numbers.
     messages_today_value: int = 0
     bot_replies_today_value: int = 0
 
@@ -266,7 +274,7 @@ class FakeConfigStore:
 class FakePromptStore:
     prompt_version_value: int = 3
     few_shot_version_value: int = 2
-    system_prompt_value: str = "системный промпт персонажа"
+    system_prompt_value: str = "the persona system prompt"
     rollback_result: bool = True
     rollback_calls: list[int] = field(default_factory=list)
     add_example_calls: list[tuple[str, str, str, int]] = field(default_factory=list)
@@ -301,10 +309,10 @@ class FakePromptStore:
 
 @dataclass
 class FakeResponder:
-    """Структурно подходит под commands._ResponderLike."""
+    """Structurally matches commands._ResponderLike."""
 
     announce_life_result: SendOutcome = field(
-        default_factory=lambda: SendOutcome(sent=True, text="Продал тележку", reason="send:life")
+        default_factory=lambda: SendOutcome(sent=True, text="Sold the cart", reason="send:life")
     )
     say_result: SendOutcome = field(
         default_factory=lambda: SendOutcome(sent=True, text="", reason="send:say")
@@ -312,7 +320,7 @@ class FakeResponder:
     announce_life_calls: list[LifeEventRow] = field(default_factory=list)
     say_calls: list[str] = field(default_factory=list)
     preview_result: PreviewOutcome = field(
-        default_factory=lambda: PreviewOutcome(sent=True, text="Бывает.", reason="send:mention")
+        default_factory=lambda: PreviewOutcome(sent=True, text="Happens.", reason="send:mention")
     )
     preview_calls: list[tuple[str, str]] = field(default_factory=list)
 
@@ -332,7 +340,7 @@ class FakeResponder:
 
 @dataclass
 class FakeMemorizer:
-    """Структурно подходит под commands._ChatMemorizerLike."""
+    """Structurally matches commands._ChatMemorizerLike."""
 
     run_due_result: list[ChatMemoryRow] = field(default_factory=list)
     run_due_calls: list[int] = field(default_factory=list)
@@ -343,7 +351,7 @@ class FakeMemorizer:
 
 
 class FakeWeather:
-    """Подделка WeatherClient для /status: снимок без сети (CLAUDE.md, "погода")."""
+    """A WeatherClient fake for /status: a snapshot without the network."""
 
     def __init__(self, snapshot: Weather | None = None, home_name: str = "") -> None:
         self.snapshot = snapshot
@@ -361,7 +369,7 @@ class FakeWeather:
 
 @dataclass
 class FakeDeps:
-    """Структурно подходит под commands._CommandsDeps."""
+    """Structurally matches commands._CommandsDeps."""
 
     settings: Settings
     config_store: FakeConfigStore
@@ -376,11 +384,11 @@ class FakeDeps:
     vocab_store: VocabStore | None = None
     bot: FakeDownloader | None = None
     persona: Persona | None = None
-    frag: Fragments = LEGACY_FRAG
+    frag: Fragments = DEMO_FRAG
 
 
 class FakeDownloader:
-    """Подделка aiogram.Bot.download для загрузки словаря: отдаёт заданные байты."""
+    """A fake of aiogram.Bot.download for dictionary uploads: returns the given bytes."""
 
     def __init__(self, data: bytes) -> None:
         self.data = data
@@ -393,18 +401,18 @@ class FakeDownloader:
         return destination
 
 
-# --- вспомогательные конструкторы -------------------------------------------------
+# --- helper constructors -------------------------------------------------
 
 
 def _chat(chat_id: int = OWN_CHAT_ID) -> Chat:
-    return Chat(id=chat_id, type="supergroup", title="Чат друзей")
+    return Chat(id=chat_id, type="supergroup", title="Friends chat")
 
 
 def _private_chat(chat_id: int) -> Chat:
     return Chat(id=chat_id, type="private")
 
 
-def _user(user_id: int, first_name: str = "Гена", last_name: str | None = None) -> User:
+def _user(user_id: int, first_name: str = "Gene", last_name: str | None = None) -> User:
     return User(id=user_id, is_bot=False, first_name=first_name, last_name=last_name)
 
 
@@ -446,12 +454,12 @@ def _make_settings(
 
 @pytest.fixture
 def config() -> Config:
-    return legacy_config()
+    return demo_config()
 
 
 @pytest.fixture
 def sent(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Перехватывает Message.answer, чтобы не дёргать реальный Bot API."""
+    """Intercepts Message.answer so the real Bot API is never called."""
     captured: list[str] = []
 
     async def fake_answer(self: Message, text: str, **kwargs: object) -> None:
@@ -470,6 +478,7 @@ def _deps(
     memorizer: FakeMemorizer | None = None,
     weather: FakeWeather | None = None,
     changelog: str = "",
+    chat_notes: str = "",
 ) -> tuple[FakeDeps, FakeDb, FakeConfigStore, FakePromptStore]:
     fake_db = db if db is not None else FakeDb()
     config_store = FakeConfigStore(cfg=config)
@@ -484,7 +493,7 @@ def _deps(
         bot_username=BOT_USERNAME,
         memorizer=memorizer,
         weather=weather,
-        persona=replace(load_persona(LEGACY_PACK), legacy_changelog=changelog, chat_notes=""),
+        persona=replace(load_persona(DEMO_PACK), legacy_changelog=changelog, chat_notes=chat_notes),
     )
     return deps, fake_db, config_store, prompt_store
 
@@ -542,7 +551,7 @@ async def test_panic_by_owner_sets_panic_and_replies(
     await handler(message)
 
     assert db.state["panic"] == "1"
-    assert sent == ["Паника. Бот молчит до /resume."]
+    assert sent == ["Panic. The bot stays silent until /resume."]
     now = int(NOW.timestamp())
     assert db.audit_stop_calls == [("panic", ADMIN_ID, now)]
 
@@ -590,7 +599,7 @@ async def test_resume_clears_panic_and_stop_until(
 
     assert "panic" not in db.state
     assert "stop_until" not in db.state
-    assert sent == ["Продолжаем. Снято: panic, stop."]
+    assert sent == ["Resuming. Cleared: panic, stop."]
     now = int(NOW.timestamp())
     assert db.audit_stop_calls == [("resume", ADMIN_ID, now)]
 
@@ -598,7 +607,7 @@ async def test_resume_clears_panic_and_stop_until(
 async def test_resume_with_nothing_set_replies_without_cleared_list(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """Ничего не было выставлено — не врём владельцу, что что-то снято."""
+    """Nothing was set, so we do not tell the owner that something was cleared."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
@@ -606,7 +615,7 @@ async def test_resume_with_nothing_set_replies_without_cleared_list(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/resume")
     await handler(message)
 
-    assert sent == ["Продолжаем."]
+    assert sent == ["Resuming."]
     now = int(NOW.timestamp())
     assert db.audit_stop_calls == [("resume", ADMIN_ID, now)]
 
@@ -625,7 +634,7 @@ async def test_resume_clears_llm_circuit_and_resets_streak(
 
     assert "llm_circuit_until" not in db.state
     assert db.state["llm_error_streak"] == "0"
-    assert sent == ["Продолжаем. Снято: предохранитель LLM (было 5 ошибок подряд)."]
+    assert sent == ["Resuming. Cleared: LLM circuit breaker (5 consecutive errors)."]
 
 
 async def test_resume_clears_everything_at_once(
@@ -646,15 +655,15 @@ async def test_resume_clears_everything_at_once(
     assert "stop_until" not in db.state
     assert "llm_circuit_until" not in db.state
     assert db.state["llm_error_streak"] == "0"
-    assert sent == ["Продолжаем. Снято: panic, stop, предохранитель LLM (было 5 ошибок подряд)."]
+    assert sent == ["Resuming. Cleared: panic, stop, LLM circuit breaker (5 consecutive errors)."]
 
 
 async def test_resume_with_expired_circuit_key_is_still_reported_as_cleared(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """llm_circuit_until из прошлого — предохранитель фактически уже не действует
-    (llm.py сверяет now), но ключ ещё лежит в state, то есть реально был
-    выставлен: /resume чистит его и упоминает в ответе так же, как открытый."""
+    """An llm_circuit_until in the past: the breaker no longer acts (llm.py compares with now),
+    but the key is still in state, so it really was set: /resume clears it and mentions it in
+    the answer just like an open one."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     db.state["llm_circuit_until"] = str(int(NOW.timestamp()) - 10)
@@ -666,7 +675,7 @@ async def test_resume_with_expired_circuit_key_is_still_reported_as_cleared(
 
     assert "llm_circuit_until" not in db.state
     assert db.state["llm_error_streak"] == "0"
-    assert sent == ["Продолжаем. Снято: предохранитель LLM (было 5 ошибок подряд)."]
+    assert sent == ["Resuming. Cleared: LLM circuit breaker (5 consecutive errors)."]
 
 
 # --- /mute, /unmute --------------------------------------------------------------
@@ -675,16 +684,16 @@ async def test_resume_with_expired_circuit_key_is_still_reported_as_cleared(
 async def test_mute_without_reply_mutes_self(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """Без реплая — мьютит самого отправителя, доступно любому участнику."""
+    """Without a reply it mutes the sender, available to any member."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    message = _message(chat=_chat(), from_user=_user(7, "Гена"), text="/mute")
+    message = _message(chat=_chat(), from_user=_user(7, "Gene"), text="/mute")
     await handler(message)
 
     now = int(NOW.timestamp())
-    assert db.add_mute_calls == [(7, "Гена", 7, now)]
+    assert db.add_mute_calls == [(7, "Gene", 7, now)]
     assert db.audit_stop_calls == [("mute:7", 7, now)]
     assert sent == []
 
@@ -692,13 +701,13 @@ async def test_mute_without_reply_mutes_self(
 async def test_mute_by_reply_from_member_on_someone_else_does_nothing(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """Реплаем на ЧУЖОЕ сообщение мьютить может только владелец — обычный
-    участник не должен получить готовый инструмент травли."""
+    """Only the owner may mute by replying to SOMEONE ELSE's message: an ordinary member
+    must not get a ready-made harassment tool."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    target = _message(chat=_chat(), from_user=_user(8, "Толя", "007 🔥"), text="исходное")
+    target = _message(chat=_chat(), from_user=_user(8, "Tony", "007 🔥"), text="original")
     message = _message(
         chat=_chat(), from_user=_user(7), text="/mute", reply_to_message=target, message_id=11
     )
@@ -712,15 +721,15 @@ async def test_mute_by_reply_from_member_on_someone_else_does_nothing(
 async def test_mute_by_reply_from_owner_on_someone_else_adds_mute(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """Владелец реплаем мьютит другого — единственный, кому это разрешено."""
+    """The owner mutes another member by reply: the only one allowed to."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    target = _message(chat=_chat(), from_user=_user(8, "Толя", "007 🔥"), text="исходное")
+    target = _message(chat=_chat(), from_user=_user(8, "Tony", "007 🔥"), text="original")
     message = _message(
         chat=_chat(),
-        from_user=_user(ADMIN_ID, "Владелец"),
+        from_user=_user(ADMIN_ID, "Owner"),
         text="/mute",
         reply_to_message=target,
         message_id=11,
@@ -728,7 +737,7 @@ async def test_mute_by_reply_from_owner_on_someone_else_adds_mute(
     await handler(message)
 
     now = int(NOW.timestamp())
-    assert db.add_mute_calls == [(8, "Толя", ADMIN_ID, now)]
+    assert db.add_mute_calls == [(8, "Tony", ADMIN_ID, now)]
     assert db.audit_stop_calls == [("mute:8", ADMIN_ID, now)]
     assert sent == []
 
@@ -740,10 +749,10 @@ async def test_mute_target_owner_ignored(
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    target = _message(chat=_chat(), from_user=_user(ADMIN_ID, "Владелец"), text="исходное")
+    target = _message(chat=_chat(), from_user=_user(ADMIN_ID, "Owner"), text="original")
     message = _message(
         chat=_chat(),
-        from_user=_user(ADMIN_ID, "Владелец"),
+        from_user=_user(ADMIN_ID, "Owner"),
         text="/mute",
         reply_to_message=target,
     )
@@ -760,10 +769,10 @@ async def test_mute_target_bot_ignored(
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    target = _message(chat=_chat(), from_user=_user(BOT_USER_ID, "Отец Фёдор"), text="исходное")
+    target = _message(chat=_chat(), from_user=_user(BOT_USER_ID, "Gus Marlow"), text="original")
     message = _message(
         chat=_chat(),
-        from_user=_user(ADMIN_ID, "Владелец"),
+        from_user=_user(ADMIN_ID, "Owner"),
         text="/mute",
         reply_to_message=target,
     )
@@ -776,12 +785,12 @@ async def test_mute_target_bot_ignored(
 async def test_unmute_without_reply_unmutes_self(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """Без реплая — снимает мьют с самого отправителя, доступно любому участнику."""
+    """Without a reply it unmutes the sender, available to any member."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    message = _message(chat=_chat(), from_user=_user(7, "Гена"), text="/unmute")
+    message = _message(chat=_chat(), from_user=_user(7, "Gene"), text="/unmute")
     await handler(message)
 
     now = int(NOW.timestamp())
@@ -797,7 +806,7 @@ async def test_unmute_from_member_ignored_from_owner_removes(
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    target = _message(chat=_chat(), from_user=_user(8, "Толя"), text="исходное")
+    target = _message(chat=_chat(), from_user=_user(8, "Tony"), text="original")
 
     member_msg = _message(
         chat=_chat(), from_user=_user(7), text="/unmute", reply_to_message=target, message_id=20
@@ -830,17 +839,19 @@ async def test_ex_add_by_owner_reply_to_bot_adds_example(
     db.bot_replies_by_id[100] = FakeBotReplyRow(
         trigger="mention",
         trigger_tg_message_id=50,
-        text="И тебе не хворать.",
+        text="Same to you.",
         prompt_version=3,
         few_shot_version=2,
         delay_sec=12,
         created_at=int(NOW.timestamp()),
     )
-    db.messages[(OWN_CHAT_ID, 50)] = FakeMessageRow(display_name="Гена", text="как дела, дед?")
+    db.messages[(OWN_CHAT_ID, 50)] = FakeMessageRow(
+        display_name="Gene", text="how are you, old man?"
+    )
 
     handler = _handler(deps)
     bot_reply_msg = _message(
-        chat=_chat(), from_user=_user(BOT_USER_ID), text="И тебе не хворать.", message_id=100
+        chat=_chat(), from_user=_user(BOT_USER_ID), text="Same to you.", message_id=100
     )
     message = _message(
         chat=_chat(),
@@ -852,7 +863,7 @@ async def test_ex_add_by_owner_reply_to_bot_adds_example(
     await handler(message)
 
     assert prompt_store.add_example_calls == [
-        ("Гена", "как дела, дед?", "И тебе не хворать.", int(NOW.timestamp()))
+        ("Gene", "how are you, old man?", "Same to you.", int(NOW.timestamp()))
     ]
     assert sent == []
 
@@ -905,7 +916,7 @@ async def test_ex_add_by_member_does_nothing(
     db.bot_replies_by_id[100] = FakeBotReplyRow(
         trigger="mention",
         trigger_tg_message_id=50,
-        text="ответ",
+        text="reply",
         prompt_version=1,
         few_shot_version=1,
         delay_sec=1,
@@ -914,7 +925,7 @@ async def test_ex_add_by_member_does_nothing(
     handler = _handler(deps)
 
     bot_reply_msg = _message(
-        chat=_chat(), from_user=_user(BOT_USER_ID), text="ответ", message_id=100
+        chat=_chat(), from_user=_user(BOT_USER_ID), text="reply", message_id=100
     )
     message = _message(
         chat=_chat(), from_user=_user(7), text="/ex add", reply_to_message=bot_reply_msg
@@ -962,7 +973,7 @@ async def test_set_value_error_replies_with_error_text(
     )
     await handler(message)
 
-    assert sent == ["Ошибка: ambient_probability must be <= 1.0"]
+    assert sent == ["Error: ambient_probability must be <= 1.0"]
 
 
 async def test_set_without_args_replies_with_usage(
@@ -976,7 +987,7 @@ async def test_set_without_args_replies_with_usage(
     await handler(message)
 
     assert config_store.set_calls == []
-    assert sent == ["Использование: /set <ключ> <значение>. Ключи: /get, описание: /get <ключ>"]
+    assert sent == ["Usage: /set <key> <value>. Keys: /get, description: /get <key>"]
 
 
 async def test_unset_replies_with_default(
@@ -993,7 +1004,7 @@ async def test_unset_replies_with_default(
     await handler(message)
 
     assert config_store.unset_calls == [("behaviour.daily_cap", ADMIN_ID, int(NOW.timestamp()))]
-    assert sent == ["behaviour.daily_cap: сброшен к 3"]
+    assert sent == ["behaviour.daily_cap: reset to 3"]
 
 
 # --- /get ---------------------------------------------------------------------
@@ -1023,7 +1034,7 @@ async def test_get_all_and_with_prefix(
     assert "behaviour.ambient_probability" in sent[1]
     assert "llm.main_model" not in sent[1]
 
-    hint = "* — переопределено через /set. Описание ключа: /get <ключ>"
+    hint = "* - overridden with /set. Key description: /get <key>"
     assert sent[0].endswith(hint)
     assert sent[1].endswith(hint)
 
@@ -1040,7 +1051,7 @@ async def test_get_exact_key_shows_card(
         overridden=False,
         type_name="int",
         bounds="0..50",
-        description="сколько раз в сутки бот может влезть без адресации",
+        description="how many times a day the bot may chime in unprompted",
         settable=True,
     )
     handler = _handler(deps)
@@ -1052,8 +1063,8 @@ async def test_get_exact_key_shows_card(
 
     assert sent == [
         "behaviour.daily_cap: 3\n"
-        "тип: int, 0..50\n"
-        "сколько раз в сутки бот может влезть без адресации"
+        "type: int, 0..50\n"
+        "how many times a day the bot may chime in unprompted"
     ]
 
 
@@ -1064,8 +1075,8 @@ async def test_get_exact_key_card_overridden_and_not_settable(
     deps, _, config_store, _ = _deps(settings=settings, config=config)
     config_store.describe_value["persona.name"] = KeyInfo(
         key="persona.name",
-        value="Фёдор",
-        default="Фёдор Второй",
+        value="Gus",
+        default="Gus the Second",
         overridden=True,
         type_name="str",
         bounds="",
@@ -1080,10 +1091,10 @@ async def test_get_exact_key_card_overridden_and_not_settable(
     await handler(message)
 
     assert sent == [
-        "persona.name: Фёдор\n"
-        "тип: str\n"
-        "переопределён, в yaml: Фёдор Второй\n"
-        "меняется только в config.yaml"
+        "persona.name: Gus\n"
+        "type: str\n"
+        "overridden, yaml value: Gus the Second\n"
+        "can only be changed in config.yaml"
     ]
 
 
@@ -1100,7 +1111,7 @@ async def test_last_format(
         FakeBotReplyRow(
             trigger="mention",
             trigger_tg_message_id=50,
-            text="Привет",
+            text="Hello",
             prompt_version=3,
             few_shot_version=2,
             delay_sec=45,
@@ -1113,7 +1124,7 @@ async def test_last_format(
     await handler(message)
 
     expected_time = local_dt(created_at, config.persona.timezone).strftime("%H:%M %d.%m")
-    assert sent == [f"{expected_time} | mention | p3/f2 | +45s | Привет"]
+    assert sent == [f"{expected_time} | mention | p3/f2 | +45s | Hello"]
 
 
 # --- /why -------------------------------------------------------------------------
@@ -1143,11 +1154,11 @@ async def test_prompt_preview_and_full(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, _, _, prompt_store = _deps(settings=settings, config=config)
-    prompt_store.system_prompt_value = "А" * 2000
+    prompt_store.system_prompt_value = "A" * 2000
     handler = _handler(deps)
 
     await handler(_message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/prompt"))
-    assert "версия 3 (активная), всего 3" in sent[0]
+    assert "version 3 (active), 3 in total" in sent[0]
     assert sent[0].endswith("…")
     assert len(sent[0]) < len(prompt_store.system_prompt_value)
 
@@ -1174,7 +1185,7 @@ async def test_rollback(monkeypatch: pytest.MonkeyPatch, config: Config, sent: l
     await handler(message)
 
     assert prompt_store.rollback_calls == [1]
-    assert sent == ["промпт: версия 1"]
+    assert sent == ["prompt: version 1"]
 
 
 # --- /ex last, /ex rm --------------------------------------------------------------
@@ -1184,8 +1195,8 @@ async def test_ex_last(monkeypatch: pytest.MonkeyPatch, config: Config, sent: li
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, _, _, prompt_store = _deps(settings=settings, config=config)
     prompt_store.examples_value = [
-        FewShot(name="Гена", user="как дела?", speak=True, text="Нормально."),
-        FewShot(name="Толя", user="где бар?", speak=True, text="На Долне."),
+        FewShot(name="Gene", user="how are you?", speak=True, text="Fine."),
+        FewShot(name="Tony", user="where is the pub?", speak=True, text="Down by the bridge."),
     ]
     handler = _handler(deps)
 
@@ -1193,8 +1204,8 @@ async def test_ex_last(monkeypatch: pytest.MonkeyPatch, config: Config, sent: li
     await handler(message)
 
     assert sent == [
-        'Гена: как дела? → {"speak": true, "text": "Нормально."}\n'
-        'Толя: где бар? → {"speak": true, "text": "На Долне."}'
+        'Gene: how are you? → {"speak": true, "text": "Fine."}\n'
+        'Tony: where is the pub? → {"speak": true, "text": "Down by the bridge."}'
     ]
 
 
@@ -1208,7 +1219,7 @@ async def test_ex_rm(monkeypatch: pytest.MonkeyPatch, config: Config, sent: list
     await handler(message)
 
     assert prompt_store.remove_example_calls == [(1, int(NOW.timestamp()))]
-    assert sent == ["few-shot: версия 9 (удалён пример 1 с конца)"]
+    assert sent == ["few-shot: version 9 (example 1 from the end removed)"]
 
 
 # --- /life --------------------------------------------------------------------
@@ -1224,7 +1235,7 @@ async def test_life_add_empty_text_replies_usage(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life")
     await handler(message)
 
-    assert sent == ["Использование: /life <текст> | list | rm N | post N"]
+    assert sent == ["Usage: /life <text> | list | rm N | post N"]
     assert db.life_events_store == {}
     assert db.audit_stop_calls == []
 
@@ -1239,7 +1250,7 @@ async def test_life_add_without_responder_only_records(
     message = _message(
         chat=_private_chat(ADMIN_ID),
         from_user=_user(ADMIN_ID),
-        text="/life продал старую машину, взял другую",
+        text="/life sold the old van, got another one",
     )
     await handler(message)
 
@@ -1247,15 +1258,15 @@ async def test_life_add_without_responder_only_records(
     assert list(db.life_events_store.values()) == [
         LifeEventRow(
             id=1,
-            text="продал старую машину, взял другую",
+            text="sold the old van, got another one",
             created_at=now,
             announced_at=None,
             announced_tg_message_id=None,
         )
     ]
     assert db.audit_stop_calls == [("life:add", ADMIN_ID, now)]
-    assert db.audit_values["life:add"] == "продал старую машину, взял другую"
-    assert sent == ["Записал #1. LLM не настроен, в чат не отправлено."]
+    assert db.audit_values["life:add"] == "sold the old van, got another one"
+    assert sent == ["Saved #1. The LLM is not configured, nothing was sent to the chat."]
 
 
 async def test_life_add_with_responder_sent(
@@ -1264,7 +1275,7 @@ async def test_life_add_with_responder_sent(
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     responder = FakeResponder(
         announce_life_result=SendOutcome(
-            sent=True, text="Продал тележку, взял Hyundai.", reason="send:life"
+            sent=True, text="Sold the cart, got a Hyundai.", reason="send:life"
         )
     )
     deps, db, _, _ = _deps(settings=settings, config=config, responder=responder)
@@ -1273,16 +1284,16 @@ async def test_life_add_with_responder_sent(
     message = _message(
         chat=_private_chat(ADMIN_ID),
         from_user=_user(ADMIN_ID),
-        text="/life продал тележку, взял Hyundai",
+        text="/life sold the cart, got a Hyundai",
     )
     await handler(message)
 
     now = int(NOW.timestamp())
     assert len(responder.announce_life_calls) == 1
     assert responder.announce_life_calls[0].id == 1
-    assert responder.announce_life_calls[0].text == "продал тележку, взял Hyundai"
+    assert responder.announce_life_calls[0].text == "sold the cart, got a Hyundai"
     assert db.audit_stop_calls == [("life:add", ADMIN_ID, now)]
-    assert sent == ["Записал #1. Отправлено: Продал тележку, взял Hyundai."]
+    assert sent == ["Saved #1. Sent: Sold the cart, got a Hyundai."]
 
 
 async def test_life_add_blocked_by_panic(
@@ -1295,12 +1306,10 @@ async def test_life_add_blocked_by_panic(
     deps, _, _, _ = _deps(settings=settings, config=config, responder=responder)
     handler = _handler(deps)
 
-    message = _message(
-        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life новость"
-    )
+    message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life news")
     await handler(message)
 
-    assert sent == ["Записал #1. Бот молчит (panic/stop) — /resume."]
+    assert sent == ["Saved #1. The bot is silent (panic/stop) - /resume."]
 
 
 async def test_life_add_not_sent_shows_reason_and_candidate(
@@ -1308,17 +1317,15 @@ async def test_life_add_not_sent_shows_reason_and_candidate(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     responder = FakeResponder(
-        announce_life_result=SendOutcome(sent=False, text="Продал тачку.", reason="regex:sentences")
+        announce_life_result=SendOutcome(sent=False, text="Sold the van.", reason="regex:sentences")
     )
     deps, _, _, _ = _deps(settings=settings, config=config, responder=responder)
     handler = _handler(deps)
 
-    message = _message(
-        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life новость"
-    )
+    message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life news")
     await handler(message)
 
-    assert sent == ["Записал #1. Не отправлено: regex:sentences\nКандидат: Продал тачку."]
+    assert sent == ["Saved #1. Not sent: regex:sentences\nCandidate: Sold the van."]
 
 
 async def test_life_add_not_sent_without_candidate_text(
@@ -1331,12 +1338,10 @@ async def test_life_add_not_sent_without_candidate_text(
     deps, _, _, _ = _deps(settings=settings, config=config, responder=responder)
     handler = _handler(deps)
 
-    message = _message(
-        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life новость"
-    )
+    message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life news")
     await handler(message)
 
-    assert sent == ["Записал #1. Не отправлено: llm:silent"]
+    assert sent == ["Saved #1. Not sent: llm:silent"]
 
 
 async def test_life_list_empty(
@@ -1349,7 +1354,7 @@ async def test_life_list_empty(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life list")
     await handler(message)
 
-    assert sent == ["Событий нет."]
+    assert sent == ["No events."]
 
 
 async def test_life_list_formats_rows_oldest_first(
@@ -1359,14 +1364,14 @@ async def test_life_list_formats_rows_oldest_first(
     deps, db, _, _ = _deps(settings=settings, config=config)
     db.life_events_store[1] = LifeEventRow(
         id=1,
-        text="продал тележку",
+        text="sold the cart",
         created_at=int(datetime(2026, 1, 5, 9, 0, tzinfo=UTC).timestamp()),
         announced_at=int(datetime(2026, 1, 5, 9, 1, tzinfo=UTC).timestamp()),
         announced_tg_message_id=42,
     )
     db.life_events_store[2] = LifeEventRow(
         id=2,
-        text="взял Hyundai",
+        text="got a Hyundai",
         created_at=int(datetime(2026, 1, 9, 9, 0, tzinfo=UTC).timestamp()),
         announced_at=None,
         announced_tg_message_id=None,
@@ -1376,7 +1381,7 @@ async def test_life_list_formats_rows_oldest_first(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life list")
     await handler(message)
 
-    assert sent == ["#1 05.01.2026 ✓ продал тележку\n#2 09.01.2026 — взял Hyundai"]
+    assert sent == ["#1 05.01.2026 ✓ sold the cart\n#2 09.01.2026 - got a Hyundai"]
 
 
 async def test_life_rm_deletes_existing_event(
@@ -1385,7 +1390,7 @@ async def test_life_rm_deletes_existing_event(
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     db.life_events_store[3] = LifeEventRow(
-        id=3, text="продал тачку", created_at=1, announced_at=None, announced_tg_message_id=None
+        id=3, text="sold the van", created_at=1, announced_at=None, announced_tg_message_id=None
     )
     handler = _handler(deps)
 
@@ -1395,7 +1400,7 @@ async def test_life_rm_deletes_existing_event(
     now = int(NOW.timestamp())
     assert 3 not in db.life_events_store
     assert db.audit_stop_calls == [("life:rm", ADMIN_ID, now)]
-    assert sent == ["Событие #3 удалено."]
+    assert sent == ["Event #3 deleted."]
 
 
 async def test_life_rm_missing_event(
@@ -1408,7 +1413,7 @@ async def test_life_rm_missing_event(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life rm 9")
     await handler(message)
 
-    assert sent == ["Нет события #9."]
+    assert sent == ["No event #9."]
     assert db.audit_stop_calls == []
 
 
@@ -1422,7 +1427,7 @@ async def test_life_rm_without_number_replies_usage(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life rm")
     await handler(message)
 
-    assert sent == ["Использование: /life <текст> | list | rm N | post N"]
+    assert sent == ["Usage: /life <text> | list | rm N | post N"]
 
 
 async def test_life_post_resends_existing_event_without_zapisal_prefix(
@@ -1430,11 +1435,11 @@ async def test_life_post_resends_existing_event_without_zapisal_prefix(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     responder = FakeResponder(
-        announce_life_result=SendOutcome(sent=True, text="Продал тачку.", reason="send:life")
+        announce_life_result=SendOutcome(sent=True, text="Sold the van.", reason="send:life")
     )
     deps, db, _, _ = _deps(settings=settings, config=config, responder=responder)
     db.life_events_store[4] = LifeEventRow(
-        id=4, text="продал тачку", created_at=1, announced_at=None, announced_tg_message_id=None
+        id=4, text="sold the van", created_at=1, announced_at=None, announced_tg_message_id=None
     )
     handler = _handler(deps)
 
@@ -1445,7 +1450,7 @@ async def test_life_post_resends_existing_event_without_zapisal_prefix(
     assert len(responder.announce_life_calls) == 1
     assert responder.announce_life_calls[0].id == 4
     assert db.audit_stop_calls == [("life:post", ADMIN_ID, now)]
-    assert sent == ["Отправлено: Продал тачку."]
+    assert sent == ["Sent: Sold the van."]
 
 
 async def test_life_post_missing_event(
@@ -1458,7 +1463,7 @@ async def test_life_post_missing_event(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life post 9")
     await handler(message)
 
-    assert sent == ["Нет события #9."]
+    assert sent == ["No event #9."]
 
 
 async def test_life_post_without_responder(
@@ -1467,14 +1472,14 @@ async def test_life_post_without_responder(
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config, responder=None)
     db.life_events_store[5] = LifeEventRow(
-        id=5, text="продал тачку", created_at=1, announced_at=None, announced_tg_message_id=None
+        id=5, text="sold the van", created_at=1, announced_at=None, announced_tg_message_id=None
     )
     handler = _handler(deps)
 
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/life post 5")
     await handler(message)
 
-    assert sent == ["LLM не настроен, в чат не отправлено."]
+    assert sent == ["The LLM is not configured, nothing was sent to the chat."]
 
 
 async def test_life_command_in_chat_does_nothing(
@@ -1484,7 +1489,7 @@ async def test_life_command_in_chat_does_nothing(
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    message = _message(chat=_chat(), from_user=_user(ADMIN_ID), text="/life новость")
+    message = _message(chat=_chat(), from_user=_user(ADMIN_ID), text="/life news")
     await handler(message)
 
     assert db.life_events_store == {}
@@ -1504,7 +1509,7 @@ async def test_say_empty_text_replies_usage(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/say")
     await handler(message)
 
-    assert sent == ["Использование: /say <текст>"]
+    assert sent == ["Usage: /say <text>"]
     assert db.audit_stop_calls == []
 
 
@@ -1516,13 +1521,13 @@ async def test_say_without_responder(
     handler = _handler(deps)
 
     message = _message(
-        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/say Всем привет"
+        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/say Hello everyone"
     )
     await handler(message)
 
     now = int(NOW.timestamp())
     assert db.audit_stop_calls == [("say", ADMIN_ID, now)]
-    assert sent == ["LLM-часть выключена, /say недоступен."]
+    assert sent == ["The LLM part is off, /say is unavailable."]
 
 
 async def test_say_sends_text_verbatim(
@@ -1536,14 +1541,14 @@ async def test_say_sends_text_verbatim(
     message = _message(
         chat=_private_chat(ADMIN_ID),
         from_user=_user(ADMIN_ID),
-        text="/say Всем   привет,   как дела?",
+        text="/say Hello   everyone,   how are you?",
     )
     await handler(message)
 
     now = int(NOW.timestamp())
-    assert responder.say_calls == ["Всем   привет,   как дела?"]
+    assert responder.say_calls == ["Hello   everyone,   how are you?"]
     assert db.audit_stop_calls == [("say", ADMIN_ID, now)]
-    assert sent == ["Отправлено."]
+    assert sent == ["Sent."]
 
 
 async def test_say_blocked_by_stop(
@@ -1555,11 +1560,11 @@ async def test_say_blocked_by_stop(
     handler = _handler(deps)
 
     message = _message(
-        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/say Всем привет"
+        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/say Hello everyone"
     )
     await handler(message)
 
-    assert sent == ["Бот молчит (panic/stop) — /resume."]
+    assert sent == ["The bot is silent (panic/stop) - /resume."]
 
 
 async def test_say_command_in_chat_does_nothing(
@@ -1569,7 +1574,7 @@ async def test_say_command_in_chat_does_nothing(
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    message = _message(chat=_chat(), from_user=_user(ADMIN_ID), text="/say Всем привет")
+    message = _message(chat=_chat(), from_user=_user(ADMIN_ID), text="/say Hello everyone")
     await handler(message)
 
     assert db.audit_stop_calls == []
@@ -1611,7 +1616,7 @@ async def test_status_shows_circuit_closed_and_zero_streak_by_default(
 
     assert len(sent) == 1
     text = sent[0]
-    assert "Предохранитель LLM: закрыт, ошибок подряд: 0" in text
+    assert "LLM circuit breaker: closed, consecutive errors: 0" in text
 
 
 async def test_status_shows_circuit_open_until_local_time_and_streak(
@@ -1631,15 +1636,15 @@ async def test_status_shows_circuit_open_until_local_time_and_streak(
     assert len(sent) == 1
     text = sent[0]
     expected_time = local_dt(circuit_until, config.persona.timezone).strftime("%H:%M")
-    assert f"Предохранитель LLM: открыт до {expected_time}, ошибок подряд: 5" in text
+    assert f"LLM circuit breaker: open until {expected_time}, consecutive errors: 5" in text
 
 
 async def test_status_shows_circuit_closed_when_key_expired(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """llm_circuit_until в прошлом — предохранитель фактически отпустил сам по
-    таймеру (та же проверка, что в llm.py: `> now`), /status не должен врать,
-    что он ещё открыт, даже если ключ ещё не подчищен."""
+    """An llm_circuit_until in the past: the breaker released by itself on the timer (the same
+    check as in llm.py: `> now`); /status must not claim it is still open even if the key
+    has not been cleaned up yet."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     db.state["llm_circuit_until"] = str(int(NOW.timestamp()) - 10)
@@ -1651,14 +1656,14 @@ async def test_status_shows_circuit_closed_when_key_expired(
 
     assert len(sent) == 1
     text = sent[0]
-    assert "Предохранитель LLM: закрыт, ошибок подряд: 5" in text
+    assert "LLM circuit breaker: closed, consecutive errors: 5" in text
 
 
 async def test_status_shows_last_provider_refusal_for_a_day(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """22–26.10.2026 дешёвые модели сбрасывали «ошибок подряд», пока основная получала
-    402 — /status показывает последний отказ отдельно, сутки после него."""
+    """Cheap models reset the consecutive-error streak while the main model kept getting 402;
+    /status shows the last provider refusal separately, for a day after it."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     now = int(NOW.timestamp())
@@ -1669,19 +1674,19 @@ async def test_status_shows_last_provider_refusal_for_a_day(
     await handler(message)
 
     expected = local_dt(now - 3600, config.persona.timezone).strftime("%H:%M %d.%m")
-    assert f"последний отказ провайдера: 402 в {expected}" in sent[0]
+    assert f"last provider refusal: 402 at {expected}" in sent[0]
 
     db.state["llm_last_refusal"] = f"{now - 86400}|402"
     await handler(message)
-    assert "последний отказ провайдера: нет за сутки" in sent[1]
+    assert "last provider refusal: none in 24 h" in sent[1]
 
 
 async def test_status_shows_stop_only_while_active(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """stop_until в прошлом — гейт стоп уже не применяет (сравнивает с now), а ключ
-    никто не удаляет; /status не должен показывать истёкший стоп (живой случай
-    16.09.2026: «стоп у бота висит, хотя срок вышел»). Действующий — показывает."""
+    """A stop_until in the past: the gate no longer applies the stop (it compares with now)
+    while nobody deletes the key; /status must not show an expired stop (a real case: "the
+    bot shows a stop although it has expired"). An active one is shown."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
@@ -1689,7 +1694,7 @@ async def test_status_shows_stop_only_while_active(
 
     db.state["stop_until"] = str(now - 10)
     await handler(_message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status"))
-    assert "Стоп до: нет" in sent[0]
+    assert "Stopped until: none" in sent[0]
 
     db.state["stop_until"] = str(now + 3600)
     await handler(
@@ -1697,8 +1702,8 @@ async def test_status_shows_stop_only_while_active(
             chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status", message_id=2
         )
     )
-    assert "Стоп до: нет" not in sent[1]
-    assert "Стоп до: " in sent[1]
+    assert "Stopped until: none" not in sent[1]
+    assert "Stopped until: " in sent[1]
 
 
 async def test_status_shows_life_events_total_and_unsent(
@@ -1707,10 +1712,10 @@ async def test_status_shows_life_events_total_and_unsent(
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     db.life_events_store[1] = LifeEventRow(
-        id=1, text="продал тачку", created_at=1, announced_at=1, announced_tg_message_id=42
+        id=1, text="sold the van", created_at=1, announced_at=1, announced_tg_message_id=42
     )
     db.life_events_store[2] = LifeEventRow(
-        id=2, text="взял другую", created_at=2, announced_at=None, announced_tg_message_id=None
+        id=2, text="got another one", created_at=2, announced_at=None, announced_tg_message_id=None
     )
     handler = _handler(deps)
 
@@ -1744,7 +1749,7 @@ async def test_status_shows_hot_window_none_by_default(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status")
     await handler(message)
 
-    assert "hot window: нет" in sent[0]
+    assert "hot window: none" in sent[0]
 
 
 async def test_status_shows_hot_window_open_until_local_time_and_count(
@@ -1763,13 +1768,13 @@ async def test_status_shows_hot_window_open_until_local_time_and_count(
 
     expected_time = local_dt(hot_until, config.persona.timezone).strftime("%H:%M")
     cap = config.behaviour.hot_window.ambient_cap
-    assert f"hot window: до {expected_time} (2/{cap})" in sent[0]
+    assert f"hot window: until {expected_time} (2/{cap})" in sent[0]
 
 
 async def test_status_shows_hot_window_none_when_expired(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """hot_until в прошлом — /status не должен врать, что окно ещё открыто."""
+    """A hot_until in the past: /status must not claim the window is still open."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     now = int(NOW.timestamp())
@@ -1780,7 +1785,7 @@ async def test_status_shows_hot_window_none_when_expired(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status")
     await handler(message)
 
-    assert "hot window: нет" in sent[0]
+    assert "hot window: none" in sent[0]
 
 
 async def test_status_shows_followup_calls_zero_by_default(
@@ -1816,8 +1821,8 @@ async def test_status_shows_followup_calls_today_count(
 async def test_status_shows_reaction_semantic_calls(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """Реакции считаются двумя числами: сколько поставлено и сколько вызовов модели
-    на них потрачено (свой потолок semantic_daily_cap)."""
+    """Reactions are counted with two numbers: how many were placed and how many model calls
+    they cost (their own cap, semantic_daily_cap)."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     now = int(NOW.timestamp())
@@ -1888,14 +1893,14 @@ async def test_status_shows_checkin_none_by_default(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status")
     await handler(message)
 
-    assert "checkin: нет" in sent[0]
+    assert "checkin: none" in sent[0]
 
 
 async def test_status_shows_presence_allowance_and_counts(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """Потолок присутствия (CLAUDE.md, "меньше и разнообразнее"): 20 сообщений людей
-    при max_share 0.15 и free_replies 2 дают allowance 5."""
+    """Presence cap: 20 human messages with max_share 0.15 and free_replies 2 give an
+    allowance of 5."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     db.messages_today_value = 20
@@ -1941,7 +1946,7 @@ async def test_status_shows_checkin_due_local_time(
 async def test_status_shows_no_weather_without_client(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """Клиента нет вовсе (или координаты не заданы) — «погода: нет»."""
+    """No client at all (or no coordinates set): "weather: none"."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, _, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
@@ -1949,21 +1954,21 @@ async def test_status_shows_no_weather_without_client(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status")
     await handler(message)
 
-    assert "погода: нет" in sent[0]
+    assert "weather: none" in sent[0]
 
 
 async def test_status_shows_no_weather_when_snapshot_is_none(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
-    weather = FakeWeather(snapshot=None, home_name="Город")
+    weather = FakeWeather(snapshot=None, home_name="Brindlemoor")
     deps, _, _, _ = _deps(settings=settings, config=config, weather=weather)
     handler = _handler(deps)
 
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status")
     await handler(message)
 
-    assert "погода: нет" in sent[0]
+    assert "weather: none" in sent[0]
     assert weather.calls == 1
 
 
@@ -1983,7 +1988,7 @@ async def test_status_shows_weather_and_fetch_time(
         tomorrow_code=61,
         fetched_at=fetched_at,
     )
-    weather = FakeWeather(snapshot=snapshot, home_name="Город")
+    weather = FakeWeather(snapshot=snapshot, home_name="Brindlemoor")
     deps, _, _, _ = _deps(settings=settings, config=config, weather=weather)
     handler = _handler(deps)
 
@@ -1991,7 +1996,7 @@ async def test_status_shows_weather_and_fetch_time(
     await handler(message)
 
     expected_time = local_dt(fetched_at, config.persona.timezone).strftime("%H:%M")
-    assert f"погода: +9, пасмурно, обновлена {expected_time}" in sent[0]
+    assert f"weather: +9, overcast, updated {expected_time}" in sent[0]
 
 
 async def test_status_weather_without_home_name(
@@ -2000,7 +2005,7 @@ async def test_status_weather_without_home_name(
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     snapshot = Weather(
         temp_now=-0.4,
-        code_now=4242,  # неизвестный код -> описания нет
+        code_now=4242,  # unknown code -> no description
         today_min=-3.0,
         today_max=1.0,
         today_code=3,
@@ -2015,10 +2020,10 @@ async def test_status_weather_without_home_name(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status")
     await handler(message)
 
-    assert "погода: 0, обновлена" in sent[0]
+    assert "weather: 0, updated" in sent[0]
 
 
-# --- справка ------------------------------------------------------------------
+# --- help ------------------------------------------------------------------
 
 
 async def test_unknown_command_replies_help(
@@ -2064,7 +2069,7 @@ async def test_help_command_replies_with_same_help_text(
     assert "/mute" in sent[1]
 
 
-# --- суффикс @bot_username -----------------------------------------------------
+# --- @bot_username suffix -----------------------------------------------------
 
 
 async def test_command_with_bot_suffix_works(
@@ -2083,8 +2088,8 @@ async def test_command_with_bot_suffix_works(
 async def test_command_with_wrong_bot_suffix_does_nothing(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """Суффикс @другой_бот в группе рассылает команду всем ботам чата — исполняем
-    только адресованную нам."""
+    """An @other_bot suffix in a group broadcasts the command to every bot in the chat: we
+    only execute the one addressed to us."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
@@ -2097,7 +2102,7 @@ async def test_command_with_wrong_bot_suffix_does_nothing(
     assert sent == []
 
 
-# --- команда в подписи к фото ---------------------------------------------------
+# --- command in a photo caption ---------------------------------------------------
 
 
 async def test_panic_command_as_photo_caption_from_owner(
@@ -2117,10 +2122,10 @@ async def test_panic_command_as_photo_caption_from_owner(
     await handler(message)
 
     assert db.state["panic"] == "1"
-    assert sent == ["Паника. Бот молчит до /resume."]
+    assert sent == ["Panic. The bot stays silent until /resume."]
 
 
-# --- обрезка длинного ответа ----------------------------------------------------
+# --- truncation of a long answer ----------------------------------------------------
 
 
 async def test_long_reply_is_truncated_to_3500(
@@ -2128,7 +2133,7 @@ async def test_long_reply_is_truncated_to_3500(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, _, _, prompt_store = _deps(settings=settings, config=config)
-    prompt_store.system_prompt_value = "Ы" * 5000
+    prompt_store.system_prompt_value = "Z" * 5000
     handler = _handler(deps)
 
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/prompt full")
@@ -2139,28 +2144,28 @@ async def test_long_reply_is_truncated_to_3500(
     assert sent[0].endswith("…")
 
 
-# --- /mute через text_mention entity --------------------------------------------
+# --- /mute via a text_mention entity --------------------------------------------
 
 
 async def test_mute_via_text_mention_entity_by_owner(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """text_mention-упоминание — тоже "цель другой", поэтому доступно только владельцу."""
+    """A text_mention is also "the target is someone else", so it is owner-only."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    mentioned = _user(9, "Оля")
+    mentioned = _user(9, "Olly")
     entity = MessageEntity(type="text_mention", offset=6, length=3, user=mentioned)
     message = _message(
         chat=_chat(),
-        from_user=_user(ADMIN_ID, "Владелец"),
-        text="/mute Оля",
+        from_user=_user(ADMIN_ID, "Owner"),
+        text="/mute Olly",
         entities=[entity],
     )
     await handler(message)
 
-    assert db.add_mute_calls == [(9, "Оля", ADMIN_ID, int(NOW.timestamp()))]
+    assert db.add_mute_calls == [(9, "Olly", ADMIN_ID, int(NOW.timestamp()))]
 
 
 async def test_mute_via_text_mention_entity_by_member_does_nothing(
@@ -2170,21 +2175,21 @@ async def test_mute_via_text_mention_entity_by_member_does_nothing(
     deps, db, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    mentioned = _user(9, "Оля")
+    mentioned = _user(9, "Olly")
     entity = MessageEntity(type="text_mention", offset=6, length=3, user=mentioned)
-    message = _message(chat=_chat(), from_user=_user(7), text="/mute Оля", entities=[entity])
+    message = _message(chat=_chat(), from_user=_user(7), text="/mute Olly", entities=[entity])
     await handler(message)
 
     assert db.add_mute_calls == []
 
 
-# --- /memory (CLAUDE.md, "долгая память чата") --------------------------------
+# --- /memory --------------------------------------------------------------------
 
 
 def _memory_row(memory_id: int, text: str) -> ChatMemoryRow:
-    """Период 08.09–14.09.2026 по Europe/Warsaw (persona.timezone по умолчанию)."""
-    start = int(datetime(2026, 9, 8, tzinfo=ZoneInfo("Europe/Warsaw")).timestamp())
-    end = int(datetime(2026, 9, 15, tzinfo=ZoneInfo("Europe/Warsaw")).timestamp())
+    """The period 08.09-14.09.2026 in the persona timezone."""
+    start = int(datetime(2026, 9, 8, tzinfo=ZoneInfo("Europe/London")).timestamp())
+    end = int(datetime(2026, 9, 15, tzinfo=ZoneInfo("Europe/London")).timestamp())
     return ChatMemoryRow(
         id=memory_id,
         period_start=start + (memory_id - 1) * 7 * 86400,
@@ -2204,7 +2209,7 @@ async def test_memory_list_empty(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/memory")
     await handler(message)
 
-    assert sent == ["Памяти пока нет."]
+    assert sent == ["No memories yet."]
 
 
 async def test_memory_list_shows_period_and_text_oldest_first(
@@ -2212,8 +2217,8 @@ async def test_memory_list_shows_period_and_text_oldest_first(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.chat_memory_store[1] = _memory_row(1, "Миша хвастался самокатом")
-    db.chat_memory_store[2] = _memory_row(2, "Собирались на рыбалку")
+    db.chat_memory_store[1] = _memory_row(1, "Mike was boasting about his scooter")
+    db.chat_memory_store[2] = _memory_row(2, "They were planning a fishing trip")
     handler = _handler(deps)
 
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/memory list")
@@ -2221,8 +2226,8 @@ async def test_memory_list_shows_period_and_text_oldest_first(
 
     assert len(sent) == 1
     text = sent[0]
-    assert text.startswith("#1 08.09–14.09.2026\nМиша хвастался самокатом")
-    assert "#2 15.09–21.09.2026\nСобирались на рыбалку" in text
+    assert text.startswith("#1 08.09–14.09.2026\nMike was boasting about his scooter")
+    assert "#2 15.09–21.09.2026\nThey were planning a fishing trip" in text
 
 
 async def test_memory_rm_deletes_and_audits(
@@ -2230,16 +2235,16 @@ async def test_memory_rm_deletes_and_audits(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.chat_memory_store[1] = _memory_row(1, "Миша хвастался самокатом")
+    db.chat_memory_store[1] = _memory_row(1, "Mike was boasting about his scooter")
     handler = _handler(deps)
 
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/memory rm 1")
     await handler(message)
 
-    assert sent == ["Пересказ #1 удалён."]
+    assert sent == ["Summary #1 deleted."]
     assert db.chat_memory_store == {}
     assert db.audit_stop_calls == [("memory:rm", ADMIN_ID, int(NOW.timestamp()))]
-    assert db.audit_values["memory:rm"] == "Миша хвастался самокатом"
+    assert db.audit_values["memory:rm"] == "Mike was boasting about his scooter"
 
 
 async def test_memory_rm_unknown_id(
@@ -2252,7 +2257,7 @@ async def test_memory_rm_unknown_id(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/memory rm 7")
     await handler(message)
 
-    assert sent == ["Нет пересказа #7."]
+    assert sent == ["No summary #7."]
 
 
 async def test_memory_rm_without_number_replies_usage(
@@ -2265,14 +2270,16 @@ async def test_memory_rm_without_number_replies_usage(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/memory rm")
     await handler(message)
 
-    assert sent == ["Использование: /memory [list | rm N | run]"]
+    assert sent == ["Usage: /memory [list | rm N | run]"]
 
 
 async def test_memory_run_reports_created_rows(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
-    memorizer = FakeMemorizer(run_due_result=[_memory_row(1, "Миша хвастался самокатом")])
+    memorizer = FakeMemorizer(
+        run_due_result=[_memory_row(1, "Mike was boasting about his scooter")]
+    )
     deps, db, _, _ = _deps(settings=settings, config=config, memorizer=memorizer)
     handler = _handler(deps)
 
@@ -2281,8 +2288,8 @@ async def test_memory_run_reports_created_rows(
 
     assert memorizer.run_due_calls == [int(NOW.timestamp())]
     assert len(sent) == 1
-    assert sent[0].startswith("Добавлено пересказов: 1")
-    assert "#1 08.09–14.09.2026\nМиша хвастался самокатом" in sent[0]
+    assert sent[0].startswith("Summaries added: 1")
+    assert "#1 08.09–14.09.2026\nMike was boasting about his scooter" in sent[0]
     assert db.audit_stop_calls == [("memory:run", ADMIN_ID, int(NOW.timestamp()))]
 
 
@@ -2297,7 +2304,7 @@ async def test_memory_run_nothing_to_summarize(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/memory run")
     await handler(message)
 
-    assert sent == ["Нечего пересказывать."]
+    assert sent == ["Nothing to summarize."]
 
 
 async def test_memory_run_without_memorizer(
@@ -2310,7 +2317,7 @@ async def test_memory_run_without_memorizer(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/memory run")
     await handler(message)
 
-    assert sent == ["LLM-часть выключена, пересказы недоступны."]
+    assert sent == ["The LLM part is off, summaries are unavailable."]
     assert db.audit_stop_calls == []
 
 
@@ -2322,20 +2329,20 @@ async def test_memory_unknown_subcommand_replies_usage(
     handler = _handler(deps)
 
     message = _message(
-        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/memory всё забудь"
+        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/memory forget it all"
     )
     await handler(message)
 
-    assert sent == ["Использование: /memory [list | rm N | run]"]
+    assert sent == ["Usage: /memory [list | rm N | run]"]
 
 
 async def test_memory_command_in_chat_does_nothing(
     monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    """Команда владельца — только в личке; в чате памятью не светим."""
+    """An owner command works in private only; the chat never sees the memory."""
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.chat_memory_store[1] = _memory_row(1, "Миша хвастался самокатом")
+    db.chat_memory_store[1] = _memory_row(1, "Mike was boasting about his scooter")
     handler = _handler(deps)
 
     message = _message(chat=_chat(), from_user=_user(ADMIN_ID), text="/memory list")
@@ -2367,7 +2374,7 @@ async def test_status_shows_no_chat_memory_by_default(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status")
     await handler(message)
 
-    assert "chat memory: нет" in sent[0]
+    assert "chat memory: none" in sent[0]
 
 
 async def test_status_shows_chat_memory_total_and_last_period_end(
@@ -2375,19 +2382,20 @@ async def test_status_shows_chat_memory_total_and_last_period_end(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.chat_memory_store[1] = _memory_row(1, "Миша хвастался самокатом")
-    db.chat_memory_store[2] = _memory_row(2, "Собирались на рыбалку")
+    db.chat_memory_store[1] = _memory_row(1, "Mike was boasting about his scooter")
+    db.chat_memory_store[2] = _memory_row(2, "They were planning a fishing trip")
     handler = _handler(deps)
 
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status")
     await handler(message)
 
-    assert "chat memory: 2, последний до 22.09.2026" in sent[0]
+    assert "chat memory: 2, last up to 22.09.2026" in sent[0]
 
 
 # --- /changelog -------------------------------------------------------------
 
 
+# The legacy CHANGELOG.md format: Russian block headers (PR-8: changelog.py keys on them).
 _CHANGELOG_SAMPLE = """# Changelog
 
 ## [Unreleased]
@@ -2400,17 +2408,17 @@ _CHANGELOG_SAMPLE = """# Changelog
 
 ### Для чата
 
-- Фёдор стал говорить заметно реже.
+- Gus now talks noticeably less often.
 
 ### Для владельца
 
-- Потолок присутствия `behaviour.presence` (#12).
+- Presence cap `behaviour.presence` (#12).
 
 ## [0.4.0] — 2026-09-15
 
 ### Для чата
 
-- Фёдор видит фото.
+- Gus can see photos.
 
 ### Для владельца
 
@@ -2432,7 +2440,7 @@ async def test_changelog_bare_returns_latest_for_chat(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/changelog")
     await handler(message)
 
-    assert sent == ["v0.5.0 (2026-09-16)\n- Фёдор стал говорить заметно реже."]
+    assert sent == ["v0.5.0 (2026-09-16)\n- Gus now talks noticeably less often."]
 
 
 async def test_changelog_owner_returns_latest_for_owner(
@@ -2447,7 +2455,7 @@ async def test_changelog_owner_returns_latest_for_owner(
     )
     await handler(message)
 
-    assert sent == ["v0.5.0 (2026-09-16)\n- Потолок присутствия `behaviour.presence` (#12)."]
+    assert sent == ["v0.5.0 (2026-09-16)\n- Presence cap `behaviour.presence` (#12)."]
 
 
 @pytest.mark.parametrize("version_arg", ["0.4.0", "v0.4.0"])
@@ -2466,7 +2474,7 @@ async def test_changelog_specific_version_accepts_v_prefix(
     )
     await handler(message)
 
-    assert sent == ["v0.4.0 (2026-09-15)\n- Фёдор видит фото."]
+    assert sent == ["v0.4.0 (2026-09-15)\n- Gus can see photos."]
 
 
 async def test_changelog_unknown_version_replies_not_found(
@@ -2481,7 +2489,7 @@ async def test_changelog_unknown_version_replies_not_found(
     )
     await handler(message)
 
-    assert sent == ["Версии 9.9.9 нет."]
+    assert sent == ["No version 9.9.9."]
 
 
 async def test_changelog_missing_file_replies_not_found(
@@ -2494,7 +2502,7 @@ async def test_changelog_missing_file_replies_not_found(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/changelog")
     await handler(message)
 
-    assert sent == ["CHANGELOG.md не найден или пуст."]
+    assert sent == ["CHANGELOG.md not found or empty."]
 
 
 async def test_changelog_ignored_in_chat(
@@ -2523,7 +2531,7 @@ async def test_status_starts_with_version(
     assert sent[0].startswith("sotto v")
 
 
-# --- /diary (CLAUDE.md, "дневник дня") ------------------------------------------
+# --- /diary ------------------------------------------------------------------
 
 
 def _fact(fact_id: int, text: str, created_at: datetime) -> SelfFactRow:
@@ -2545,7 +2553,7 @@ async def test_diary_list_empty(
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/diary")
     await handler(message)
 
-    assert sent == ["Фактов нет."]
+    assert sent == ["No facts."]
 
 
 async def test_diary_list_shows_week_in_local_time(
@@ -2553,14 +2561,14 @@ async def test_diary_list_shows_week_in_local_time(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.self_facts_store[1] = _fact(1, "пошёл в баню", datetime(2026, 1, 10, 9, 46, tzinfo=UTC))
-    db.self_facts_store[2] = _fact(2, "давний факт", datetime(2025, 12, 1, 9, 0, tzinfo=UTC))
+    db.self_facts_store[1] = _fact(1, "went to the sauna", datetime(2026, 1, 10, 9, 46, tzinfo=UTC))
+    db.self_facts_store[2] = _fact(2, "an old fact", datetime(2025, 12, 1, 9, 0, tzinfo=UTC))
     handler = _handler(deps)
 
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/diary")
     await handler(message)
 
-    assert sent == ["#1 10.01 10:46 пошёл в баню"]
+    assert sent == ["#1 10.01 09:46 went to the sauna"]
 
 
 async def test_diary_rm_deletes_and_audits(
@@ -2568,16 +2576,16 @@ async def test_diary_rm_deletes_and_audits(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.self_facts_store[1] = _fact(1, "пошёл в баню", NOW)
+    db.self_facts_store[1] = _fact(1, "went to the sauna", NOW)
     handler = _handler(deps)
 
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/diary rm 1")
     await handler(message)
 
-    assert sent == ["Факт #1 удалён."]
+    assert sent == ["Fact #1 deleted."]
     assert db.self_facts_store == {}
     assert db.audit_stop_calls == [("diary:rm", ADMIN_ID, int(NOW.timestamp()))]
-    assert db.audit_values["diary:rm"] == "пошёл в баню"
+    assert db.audit_values["diary:rm"] == "went to the sauna"
 
 
 async def test_diary_rm_unknown_and_bad_args(
@@ -2587,11 +2595,11 @@ async def test_diary_rm_unknown_and_bad_args(
     deps, _, _, _ = _deps(settings=settings, config=config)
     handler = _handler(deps)
 
-    for text in ("/diary rm 7", "/diary rm", "/diary что-то"):
+    for text in ("/diary rm 7", "/diary rm", "/diary something"):
         await handler(_message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text=text))
 
-    usage = "Использование: /diary | /diary rm N"
-    assert sent == ["Нет факта #7.", usage, usage]
+    usage = "Usage: /diary | /diary rm N"
+    assert sent == ["No fact #7.", usage, usage]
 
 
 async def test_diary_command_in_chat_does_nothing(
@@ -2599,7 +2607,7 @@ async def test_diary_command_in_chat_does_nothing(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.self_facts_store[1] = _fact(1, "пошёл в баню", NOW)
+    db.self_facts_store[1] = _fact(1, "went to the sauna", NOW)
     handler = _handler(deps)
 
     await handler(_message(chat=_chat(), from_user=_user(ADMIN_ID), text="/diary"))
@@ -2625,8 +2633,8 @@ async def test_status_shows_diary_line(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.self_facts_store[1] = _fact(1, "пошёл в баню", NOW)
-    db.state[day_key("diary_calls", int(NOW.timestamp()), "Europe/Warsaw")] = "4"
+    db.self_facts_store[1] = _fact(1, "went to the sauna", NOW)
+    db.state[day_key("diary_calls", int(NOW.timestamp()), "Europe/London")] = "4"
     handler = _handler(deps)
 
     await handler(_message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status"))
@@ -2654,22 +2662,22 @@ async def test_status_shows_self_share_line(
         )
 
     db.bot_replies_store = [
-        row("ambient", "У нас в лаборатории так же спорили", now - 3600),
-        row("ambient", "Третий раз это уже традиция", now - 3500),
-        row("name", "Внук чеснок не ест", now - 3400),
-        row("morning", "Доброе утро всем", now - 3300),
-        row("say", "я в баню", now - 3200),
-        row("ambient", "[стикер #3] Ну ты даёшь", now - 3100),
-        row("ambient", "У меня такие в банке", now - 4 * 86400),  # вне окна
+        row("ambient", "We argued just like that in the lab", now - 3600),
+        row("ambient", "A third time is already a tradition", now - 3500),
+        row("name", "My grandson will not eat garlic", now - 3400),
+        row("morning", "Good morning all", now - 3300),
+        row("say", "I am off to the sauna", now - 3200),
+        row("ambient", "[sticker #3] Well, look at you", now - 3100),
+        row("ambient", "I keep those in a jar", now - 4 * 86400),  # outside the window
     ]
     handler = _handler(deps)
 
     await handler(_message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status"))
 
-    assert "о себе за 3 сут: ambient 1/2, обращения 1/1, прочее 0/1" in sent[0]
+    assert "about himself over 3 days: ambient 1/2, addressed 1/1, other 0/1" in sent[0]
 
 
-# --- /jokes и /people (CLAUDE.md, "шутки чата и истории людей") -----------------
+# --- /jokes and /people -----------------------------------------------------
 
 
 def _joke(joke_id: int, text: str, created_at: datetime, used: datetime | None = None) -> JokeRow:
@@ -2708,16 +2716,19 @@ async def test_jokes_list_empty_and_newest_first(
     handler = _handler(deps)
 
     await _owner_say(handler, "/jokes")
-    assert sent == ["Шуток пока нет."]
+    assert sent == ["No jokes yet."]
 
-    db.jokes_store[1] = _joke(1, "опять шурупы", datetime(2026, 1, 1, tzinfo=UTC))
+    db.jokes_store[1] = _joke(1, "screws again", datetime(2026, 1, 1, tzinfo=UTC))
     db.jokes_store[2] = _joke(
-        2, "как у Вовы", datetime(2026, 1, 5, tzinfo=UTC), used=datetime(2026, 1, 9, 9, tzinfo=UTC)
+        2,
+        "like Vince's",
+        datetime(2026, 1, 5, tzinfo=UTC),
+        used=datetime(2026, 1, 9, 9, tzinfo=UTC),
     )
     sent.clear()
     await _owner_say(handler, "/jokes")
 
-    assert sent == ["#2 как у Вовы (использована 09.01)\n#1 опять шурупы (использована —)"]
+    assert sent == ["#2 like Vince's (used 09.01)\n#1 screws again (used -)"]
 
 
 async def test_jokes_rm_deletes_audits_and_bad_args(
@@ -2725,17 +2736,17 @@ async def test_jokes_rm_deletes_audits_and_bad_args(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.jokes_store[1] = _joke(1, "опять шурупы", NOW)
+    db.jokes_store[1] = _joke(1, "screws again", NOW)
     handler = _handler(deps)
 
-    for text in ("/jokes rm 7", "/jokes rm", "/jokes что-то", "/jokes rm 1"):
+    for text in ("/jokes rm 7", "/jokes rm", "/jokes something", "/jokes rm 1"):
         await _owner_say(handler, text)
 
-    usage = "Использование: /jokes | /jokes rm N"
-    assert sent == ["Нет шутки #7.", usage, usage, "Шутка #1 удалена."]
+    usage = "Usage: /jokes | /jokes rm N"
+    assert sent == ["No joke #7.", usage, usage, "Joke #1 deleted."]
     assert db.jokes_store == {}
     assert db.audit_stop_calls == [("jokes:rm", ADMIN_ID, int(NOW.timestamp()))]
-    assert db.audit_values["jokes:rm"] == "опять шурупы"
+    assert db.audit_values["jokes:rm"] == "screws again"
 
 
 async def test_people_list_empty_and_statuses(
@@ -2746,22 +2757,20 @@ async def test_people_list_empty_and_statuses(
     handler = _handler(deps)
 
     await _owner_say(handler, "/people")
-    assert sent == ["Историй пока нет."]
+    assert sent == ["No stories yet."]
 
     db.threads_store[1] = _thread(
         1,
-        "Миша",
-        "ждёт ответа после прослушивания",
+        "Mike",
+        "awaits audition news",
         datetime(2026, 1, 2, tzinfo=UTC),
         asked=datetime(2026, 1, 8, 12, tzinfo=UTC),
     )
-    db.threads_store[2] = _thread(2, "Юля", "ищет лодку", datetime(2026, 1, 3, tzinfo=UTC))
+    db.threads_store[2] = _thread(2, "Julia", "wants a boat", datetime(2026, 1, 3, tzinfo=UTC))
     sent.clear()
     await _owner_say(handler, "/people")
 
-    assert sent == [
-        "#1 Миша: ждёт ответа после прослушивания (спросил 08.01)\n#2 Юля: ищет лодку (открыт)"
-    ]
+    assert sent == ["#1 Mike: awaits audition news (asked 08.01)\n#2 Julia: wants a boat (open)"]
 
 
 async def test_people_rm_deletes_audits_and_bad_args(
@@ -2769,17 +2778,17 @@ async def test_people_rm_deletes_audits_and_bad_args(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.threads_store[1] = _thread(1, "Юля", "ищет лодку", NOW)
+    db.threads_store[1] = _thread(1, "Julia", "wants a boat", NOW)
     handler = _handler(deps)
 
     for text in ("/people rm 9", "/people rm", "/people x", "/people rm 1"):
         await _owner_say(handler, text)
 
-    usage = "Использование: /people | /people rm N"
-    assert sent == ["Нет истории #9.", usage, usage, "История #1 удалена."]
+    usage = "Usage: /people | /people rm N"
+    assert sent == ["No story #9.", usage, usage, "Story #1 deleted."]
     assert db.threads_store == {}
     assert db.audit_stop_calls == [("people:rm", ADMIN_ID, int(NOW.timestamp()))]
-    assert db.audit_values["people:rm"] == "ищет лодку"
+    assert db.audit_values["people:rm"] == "wants a boat"
 
 
 async def test_jokes_and_people_in_chat_do_nothing(
@@ -2787,7 +2796,7 @@ async def test_jokes_and_people_in_chat_do_nothing(
 ) -> None:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     deps, db, _, _ = _deps(settings=settings, config=config)
-    db.jokes_store[1] = _joke(1, "опять шурупы", NOW)
+    db.jokes_store[1] = _joke(1, "screws again", NOW)
     handler = _handler(deps)
 
     await handler(_message(chat=_chat(), from_user=_user(ADMIN_ID), text="/jokes"))
@@ -2818,26 +2827,26 @@ async def test_status_shows_jokes_people_callback_line(
     handler = _handler(deps)
 
     await _owner_say(handler, "/status")
-    assert "jokes: 0, people: 0, callback: нет" in sent[0]
+    assert "jokes: 0, people: 0, callback: none" in sent[0]
 
-    db.jokes_store[1] = _joke(1, "опять шурупы", NOW)
-    db.threads_store[1] = _thread(1, "Юля", "ищет лодку", NOW)
-    db.threads_store[2] = _thread(2, "Миша", "ремонт", NOW, asked=NOW)
+    db.jokes_store[1] = _joke(1, "screws again", NOW)
+    db.threads_store[1] = _thread(1, "Julia", "wants a boat", NOW)
+    db.threads_store[2] = _thread(2, "Mike", "renovation", NOW, asked=NOW)
     db.state["callback_last_at"] = str(int(datetime(2026, 1, 8, 12, tzinfo=UTC).timestamp()))
     sent.clear()
     await _owner_say(handler, "/status")
 
-    assert "jokes: 1, people: 1, callback: последний 08.01" in sent[0]
+    assert "jokes: 1, people: 1, callback: last 08.01" in sent[0]
 
 
-# --- /words: словари словечек (CLAUDE.md, "словечки из словаря") ----------------------
+# --- /words: slang dictionaries ----------------------------------------------
 
 VOCAB_YAML = """
-name: дворовые
-about: дворовые словечки
+name: yard
+about: yard slang
 words:
-  - {word: сырюка, meaning: Слякотная погода}
-  - {word: зюфа, meaning: Зов присесть}
+  - {word: sloshy, meaning: Slushy weather}
+  - {word: zoop, meaning: An invitation to sit down}
 """
 
 
@@ -2859,7 +2868,7 @@ def _doc_message(*, size: int | None = None, caption: str = "/words") -> Message
         from_user=_user(ADMIN_ID),
         caption=caption,
         document=Document(
-            file_id="doc-1", file_unique_id="u-1", file_name="slova.yaml", file_size=size
+            file_id="doc-1", file_unique_id="u-1", file_name="words.yaml", file_size=size
         ),
     )
 
@@ -2886,18 +2895,18 @@ async def test_words_upload_document_loads_dict(
 
     await handler(_doc_message(size=200))
 
-    assert sent == ["Словарь «дворовые»: 2 слова, включён."]
-    assert [e.word for e in vocab_store.get().find("зюфа")] == ["зюфа"]
-    assert db.audit_values["words:put"] == "дворовые"
+    assert sent == ['Dictionary "yard": 2 words, enabled.']
+    assert [e.word for e in vocab_store.get().find("zoop")] == ["zoop"]
+    assert db.audit_values["words:put"] == "yard"
 
 
 @pytest.mark.parametrize(
     ("data", "size", "expected"),
     [
-        (b"name: [", 10, "Не разобрал файл: YAML"),
-        (b"name: x\nwords: []", 10, "Не разобрал файл: words"),
-        (b"\xff\xfe\x00", 3, "Файл не в UTF-8"),
-        (VOCAB_YAML.encode(), 10**7, "Файл больше 512 КБ"),
+        (b"name: [", 10, "Could not parse the file: YAML"),
+        (b"name: x\nwords: []", 10, "Could not parse the file: words"),
+        (b"\xff\xfe\x00", 3, "The file is not UTF-8"),
+        (VOCAB_YAML.encode(), 10**7, "The file is larger than 512 KB"),
     ],
 )
 async def test_words_upload_errors(
@@ -2930,37 +2939,37 @@ async def test_words_list_show_toggle_remove(
         return _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text=text)
 
     await handler(private("/words"))
-    assert sent[-1].startswith("Словарей нет.")
+    assert sent[-1].startswith("No dictionaries.")
 
     await vocab_store.put(VOCAB_YAML, now=int(NOW.timestamp()))
     await handler(private("/words"))
-    assert sent[-1].startswith("дворовые: 2 слова, вкл, 10.01")
+    assert sent[-1].startswith("yard: 2 words, on, 10.01")
 
-    await handler(private("/words show Дворовые"))
+    await handler(private("/words show Yard"))
     assert sent[-1].splitlines()[:3] == [
-        "дворовые: 2 слова (дворовые словечки)",
-        "сырюка: Слякотная погода",
-        "зюфа: Зов присесть",
+        "yard: 2 words (yard slang)",
+        "sloshy: Slushy weather",
+        "zoop: An invitation to sit down",
     ]
 
-    await handler(private("/words off дворовые"))
-    assert sent[-1] == "Словарь «дворовые» выключен."
+    await handler(private("/words off yard"))
+    assert sent[-1] == 'Dictionary "yard" disabled.'
     assert not vocab_store.get()
-    await handler(private("/words on дворовые"))
-    assert sent[-1] == "Словарь «дворовые» включён."
+    await handler(private("/words on yard"))
+    assert sent[-1] == 'Dictionary "yard" enabled.'
     assert vocab_store.get()
 
-    await handler(private("/words show нету"))
-    assert sent[-1] == "Нет словаря «нету»."
-    await handler(private("/words frob дворовые"))
-    assert sent[-1].startswith("Использование: /words")
+    await handler(private("/words show nothing"))
+    assert sent[-1] == 'No dictionary "nothing".'
+    await handler(private("/words frob yard"))
+    assert sent[-1].startswith("Usage: /words")
 
-    await handler(private("/words rm дворовые"))
-    assert sent[-1] == "Словарь «дворовые» удалён."
+    await handler(private("/words rm yard"))
+    assert sent[-1] == 'Dictionary "yard" deleted.'
     assert await vocab_store.dicts() == []
-    assert db.audit_values["words:rm"] == "дворовые"
-    assert db.audit_values["words:off"] == "дворовые"
-    assert db.audit_values["words:on"] == "дворовые"
+    assert db.audit_values["words:rm"] == "yard"
+    assert db.audit_values["words:off"] == "yard"
+    assert db.audit_values["words:on"] == "yard"
 
 
 async def test_words_without_store_says_unavailable(
@@ -2969,7 +2978,7 @@ async def test_words_without_store_says_unavailable(
     deps, _ = _words_deps(monkeypatch, config, None)
     handler = _handler(deps)
     await handler(_message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/words"))
-    assert sent == ["Словари словечек недоступны."]
+    assert sent == ["Word dictionaries are unavailable."]
 
 
 async def test_words_upload_from_non_owner_is_ignored(
@@ -2996,11 +3005,11 @@ async def test_status_shows_vocab_line(
     now = int(NOW.timestamp())
     await vocab_store.put(VOCAB_YAML, now=now)
     db.state[day_key("vocab_count", now, config.persona.timezone)] = "1"
-    db.state["vocab_last"] = f"{now}|сырюка"
+    db.state["vocab_last"] = f"{now}|sloshy"
 
     await handler(_message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status"))
 
-    assert "словечки: 1/1 словарей (2 слов), сегодня 1/2, последнее сырюка 10.01" in sent[0]
+    assert "vocab: 1/1 dictionaries (2 words), today 1/2, last sloshy 10.01" in sent[0]
 
 
 async def test_status_vocab_line_without_store(
@@ -3009,7 +3018,7 @@ async def test_status_vocab_line_without_store(
     deps, _ = _words_deps(monkeypatch, config, None)
     handler = _handler(deps)
     await handler(_message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/status"))
-    assert "словечки: нет" in sent[0]
+    assert "vocab: none" in sent[0]
 
 
 async def test_help_mentions_words(
@@ -3021,12 +3030,12 @@ async def test_help_mentions_words(
     assert "/words" in sent[0]
 
 
-# --- /ask: предпросмотр ответа (CLAUDE.md, "предпросмотр ответа") ----------------------
+# --- /ask: preview of an answer ----------------------------------------------
 
 
 def _ask(text: str) -> Message:
     return _message(
-        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID, first_name="Вячеслав"), text=text
+        chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID, first_name="Wesley"), text=text
     )
 
 
@@ -3034,43 +3043,46 @@ def _ask(text: str) -> Message:
     ("outcome", "expected"),
     [
         (
-            PreviewOutcome(sent=True, text="Бывает.", reason="send:mention"),
-            ["Ответил бы: Бывает.", "(в чат не отправлено)"],
+            PreviewOutcome(sent=True, text="Happens.", reason="send:mention"),
+            ["Would answer: Happens.", "(nothing was sent to the chat)"],
         ),
         (
             PreviewOutcome(
                 sent=True,
-                text="Ну да.",
+                text="Sure.",
                 reason="send:mention",
                 reasons=("regex:venue",),
                 fixes=("fix:dash",),
             ),
             [
-                "Ответил бы: Ну да.",
-                "Фильтр отметил, но пропустил (shadow): regex:venue",
-                "Правки: fix:dash",
-                "(в чат не отправлено)",
+                "Would answer: Sure.",
+                "The filter flagged it but let it through (shadow): regex:venue",
+                "Fixes: fix:dash",
+                "(nothing was sent to the chat)",
             ],
         ),
         (
             PreviewOutcome(sent=False, text="", reason="llm:silent"),
-            ["Промолчал бы (модель решила не отвечать).", "(в чат не отправлено)"],
+            [
+                "Would stay silent (the model chose not to answer).",
+                "(nothing was sent to the chat)",
+            ],
         ),
         (
             PreviewOutcome(sent=False, text="", reason="llm:timeout"),
-            ["Не ответил бы: llm:timeout.", "(в чат не отправлено)"],
+            ["Would not answer: llm:timeout.", "(nothing was sent to the chat)"],
         ),
         (
             PreviewOutcome(
                 sent=False,
-                text="Зюфа опять.",
+                text="Zoop again.",
                 reason="dedup:vocab",
                 reasons=("dedup:vocab", "regex:venue"),
             ),
             [
-                "Не ответил бы, срезал бы фильтр: dedup:vocab, regex:venue.",
-                "Кандидат: Зюфа опять.",
-                "(в чат не отправлено)",
+                "Would not answer, the filter would cut it: dedup:vocab, regex:venue.",
+                "Candidate: Zoop again.",
+                "(nothing was sent to the chat)",
             ],
         ),
     ],
@@ -3085,12 +3097,12 @@ async def test_ask_renders_preview(
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     responder = FakeResponder(preview_result=outcome)
     deps, db, _, _ = _deps(settings=settings, config=config, responder=responder)
-    db.display_names_value = {ADMIN_ID: "Слава"}
+    db.display_names_value = {ADMIN_ID: "Wes"}
     handler = _handler(deps)
 
-    await handler(_ask("/ask   Федь,  какая погода?"))
+    await handler(_ask("/ask   Gus,  what is the weather?"))
 
-    assert responder.preview_calls == [("Федь, какая погода?", "Слава")]
+    assert responder.preview_calls == [("Gus, what is the weather?", "Wes")]
     assert sent == ["\n".join(expected)]
     assert db.audit_stop_calls == []
 
@@ -3103,9 +3115,9 @@ async def test_ask_falls_back_to_telegram_name(
     deps, _, _, _ = _deps(settings=settings, config=config, responder=responder)
     handler = _handler(deps)
 
-    await handler(_ask("/ask привет"))
+    await handler(_ask("/ask hello"))
 
-    assert responder.preview_calls == [("привет", "Вячеслав")]
+    assert responder.preview_calls == [("hello", "Wesley")]
 
 
 async def test_ask_usage_and_no_responder(
@@ -3115,12 +3127,12 @@ async def test_ask_usage_and_no_responder(
     responder = FakeResponder()
     deps, _, _, _ = _deps(settings=settings, config=config, responder=responder)
     await _handler(deps)(_ask("/ask"))
-    assert sent == ["Использование: /ask <текст>"]
+    assert sent == ["Usage: /ask <text>"]
     assert responder.preview_calls == []
 
     deps_none, _, _, _ = _deps(settings=settings, config=config, responder=None)
-    await _handler(deps_none)(_ask("/ask привет"))
-    assert sent[-1] == "LLM-часть выключена, /ask недоступен."
+    await _handler(deps_none)(_ask("/ask hello"))
+    assert sent[-1] == "The LLM part is off, /ask is unavailable."
 
 
 async def test_ask_in_group_chat_is_ignored(
@@ -3129,6 +3141,6 @@ async def test_ask_in_group_chat_is_ignored(
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
     responder = FakeResponder()
     deps, _, _, _ = _deps(settings=settings, config=config, responder=responder)
-    await _handler(deps)(_message(chat=_chat(), from_user=_user(ADMIN_ID), text="/ask привет"))
+    await _handler(deps)(_message(chat=_chat(), from_user=_user(ADMIN_ID), text="/ask hello"))
     assert sent == []
     assert responder.preview_calls == []

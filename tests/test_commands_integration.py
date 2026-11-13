@@ -1,13 +1,12 @@
-"""Сквозной тест этапа 6: настоящие Database/ConfigStore/PromptStore и оба роутера
-(build_commands_router, build_router), а не подделки протоколов commands.py.
+"""End-to-end test of the owner commands: a real Database/ConfigStore/PromptStore and both
+routers (build_commands_router, build_router), not the protocol fakes of commands.py.
 
-Отличие от tests/test_commands.py (тот проверяет командный роутер в изоляции,
-на структурных фейках _DbLike/_ConfigStoreLike/_PromptStoreLike) — здесь вся
-цепочка "команда владельца/чата -> ConfigStore/PromptStore/Database -> обратно
-видно в config_store.get()/gate" прогоняется целиком, на временной БД (tmp_path),
-но настоящих config.yaml/prompts/system.txt/few_shot.yaml из корня репозитория —
-их эти тесты только читают, ConfigStore.set()/PromptStore пишут исключительно
-в БД (yaml и txt/yaml-файлы не трогаются ни разу).
+Unlike tests/test_commands.py (which checks the command router in isolation, on structural fakes
+of _DbLike/_ConfigStoreLike/_PromptStoreLike), here the whole chain "owner/chat command ->
+ConfigStore/PromptStore/Database -> visible again in config_store.get()/the gate" runs end to end
+on a temporary DB (tmp_path), but with the demo pack's real config.yaml, prompts and few_shot.yaml:
+these tests only read them; ConfigStore.set() and PromptStore write to the DB exclusively (the
+yaml and txt files are never touched).
 """
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ from aiogram.types import Chat, Message, MessageEntity, Update, User
 from sotto.bot import Deps, build_router
 from sotto.commands import build_commands_router
 from sotto.db import Database
+from sotto.fragments import load_valid_fragments
 from sotto.gate import should_consider
 from sotto.gate_state import load_gate_state
 from sotto.gate_types import GateMessage, Verdict
@@ -31,25 +31,25 @@ from sotto.persona import load_persona
 from sotto.settings import Settings
 from sotto.stores import ConfigStore, PromptStore
 from sotto.timeutil import local_dt
-from tests.packs import LEGACY_FRAG, LEGACY_PACK
+from tests.packs import DEMO_PACK
 
 OWN_CHAT_ID = -1001234567890
 ADMIN_ID = 555
 BOT_USER_ID = 999
-BOT_USERNAME = "fedorbot"
+BOT_USERNAME = "gusbot"
 NOW = datetime(2026, 1, 10, 12, 0, tzinfo=UTC)
 NOW_TS = int(NOW.timestamp())
 
 
 def _chat(chat_id: int = OWN_CHAT_ID) -> Chat:
-    return Chat(id=chat_id, type="supergroup", title="Чат друзей")
+    return Chat(id=chat_id, type="supergroup", title="Friends chat")
 
 
 def _private_chat() -> Chat:
     return Chat(id=ADMIN_ID, type="private")
 
 
-def _user(user_id: int, first_name: str = "Гена", last_name: str | None = None) -> User:
+def _user(user_id: int, first_name: str = "Gene", last_name: str | None = None) -> User:
     return User(id=user_id, is_bot=False, first_name=first_name, last_name=last_name)
 
 
@@ -83,7 +83,7 @@ def _make_settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
 
 @pytest.fixture
 def sent(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Перехватывает Message.answer, чтобы не дёргать реальный Bot API."""
+    """Intercepts Message.answer so the real Bot API is never called."""
     captured: list[str] = []
 
     async def fake_answer(self: Message, text: str, **kwargs: object) -> None:
@@ -97,12 +97,12 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 async def wired(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[tuple[Deps, Database, ConfigStore, PromptStore]]:
-    """Полная проводка этапа 6 (app.py, без Bot.get_me()/polling) на временной БД."""
+    """The full wiring of app.py (without Bot.get_me()/polling) on a temporary DB."""
     settings = _make_settings(monkeypatch)
     db = Database(tmp_path / "bot.db")
     await db.connect()
 
-    persona = load_persona(LEGACY_PACK)
+    persona = load_persona(DEMO_PACK)
     config_store = ConfigStore(persona, db)
     await config_store.load()
 
@@ -131,7 +131,7 @@ async def wired(
         prompt_store=prompt_store,
         bot_username=BOT_USERNAME,
         persona=persona,
-        frag=LEGACY_FRAG,
+        frag=load_valid_fragments(DEMO_PACK / "fragments.yaml"),
     )
     try:
         yield deps, db, config_store, prompt_store
@@ -149,7 +149,7 @@ def _main_handler(deps: Deps):  # type: ignore[no-untyped-def]
     return router.message.handlers[0].callback
 
 
-# --- /set, /unset: ConfigStore.get() меняется, override в БД, аудит, patterns ------
+# --- /set, /unset: ConfigStore.get() changes, the override is in the DB, audit, patterns ---
 
 
 async def test_set_writes_override_audits_and_rebuilds_patterns(
@@ -158,11 +158,11 @@ async def test_set_writes_override_audits_and_rebuilds_patterns(
     deps, db, config_store, _prompt_store = wired
     handler = _commands_handler(deps)
 
-    assert config_store.get().behaviour.daily_cap == 3  # дефолт из config.yaml
+    assert config_store.get().behaviour.daily_cap == 3  # the default from config.yaml
 
     message = _message(
         chat=_private_chat(),
-        from_user=_user(ADMIN_ID, "Владелец"),
+        from_user=_user(ADMIN_ID, "Owner"),
         text="/set behaviour.daily_cap 7",
     )
     await handler(message)
@@ -185,47 +185,46 @@ async def test_set_writes_override_audits_and_rebuilds_patterns(
     assert rows[0]["new_value"] == "7"
     assert rows[0]["changed_by"] == ADMIN_ID
 
-    # Patterns пересобираются на каждом ConfigStore.load() (внутри .set()) — новый
-    # topic_stop-паттерн должен сработать сразу после следующего /set, без рестарта.
-    assert config_store.patterns().topic_stop("виджет xyz777 виджет") is None
+    # Patterns are rebuilt on every ConfigStore.load() (inside .set()): the new topic_stop
+    # pattern must take effect right after the next /set, without a restart.
+    assert config_store.patterns().topic_stop("widget xyz777 widget") is None
     await handler(
         _message(
             chat=_private_chat(),
-            from_user=_user(ADMIN_ID, "Владелец"),
+            from_user=_user(ADMIN_ID, "Owner"),
             text="/set filters.topic_stop [xyz777]",
             message_id=11,
         )
     )
-    assert config_store.patterns().topic_stop("виджет xyz777 виджет") is not None
+    assert config_store.patterns().topic_stop("widget xyz777 widget") is not None
 
 
 async def test_set_topic_stop_is_seen_hot_by_real_gate_handler(
     wired: tuple[Deps, Database, ConfigStore, PromptStore], sent: list[str]
 ) -> None:
-    """Критично (CLAUDE.md, "Интерфейсы этапа 6"): Deps.patterns_getter — не
-    замороженный снимок Patterns, а геттер на config_store.patterns. Владелец
-    меняет filters.topic_stop через реальный командный роутер, и САМОЕ СЛЕДУЮЩЕЕ
-    обычное сообщение чата, прогнанное через настоящий build_router-хендлер (не
-    через config_store.patterns() напрямую, как в тесте /set выше), должно
-    словить новый паттерн в гейте — без рестарта и без пересборки Deps."""
+    """Critical: Deps.patterns_getter is not a frozen Patterns snapshot but a getter on
+    config_store.patterns. The owner changes filters.topic_stop through the real command router,
+    and the VERY NEXT ordinary chat message, run through the real build_router handler (not
+    through config_store.patterns() directly, as in the /set test above), must hit the new
+    pattern in the gate, with no restart and no rebuild of Deps."""
     deps, db, config_store, _prompt_store = wired
     commands_handler = _commands_handler(deps)
     main_handler = _main_handler(deps)
 
-    assert config_store.patterns().topic_stop("кактус зацвёл") is None
+    assert config_store.patterns().topic_stop("the cactus bloomed") is None
 
     set_message = _message(
         chat=_private_chat(),
-        from_user=_user(ADMIN_ID, "Владелец"),
-        text="/set filters.topic_stop ['\\bкактус\\w*']",
+        from_user=_user(ADMIN_ID, "Owner"),
+        text="/set filters.topic_stop ['\\bcactus\\w*']",
     )
     await commands_handler(set_message)
-    assert config_store.patterns().topic_stop("кактус зацвёл") is not None
+    assert config_store.patterns().topic_stop("the cactus bloomed") is not None
 
     chat_message = _message(
         chat=_chat(),
-        from_user=_user(7, "Гена"),
-        text="кактус зацвёл на балконе",
+        from_user=_user(7, "Gene"),
+        text="the cactus bloomed on the balcony",
         message_id=300,
     )
     await main_handler(chat_message)
@@ -242,14 +241,14 @@ async def test_set_llm_main_model_garbage_replies_with_error_and_does_not_write(
 
     message = _message(
         chat=_private_chat(),
-        from_user=_user(ADMIN_ID, "Владелец"),
-        text="/set llm.main_model мусор",
+        from_user=_user(ADMIN_ID, "Owner"),
+        text="/set llm.main_model garbage",
     )
     await handler(message)
 
     assert len(sent) == 1
-    assert sent[0].startswith("Ошибка")
-    assert config_store.get().llm.main_model == "anthropic/claude-opus-5"
+    assert sent[0].startswith("Error")
+    assert config_store.get().llm.main_model == "anthropic/claude-sonnet-5.5"
     assert "llm.main_model" not in await db.get_overrides()
 
 
@@ -262,7 +261,7 @@ async def test_unset_resets_to_yaml_default(
     await handler(
         _message(
             chat=_private_chat(),
-            from_user=_user(ADMIN_ID, "Владелец"),
+            from_user=_user(ADMIN_ID, "Owner"),
             text="/set behaviour.daily_cap 7",
         )
     )
@@ -271,14 +270,14 @@ async def test_unset_resets_to_yaml_default(
     await handler(
         _message(
             chat=_private_chat(),
-            from_user=_user(ADMIN_ID, "Владелец"),
+            from_user=_user(ADMIN_ID, "Owner"),
             text="/unset behaviour.daily_cap",
             message_id=11,
         )
     )
 
     assert config_store.get().behaviour.daily_cap == 3
-    assert sent[-1] == "behaviour.daily_cap: сброшен к 3"
+    assert sent[-1] == "behaviour.daily_cap: reset to 3"
     assert "behaviour.daily_cap" not in await db.get_overrides()
 
 
@@ -294,20 +293,18 @@ async def test_rollback_after_adding_version_switches_active(
     assert prompt_store.prompt_version() == 1
     original_body = prompt_store.system_prompt()
 
-    v2 = await db.add_prompt_version("Альтернативный текст промпта на пробу.", "test edit", NOW_TS)
+    v2 = await db.add_prompt_version("An alternative prompt text to try.", "test edit", NOW_TS)
     assert v2 == 2
 
-    message = _message(
-        chat=_private_chat(), from_user=_user(ADMIN_ID, "Владелец"), text="/rollback 1"
-    )
+    message = _message(chat=_private_chat(), from_user=_user(ADMIN_ID, "Owner"), text="/rollback 1")
     await handler(message)
 
     assert prompt_store.prompt_version() == 1
     assert prompt_store.system_prompt() == original_body
-    assert sent == ["промпт: версия 1"]
+    assert sent == ["prompt: version 1"]
 
 
-# --- /ex add: реплай на настоящую запись bot_replies -------------------------------
+# --- /ex add: a reply to a real bot_replies row -------------------------------
 
 
 async def test_ex_add_from_real_bot_reply_bumps_few_shot_version(
@@ -323,8 +320,8 @@ async def test_ex_add_from_real_bot_reply_bumps_few_shot_version(
         tg_message_id=50,
         chat_id=OWN_CHAT_ID,
         user_id=7,
-        display_name="Гена",
-        text="как дела, дед?",
+        display_name="Gene",
+        text="how are you, old man?",
         reply_to_tg_message_id=None,
         is_bot=False,
         created_at=NOW_TS,
@@ -334,7 +331,7 @@ async def test_ex_add_from_real_bot_reply_bumps_few_shot_version(
         reply_to_tg_message_id=50,
         trigger="mention",
         trigger_tg_message_id=50,
-        text="И тебе не хворать.",
+        text="Same to you.",
         prompt_version=1,
         few_shot_version=before_version,
         delay_sec=12,
@@ -343,13 +340,13 @@ async def test_ex_add_from_real_bot_reply_bumps_few_shot_version(
 
     bot_reply_msg = _message(
         chat=_chat(),
-        from_user=_user(BOT_USER_ID, "Отец Фёдор"),
-        text="И тебе не хворать.",
+        from_user=_user(BOT_USER_ID, "Gus Marlow"),
+        text="Same to you.",
         message_id=100,
     )
     message = _message(
         chat=_chat(),
-        from_user=_user(ADMIN_ID, "Владелец"),
+        from_user=_user(ADMIN_ID, "Owner"),
         text="/ex add",
         reply_to_message=bot_reply_msg,
         message_id=101,
@@ -359,13 +356,13 @@ async def test_ex_add_from_real_bot_reply_bumps_few_shot_version(
     assert prompt_store.few_shot_version() == before_version + 1
     assert len(prompt_store.examples()) == before_count + 1
     added = prompt_store.examples()[-1]
-    assert added.name == "Гена"
-    assert added.user == "как дела, дед?"
-    assert added.text == "И тебе не хворать."
-    assert sent == []  # /ex add молча, без ответа в чат
+    assert added.name == "Gene"
+    assert added.user == "how are you, old man?"
+    assert added.text == "Same to you."
+    assert sent == []  # /ex add is silent, no answer in the chat
 
 
-# --- /stop: должно быть видно гейту следующего сообщения --------------------------
+# --- /stop: the gate of the next message must see it --------------------------
 
 
 async def test_stop_command_makes_gate_drop_next_message(
@@ -374,7 +371,7 @@ async def test_stop_command_makes_gate_drop_next_message(
     deps, db, config_store, _prompt_store = wired
     handler = _commands_handler(deps)
 
-    message = _message(chat=_chat(), from_user=_user(7, "Гена"), text="/stop")
+    message = _message(chat=_chat(), from_user=_user(7, "Gene"), text="/stop")
     await handler(message)
 
     assert await db.get_state("stop_until") is not None
@@ -384,7 +381,7 @@ async def test_stop_command_makes_gate_drop_next_message(
         tg_message_id=200,
         user_id=7,
         is_bot=False,
-        text="фёдор ты тут?",
+        text="gus are you there?",
         reply_to_bot=False,
         created_at=NOW_TS + 10,
     )
@@ -398,7 +395,7 @@ async def test_stop_command_makes_gate_drop_next_message(
     assert decision.reason == "gate:stop"
 
 
-# --- /mute: должно быть видно гейту следующего сообщения именно этого юзера -------
+# --- /mute: the gate must see it for the next message of exactly this user -------
 
 
 async def test_mute_command_makes_gate_drop_that_user(
@@ -407,11 +404,11 @@ async def test_mute_command_makes_gate_drop_that_user(
     deps, db, config_store, _prompt_store = wired
     handler = _commands_handler(deps)
 
-    # Мьют ЧУЖОГО сообщения (реплаем) — только владелец, см. PLAN.md этап 6.
-    target_msg = _message(chat=_chat(), from_user=_user(8, "Толя"), text="исходное")
+    # Muting SOMEONE ELSE by reply is owner-only.
+    target_msg = _message(chat=_chat(), from_user=_user(8, "Tony"), text="original")
     mute_msg = _message(
         chat=_chat(),
-        from_user=_user(ADMIN_ID, "Владелец"),
+        from_user=_user(ADMIN_ID, "Owner"),
         text="/mute",
         reply_to_message=target_msg,
         message_id=11,
@@ -426,7 +423,7 @@ async def test_mute_command_makes_gate_drop_that_user(
         tg_message_id=201,
         user_id=8,
         is_bot=False,
-        text="фёдор, слышишь?",
+        text="gus, can you hear me?",
         reply_to_bot=False,
         created_at=NOW_TS + 10,
     )
@@ -449,16 +446,16 @@ async def test_status_returns_text_with_prompt_and_few_shot_versions(
     deps, _db, _config_store, prompt_store = wired
     handler = _commands_handler(deps)
 
-    message = _message(chat=_private_chat(), from_user=_user(ADMIN_ID, "Владелец"), text="/status")
+    message = _message(chat=_private_chat(), from_user=_user(ADMIN_ID, "Owner"), text="/status")
     await handler(message)
 
     assert len(sent) == 1
     text = sent[0]
     assert f"v{prompt_store.prompt_version()}" in text
     assert f"v{prompt_store.few_shot_version()}" in text
-    assert "Паника" in text
-    assert "Стоп до" in text
-    assert "Предохранитель LLM: закрыт, ошибок подряд: 0" in text
+    assert "Panic" in text
+    assert "Stopped until" in text
+    assert "LLM circuit breaker: closed, consecutive errors: 0" in text
 
 
 async def test_status_shows_open_circuit_and_error_streak(
@@ -470,16 +467,16 @@ async def test_status_shows_open_circuit_and_error_streak(
     await db.set_state("llm_circuit_until", str(NOW_TS + 1800))
     await db.set_state("llm_error_streak", "5")
 
-    message = _message(chat=_private_chat(), from_user=_user(ADMIN_ID, "Владелец"), text="/status")
+    message = _message(chat=_private_chat(), from_user=_user(ADMIN_ID, "Owner"), text="/status")
     await handler(message)
 
     assert len(sent) == 1
     text = sent[0]
     expected_time = local_dt(NOW_TS + 1800, config_store.get().persona.timezone).strftime("%H:%M")
-    assert f"Предохранитель LLM: открыт до {expected_time}, ошибок подряд: 5" in text
+    assert f"LLM circuit breaker: open until {expected_time}, consecutive errors: 5" in text
 
 
-# --- /resume: снимает panic/stop и предохранитель LLM целиком через реальную БД ----
+# --- /resume: clears panic/stop and the LLM breaker entirely through the real DB ----
 
 
 async def test_resume_clears_llm_circuit_via_real_db(
@@ -493,26 +490,26 @@ async def test_resume_clears_llm_circuit_via_real_db(
     await db.set_state("llm_circuit_until", str(NOW_TS + 1800))
     await db.set_state("llm_error_streak", "5")
 
-    message = _message(chat=_private_chat(), from_user=_user(ADMIN_ID, "Владелец"), text="/resume")
+    message = _message(chat=_private_chat(), from_user=_user(ADMIN_ID, "Owner"), text="/resume")
     await handler(message)
 
     assert await db.get_state("panic") is None
     assert await db.get_state("stop_until") is None
     assert await db.get_state("llm_circuit_until") is None
     assert await db.get_state("llm_error_streak") == "0"
-    assert sent == ["Продолжаем. Снято: panic, stop, предохранитель LLM (было 5 ошибок подряд)."]
+    assert sent == ["Resuming. Cleared: panic, stop, LLM circuit breaker (5 consecutive errors)."]
 
 
-# --- Порядок роутеров в Dispatcher: команды раньше основного гейта ------------------
+# --- Router order in the Dispatcher: commands before the main gate ------------------
 
 
 async def test_commands_router_registered_before_main_router_in_dispatcher(
     wired: tuple[Deps, Database, ConfigStore, PromptStore],
 ) -> None:
-    """/stop в чате не должен попасть в messages/гейт основного роутера — сборка
-    app.py включает build_commands_router(deps) ПЕРВЫМ. Проверяем и порядок
-    sub_routers, и реальное распространение события через Dispatcher.feed_update
-    (как это делает aiogram в проде) — оба способа из CLAUDE.md."""
+    """/stop in the chat must not reach messages or the gate of the main router: the app.py
+    assembly includes build_commands_router(deps) FIRST. We check both the order of sub_routers
+    and the real propagation of the event through Dispatcher.feed_update (as aiogram does in
+    production)."""
     deps, db, _config_store, _prompt_store = wired
 
     commands_router = build_commands_router(deps)
@@ -527,16 +524,16 @@ async def test_commands_router_registered_before_main_router_in_dispatcher(
 
     bot = Bot(token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11")
     try:
-        message = _message(chat=_chat(), from_user=_user(7, "Гена"), text="/stop")
+        message = _message(chat=_chat(), from_user=_user(7, "Gene"), text="/stop")
         update = Update(update_id=1, message=message)
 
         await dispatcher.feed_update(bot, update)
 
-        # Основной роутер (build_router) не должен был отработать: "/stop" не
-        # записан в messages, и filter_log (который бы завёл гейт) пуст.
+        # The main router (build_router) must not have run: "/stop" is not recorded in
+        # messages, and filter_log (which the gate would have filled) is empty.
         assert await db.recent_messages(OWN_CHAT_ID, 10) == []
         assert await db.filter_log_summary(0) == []
-        # Зато командный роутер отработал: stop_until установлен.
+        # The command router did run: stop_until is set.
         assert await db.get_state("stop_until") is not None
     finally:
         await bot.session.close()

@@ -28,7 +28,7 @@ class FakeBot:
 
 
 class HangingBot:
-    """Telegram, который не отвечает: send_message висит, пока его не отменят."""
+    """A Telegram that never answers: send_message hangs until it is cancelled."""
 
     def __init__(self) -> None:
         self.started = asyncio.Event()
@@ -78,7 +78,7 @@ def _alerter(
 
 async def _refuse(alerter: OwnerAlerter, status: int = 402, message: str = "") -> None:
     await alerter.provider_refused(status=status, model="m", message=message)
-    # Отправка — фоновая задача: дать ей отработать.
+    # Sending is a background task: let it run.
     for _ in range(5):
         await asyncio.sleep(0)
 
@@ -102,27 +102,27 @@ def test_is_refusal(status: int, expected: bool) -> None:
     assert is_refusal(status) is expected
 
 
-def test_render_alert_has_hint_model_and_message(legacy_pack: Persona) -> None:
+def test_render_alert_has_hint_model_and_message(demo_pack: Persona) -> None:
     text = render_alert(
         status=402,
         model="anthropic/claude-opus-5",
         message="x" * 500,
         interval_hours=24,
-        catalog=legacy_pack.catalog,
+        catalog=demo_pack.catalog,
     )
     assert "402" in text
     assert "openrouter.ai/settings/credits" in text
     assert "anthropic/claude-opus-5" in text
     assert "x" * 200 in text and "x" * 201 not in text
-    assert "24 ч" in text
+    assert "24 h" in text
 
 
-def test_render_alert_without_message_and_unknown_status(legacy_pack: Persona) -> None:
+def test_render_alert_without_message_and_unknown_status(demo_pack: Persona) -> None:
     text = render_alert(
-        status=404, model="m", message="", interval_hours=6, catalog=legacy_pack.catalog
+        status=404, model="m", message="", interval_hours=6, catalog=demo_pack.catalog
     )
-    assert "404, запрос отклонён" in text
-    assert "Ответ:" not in text
+    assert "404, request rejected" in text
+    assert "Response:" not in text
 
 
 def test_render_alert_defaults_to_the_english_catalog() -> None:
@@ -137,6 +137,7 @@ def test_render_alert_defaults_to_the_english_catalog() -> None:
     ]
 
 
+# Stays Russian: pins that a pack locale overrides the engine catalog (legacy ru locale).
 async def test_alert_text_comes_from_the_persona_locale(legacy_pack: Persona) -> None:
     bot, store = FakeBot(), FakeStore()
     alerter = OwnerAlerter(
@@ -164,7 +165,7 @@ async def test_refusal_sends_once_per_interval_per_status() -> None:
     assert "no credits" in bot.sent[0][1]
     assert store.state["alert_next:llm_402"] == str(NOW + 24 * 3600)
 
-    # Другой код — своя тревога; тот же после интервала — снова.
+    # Another code is its own alert; the same one after the interval fires again.
     await _refuse(alerter, status=401)
     clock.now = NOW + 24 * 3600
     await _refuse(alerter)
@@ -172,8 +173,8 @@ async def test_refusal_sends_once_per_interval_per_status() -> None:
 
 
 async def test_interval_uses_own_clock_not_caller_time() -> None:
-    # Хук не получает now вызывающего (у описания фото это дата старого сообщения):
-    # пауза между тревогами считается только по часам тревоги.
+    # The hook does not get the caller's now (for a photo description that is the date of an
+    # old message): the pause between alerts is counted only by the alerter's own clock.
     bot, store, clock = FakeBot(), FakeStore(), Clock()
     alerter = _alerter(bot, store, clock=clock)
     await _refuse(alerter)
@@ -214,14 +215,14 @@ async def test_parallel_refusals_send_one_message() -> None:
 async def test_hanging_telegram_does_not_block_caller() -> None:
     bot, store = HangingBot(), FakeStore()
     alerter = _alerter(bot, store)
-    # Вызов модели ждёт только занятия слота, не отправки.
+    # The model call waits only for the slot to be taken, not for the send.
     await asyncio.wait_for(alerter.provider_refused(status=402, model="m", message=""), 1)
     await asyncio.wait_for(bot.started.wait(), 1)
-    # Слот занят до отправки: второй отказ не ждёт и не шлёт повтор.
+    # The slot is taken before sending: a second refusal neither waits nor sends a repeat.
     await asyncio.wait_for(alerter.provider_refused(status=402, model="m", message=""), 1)
     assert store.state["alert_next:llm_402"] == str(NOW + 24 * 3600)
 
-    # Остановка посреди отправки: повтор через час, а не через сутки.
+    # A shutdown in the middle of sending: a retry in an hour, not in a day.
     await alerter.shutdown()
     assert store.state["alert_next:llm_402"] == str(NOW + 3600)
 
