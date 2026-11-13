@@ -18,7 +18,8 @@ from sotto.config_models import (
     PlacesConfig,
     ReplyDelayBucket,
 )
-from tests.packs import LEGACY_PACK
+from sotto.lang import default_config_layer
+from tests.packs import LEGACY_PACK, RU
 
 CONFIG_PATH = LEGACY_PACK / "config.yaml"
 
@@ -36,17 +37,10 @@ def test_load_real_config_without_errors() -> None:
 
 def test_load_real_config_filters_pattern_lists() -> None:
     cfg = load_config(CONFIG_PATH)
-    default_filters = FiltersConfig()
 
-    assert cfg.filters.topic_stop == default_filters.topic_stop
-    assert cfg.filters.injection_markers == default_filters.injection_markers
-    assert cfg.filters.logistics == default_filters.logistics
-    assert cfg.filters.urgent == default_filters.urgent
-    assert cfg.filters.places_request == default_filters.places_request
-    assert cfg.filters.model_talk == default_filters.model_talk
-    assert cfg.filters.assistant_markers == default_filters.assistant_markers
-    assert cfg.filters.known_places == default_filters.known_places
-    assert cfg.filters.polish_words == default_filters.polish_words
+    # The generic marker lists live in the language module; the pack spells them out too.
+    for key, expected in RU.default_filters().items():
+        assert getattr(cfg.filters, key) == expected, key
 
     assert r"\bсектор газа" in cfg.filters.topic_stop
     assert r"\bпис\b" in cfg.filters.topic_stop
@@ -59,14 +53,11 @@ def test_load_real_config_filters_pattern_lists() -> None:
 
 
 def test_load_real_config_motifs_and_story_defaults_match() -> None:
-    # config.yaml дублирует дефолты FiltersConfig (CLAUDE.md, "меньше и разнообразнее",
-    # меры 4-5) — проверка ловит расхождение, если поправили один файл без другого.
+    # Engine defaults are neutral: the motif, story and window settings come from the pack.
     cfg = load_config(CONFIG_PATH)
     default_filters = FiltersConfig()
 
     assert cfg.filters.enforce_stages == default_filters.enforce_stages == ["dedup", "style"]
-    assert cfg.filters.motifs == default_filters.motifs
-    assert cfg.filters.story_markers == default_filters.story_markers
     assert cfg.filters.motif_recent_window == default_filters.motif_recent_window
     assert cfg.filters.motif_avoid_window == default_filters.motif_avoid_window
     assert cfg.filters.story_window == default_filters.story_window
@@ -512,3 +503,71 @@ def test_a_layer_file_must_be_a_mapping(tmp_path: Path) -> None:
 
 def test_the_legacy_pack_config_is_identical_via_path_and_via_layers() -> None:
     assert load_config(CONFIG_PATH) == load_config([CONFIG_PATH])
+
+
+# --- neutral engine defaults (PR-4) ------------------------------------------------
+
+
+def test_bare_config_has_neutral_persona_and_empty_pack_lists() -> None:
+    cfg = Config()
+
+    assert cfg.persona.name == "Persona"
+    assert cfg.persona.display_name == "Persona"
+    assert cfg.persona.name_triggers == []
+    assert cfg.persona.timezone == "UTC"
+    for key in (
+        "places_whitelist",
+        "known_places",
+        "polish_words",
+        "topic_stop",
+        "injection_markers",
+        "logistics",
+        "urgent",
+        "places_request",
+        "weather_request",
+        "model_talk",
+        "assistant_markers",
+        "grumpy_markers",
+        "story_markers",
+        "self_markers",
+        "districts",
+    ):
+        assert getattr(cfg.filters, key) == [], key
+    assert cfg.filters.motifs == {}
+    assert cfg.filters.latin_extra_letters == ""
+    # tuning defaults and their validation ranges stay in the engine
+    assert cfg.behaviour.daily_cap == BehaviourConfig().daily_cap
+    assert cfg.filters.enforce_stages == ["dedup", "style"]
+
+
+def test_language_layer_sits_below_the_pack_config(tmp_path: Path) -> None:
+    layer = default_config_layer(RU)
+    pack = tmp_path / "config.yaml"
+    pack.write_text("filters:\n  model_talk: [only-this]\n", encoding="utf-8")
+
+    cfg = load_config([layer, pack])
+
+    # a key the pack defines replaces the language's list (no merge) ...
+    assert cfg.filters.model_talk == ["only-this"]
+    # ... and a key it omits falls back to the language
+    assert cfg.filters.injection_markers == RU.default_filters()["injection_markers"]
+    assert cfg.filters.topic_stop == []
+
+
+def test_persona_layers_are_language_defaults_then_the_pack_file() -> None:
+    from sotto.persona import load_persona
+
+    persona = load_persona(LEGACY_PACK)
+    layers = persona.config_layers()
+
+    assert layers[0] == default_config_layer(persona.lang)
+    assert layers[1] == LEGACY_PACK / "config.yaml"
+    assert load_config(layers) == load_config(CONFIG_PATH)
+
+
+def test_new_filter_keys_are_described_and_settable() -> None:
+    cfg = load_config(CONFIG_PATH)
+    card = describe_key(cfg, cfg, {}, "filters.latin_extra_letters")
+
+    assert card is not None and card.settable and card.type_name == "str" and card.description
+    assert describe_key(cfg, cfg, {}, "filters.districts") is not None

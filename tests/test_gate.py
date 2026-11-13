@@ -18,6 +18,7 @@ from sotto.gate_types import (
     Trigger,
     Verdict,
 )
+from tests.packs import legacy_config
 
 TZ = ZoneInfo("Europe/Warsaw")
 
@@ -149,7 +150,7 @@ def make_state(
 
 
 def make_cfg(**behaviour_overrides: object) -> Config:
-    cfg = Config()
+    cfg = legacy_config()
     if behaviour_overrides:
         cfg = cfg.model_copy(
             update={"behaviour": cfg.behaviour.model_copy(update=behaviour_overrides)}

@@ -1865,7 +1865,7 @@ class Responder:
             self._spawn_diary(sent_text, sent_message_id, now)
             # Шутка, которую персонаж вернул в чат, отдыхает cooldown_days суток.
             for joke in joke_rows:
-                if joke_used(sent_text, joke.text):
+                if joke_used(sent_text, joke.text, self.patterns_getter().lang):
                     await self.db.mark_joke_used(joke.id, now)
             await self._note_vocab_used(vocab, sent_text, tz=tz, now=now)
         # Горячее окно из ОБЩЕГО хвоста — только если владелец включил

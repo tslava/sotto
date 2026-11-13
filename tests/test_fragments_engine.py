@@ -59,7 +59,7 @@ from sotto.stickers import (
 )
 from sotto.stickers_fill import recognize_sticker
 from sotto.vision import VisionDescriber, photo_text
-from sotto.vocab import Vocab, VocabDict, VocabWord, offer_allowed, pick_offer, render_vocab
+from sotto.vocab import VocabDict, VocabWord, offer_allowed, pick_offer, render_vocab
 from sotto.weather import (
     Place,
     Weather,
@@ -68,7 +68,7 @@ from sotto.weather import (
     render_weather,
     render_weather_place,
 )
-from tests.packs import LEGACY_PACK, frag_with
+from tests.packs import LEGACY_PACK, RU, frag_with, legacy_config, ru_vocab
 
 NOW = 1_767_268_800  # 2026-01-01 12:00 UTC
 
@@ -189,7 +189,7 @@ def test_sticker_records_are_skipped_by_prefix_in_motifs_postprocess_and_vocab()
     )
     assert fixed.fixes == ("fix:emoji_freq",)
 
-    vocab = Vocab([VocabDict(name="d", words=[VocabWord(word="zork", meaning="m")])])
+    vocab = ru_vocab([VocabDict(name="d", words=[VocabWord(word="zork", meaning="m")])])
     vocab_cfg = VocabConfig(probability=1.0, recent_window=3)
     kwargs = {"cfg": vocab_cfg, "vocab": vocab, "count_today": 0, "rng": random.Random(1)}
     assert offer_allowed(recent_replies=["<<sticker 1>> zork"], frag=frag, **kwargs)
@@ -337,7 +337,7 @@ def test_vocab_headers_follow_the_pack() -> None:
         render__quote_open="<",
         render__quote_close=">",
     )
-    vocab = Vocab(
+    vocab = ru_vocab(
         [
             VocabDict(
                 name="d",
@@ -458,7 +458,7 @@ async def test_geocoder_language_and_home_country_come_from_config() -> None:
             200, json={"results": [{**results, "latitude": 1.5, "longitude": 2.5}]}
         )
 
-    base = Config()
+    base = legacy_config()
     weather = base.behaviour.weather.model_copy(
         update={
             "geocode_language": "xx",
@@ -502,15 +502,15 @@ def test_select_places_uses_configured_districts_and_keywords() -> None:
     ]
     rng = random.Random(3)
 
-    by_district = select_places(rows, cfg, "something around nord please", rng)
+    by_district = select_places(rows, cfg, "something around nord please", rng, lang=RU)
     assert sorted(row.place_id for row in by_district) == ["loud", "n1"]
-    quiet = select_places(rows, cfg, "somewhere to hush", rng)
+    quiet = select_places(rows, cfg, "somewhere to hush", rng, lang=RU)
     assert sorted(row.place_id for row in quiet) == ["far", "n1", "s1"]
-    outskirts = select_places(rows, cfg, "the countryside", rng)
+    outskirts = select_places(rows, cfg, "the countryside", rng, lang=RU)
     assert [row.place_id for row in outskirts] == ["far"]
-    assert len(select_places(rows, cfg, "anything", rng)) == 4
+    assert len(select_places(rows, cfg, "anything", rng, lang=RU)) == 4
     # the default keywords are no longer built into the engine
-    assert len(select_places(rows, cfg, "тихо", rng)) == 4
+    assert len(select_places(rows, cfg, "тихо", rng, lang=RU)) == 4
 
 
 def test_pick_district_uses_configured_names_and_default() -> None:
@@ -568,7 +568,7 @@ class _FakeLLM:
 
 
 def _cfg(**judge: Any) -> Config:
-    base = Config()
+    base = legacy_config()
     return base.model_copy(
         update={"llm": base.llm.model_copy(update={"judge_model": "a/b", "main_model": "a/b"})}
     )
@@ -636,7 +636,9 @@ async def test_offline_tool_prompts_come_from_the_pack() -> None:
     )
     llm = _FakeLLM(text="calm")
 
-    assert await compress_fact("some reviews", llm=llm, model="a/b", now=NOW, frag=frag) == ""
+    assert (
+        await compress_fact("some reviews", llm=llm, model="a/b", now=NOW, frag=frag, lang=RU) == ""
+    )
     messages = llm.requests[-1]
     assert messages[0]["content"] == "FACT PROMPT"
     assert messages[1]["content"].startswith("PREAMBLE\n")

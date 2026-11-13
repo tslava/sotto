@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import functools
 import re
 import string
 import unicodedata
@@ -30,6 +31,7 @@ from sotto.config_models import Config
 from sotto.db import MessageRow
 from sotto.fragments import Fragments
 from sotto.gate_types import PatternsLike
+from sotto.lang import Language, get_language
 from sotto.motifs import motifs_in, story_count, used_motifs
 from sotto.patterns import Patterns
 from sotto.vocab import Vocab, VocabEntry
@@ -56,28 +58,36 @@ _MIN_SENTENCE_WORDS = 3
 
 _PHONE_RE = re.compile(r"\+?\d[\d\s\-()]{8,}\d")
 
-# Латинская буква (в т.ч. польские диакритики) — общий алфавит для всех латинских проверок.
-_LATIN_LETTERS = "A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż"
-_LATIN_TOKEN_FULL_RE = re.compile(rf"[{_LATIN_LETTERS}]+")
-# Заглавное латинское слово от трёх букв — грубый прокси "похоже на заведение"
-# (PLAN.md, этап 4: регуляркой заведение не распознать, это осознанно грубо).
-_VENUE_WORD_RE = re.compile(rf"\b[A-ZĄĆĘŁŃÓŚŹŻ][{_LATIN_LETTERS}]{{2,}}\b")
-# Латинский токен от двух букв — для частоты польского (dedup:polish_freq).
-_LATIN_TOKEN_2PLUS_RE = re.compile(rf"[{_LATIN_LETTERS}]{{2,}}")
 
-_DISTRICTS = (
-    "Dolna",
-    "Rożyce",
-    "Dawne Miasto",
-    "Granwald",
-    "Łanowo",
-    "Kępice",
-    "Ogrody",
-    "Wolsań",
-    "Bórnik",
-    "Leszczykowo",
-    "Strzechyn",
-)
+@dataclass(frozen=True, slots=True)
+class _Script:
+    """Регулярки «чужого» алфавита: ``foreign_letters`` языка + ``filters.latin_extra_letters``."""
+
+    # Токен целиком из букв алфавита.
+    token: re.Pattern[str]
+    # Слово от трёх букв; заглавная первая буква проверяется отдельно (грубый прокси
+    # "похоже на заведение", PLAN.md, этап 4: регуляркой заведение не распознать).
+    word: re.Pattern[str]
+    # Токен от двух букв — для частоты иностранных слов (dedup:polish_freq).
+    two_plus: re.Pattern[str]
+
+
+@functools.lru_cache(maxsize=16)
+def _script(letters: str) -> _Script:
+    return _Script(
+        token=re.compile(rf"[{letters}]+"),
+        word=re.compile(rf"\b[{letters}]{{3,}}\b"),
+        two_plus=re.compile(rf"[{letters}]{{2,}}"),
+    )
+
+
+def _foreign_script(ctx: FilterContext, lang: Language) -> _Script | None:
+    """None — язык не знает «чужого» алфавита: проверки латиницы и заведений молчат."""
+    base = lang.foreign_letters
+    if base is None:
+        return None
+    return _script(base + re.escape(ctx.cfg.filters.latin_extra_letters))
+
 
 _PUNCT_CHARS = string.punctuation + "«»„”“—–…"
 
@@ -85,10 +95,9 @@ _NORMALIZE_STRIP_RE = re.compile(r"[^\w\s]", re.UNICODE)
 _SLOT_MARKER_RE = re.compile(r"\{[a-z_]+\}")
 
 
-def _normalize_words(text: str) -> list[str]:
-    """lower, ё->е, вырезать пунктуацию, split по пробелам."""
-    lowered = text.lower().replace("ё", "е")
-    cleaned = _NORMALIZE_STRIP_RE.sub(" ", lowered)
+def _normalize_words(text: str, lang: Language) -> list[str]:
+    """``lang.fold`` (регистр, «ё», ударения), вырезать пунктуацию, split по пробелам."""
+    cleaned = _NORMALIZE_STRIP_RE.sub(" ", lang.fold(text))
     return cleaned.split()
 
 
@@ -114,8 +123,8 @@ def _first_word(text: str) -> str:
     return match.group(0).strip(_PUNCT_CHARS)
 
 
-def _fold(text: str) -> str:
-    return text.strip().casefold().replace("ё", "е")
+def _fold(text: str, lang: Language) -> str:
+    return lang.fold(text.strip())
 
 
 def _patterns_for(ctx: FilterContext) -> Patterns:
@@ -128,11 +137,12 @@ def _patterns_for(ctx: FilterContext) -> Patterns:
     """
     if ctx.patterns is not None:
         return cast(Patterns, ctx.patterns)
-    return Patterns(ctx.cfg.filters, ctx.cfg.persona.name_triggers, "")
+    lang = ctx.lang if ctx.lang is not None else get_language("en")
+    return Patterns(ctx.cfg.filters, ctx.cfg.persona.name_triggers, "", lang)
 
 
-def _latin_tokens_any(text: str) -> set[str]:
-    return {m.group(0).casefold() for m in _LATIN_TOKEN_FULL_RE.finditer(text)}
+def _latin_tokens_any(text: str, script: _Script) -> set[str]:
+    return {m.group(0).casefold() for m in script.token.finditer(text)}
 
 
 def _words_of(phrases: list[str]) -> set[str]:
@@ -146,23 +156,23 @@ def _words_of(phrases: list[str]) -> set[str]:
     return words
 
 
-def _venue_whitelist(ctx: FilterContext) -> set[str]:
+def _venue_whitelist(ctx: FilterContext, script: _Script) -> set[str]:
     """Белый список для regex:venue и regex:latin (общий, см. докстринг модуля).
 
     places_names + filters.places_whitelist + filters.known_places (заведения из
-    CHARACTER.md раздел 7, многословные названия — по каждому слову) + districts +
+    CHARACTER.md раздел 7, многословные названия — по каждому слову) + filters.districts +
     filters.polish_words (словарь Фёдора) + латинские токены, которые сами участники
     уже употребили в trigger_text/context_rows.
     """
     words = _words_of(
         [*ctx.places_names, *ctx.cfg.filters.places_whitelist, *ctx.cfg.filters.known_places]
     )
-    words |= {name.casefold() for name in _DISTRICTS}
+    words |= {name.casefold() for name in ctx.cfg.filters.districts}
     words |= {word.casefold() for word in ctx.cfg.filters.polish_words}
-    words |= _latin_tokens_any(ctx.trigger_text)
+    words |= _latin_tokens_any(ctx.trigger_text, script)
     for row in ctx.context_rows:
         if row.text:
-            words |= _latin_tokens_any(row.text)
+            words |= _latin_tokens_any(row.text, script)
     return words
 
 
@@ -235,10 +245,10 @@ def _sentence_count(text: str) -> int:
     return sum(1 for part in parts if len(part.split()) >= _MIN_SENTENCE_WORDS)
 
 
-def _starts_name_set(ctx: FilterContext) -> set[str]:
+def _starts_name_set(ctx: FilterContext, lang: Language) -> set[str]:
     names: set[str] = set()
     for name in ctx.participant_names:
-        folded = _fold(name)
+        folded = _fold(name, lang)
         if not folded:
             continue
         names.add(folded)
@@ -246,22 +256,23 @@ def _starts_name_set(ctx: FilterContext) -> set[str]:
         if words:
             names.add(words[0])
     for name in ctx.bot_names:
-        folded = _fold(name)
+        folded = _fold(name, lang)
         if folded:
             names.add(folded)
     return names
 
 
-def _check_starts_name(text: str, ctx: FilterContext) -> bool:
-    first = _fold(_first_word(text))
+def _check_starts_name(text: str, ctx: FilterContext, lang: Language) -> bool:
+    first = _fold(_first_word(text), lang)
     if not first:
         return False
-    return first in _starts_name_set(ctx)
+    return first in _starts_name_set(ctx, lang)
 
 
-def _check_venue(text: str, whitelist: set[str]) -> bool:
-    for match in _VENUE_WORD_RE.finditer(text):
-        if match.group(0).casefold() not in whitelist:
+def _check_venue(text: str, whitelist: set[str], script: _Script) -> bool:
+    for match in script.word.finditer(text):
+        word = match.group(0)
+        if word[0].isupper() and word.casefold() not in whitelist:
             return True
     return False
 
@@ -276,14 +287,14 @@ def _check_muted(text: str, muted_names: list[str]) -> bool:
     return False
 
 
-def _check_echo(text: str, ctx: FilterContext) -> bool:
-    text_grams = _ngrams(_normalize_words(text), 4)
+def _check_echo(text: str, ctx: FilterContext, lang: Language) -> bool:
+    text_grams = _ngrams(_normalize_words(text, lang), 4)
     if not text_grams:
         return False
     for row in ctx.context_rows:
         if row.is_bot or not row.text:
             continue
-        row_grams = _ngrams(_normalize_words(row.text), 4)
+        row_grams = _ngrams(_normalize_words(row.text, lang), 4)
         if text_grams & row_grams:
             return True
     return False
@@ -303,17 +314,17 @@ def _prompt_leak_source_lines(system_prompt: str) -> list[str]:
     ]
 
 
-def _check_prompt_leak(text: str, system_prompt: str) -> bool:
+def _check_prompt_leak(text: str, system_prompt: str, lang: Language) -> bool:
     if not system_prompt:
         return False
     source_lines = _prompt_leak_source_lines(system_prompt)
     if not source_lines:
         return False
     cleaned_prompt = _SLOT_MARKER_RE.sub(" ", "\n".join(source_lines))
-    prompt_grams = _ngrams(_normalize_words(cleaned_prompt), 6)
+    prompt_grams = _ngrams(_normalize_words(cleaned_prompt, lang), 6)
     if not prompt_grams:
         return False
-    text_grams = _ngrams(_normalize_words(text), 6)
+    text_grams = _ngrams(_normalize_words(text, lang), 6)
     return bool(prompt_grams & text_grams)
 
 
@@ -326,11 +337,11 @@ def _check_emoji_disallowed(text: str, allowed: frozenset[str]) -> bool:
     return any(ch not in allowed for ch, _ in _emoji_tokens(text))
 
 
-def _check_latin_run(text: str, whitelist: set[str]) -> bool:
+def _check_latin_run(text: str, whitelist: set[str], script: _Script) -> bool:
     run = 0
     for raw_token in text.split():
         token = raw_token.strip(_PUNCT_CHARS)
-        if token and _LATIN_TOKEN_FULL_RE.fullmatch(token) and token.casefold() not in whitelist:
+        if token and script.token.fullmatch(token) and token.casefold() not in whitelist:
             run += 1
             if run >= 2:
                 return True
@@ -347,6 +358,8 @@ def layer_regex(text: str, ctx: FilterContext, patterns: Patterns) -> list[str]:
     каждый кандидат.
     """
     reasons: list[str] = []
+    lang = patterns.lang
+    script = _foreign_script(ctx, lang)
 
     if len(text) > _MAX_LEN:
         reasons.append("regex:length")
@@ -356,26 +369,26 @@ def layer_regex(text: str, ctx: FilterContext, patterns: Patterns) -> list[str]:
         reasons.append("regex:emoji")
     if _sentence_count(text) > 2:
         reasons.append("regex:sentences")
-    if _check_starts_name(text, ctx):
+    if _check_starts_name(text, ctx, lang):
         reasons.append("regex:starts_name")
     if _PHONE_RE.search(text):
         reasons.append("regex:phone")
 
-    whitelist = _venue_whitelist(ctx)
-    if _check_venue(text, whitelist):
+    whitelist = _venue_whitelist(ctx, script) if script is not None else set()
+    if script is not None and _check_venue(text, whitelist, script):
         reasons.append("regex:venue")
 
     if patterns.topic_stop(text) is not None:
         reasons.append("regex:topic")
     if _check_muted(text, ctx.muted_names):
         reasons.append("regex:muted_name")
-    if _check_echo(text, ctx):
+    if _check_echo(text, ctx, lang):
         reasons.append("regex:echo")
-    if _check_prompt_leak(text, ctx.system_prompt):
+    if _check_prompt_leak(text, ctx.system_prompt, lang):
         reasons.append("regex:prompt_leak")
     if patterns.model_talk(text) is not None:
         reasons.append("regex:model_talk")
-    if _check_latin_run(text, whitelist):
+    if script is not None and _check_latin_run(text, whitelist, script):
         reasons.append("regex:latin")
 
     return reasons
@@ -386,32 +399,34 @@ def layer_regex(text: str, ctx: FilterContext, patterns: Patterns) -> list[str]:
 # --------------------------------------------------------------------------- #
 
 
-def _check_dedup_jaccard(text: str, recent_replies: list[str]) -> bool:
-    words = _normalize_words(text)
+def _check_dedup_jaccard(text: str, recent_replies: list[str], lang: Language) -> bool:
+    words = _normalize_words(text, lang)
     normalized = " ".join(words)
     if not normalized:
         return False
 
     if len(words) < 3:
-        return any(" ".join(_normalize_words(reply)) == normalized for reply in recent_replies)
+        return any(
+            " ".join(_normalize_words(reply, lang)) == normalized for reply in recent_replies
+        )
 
     shingles = _ngrams(words, 3)
     for reply in recent_replies:
-        reply_shingles = _ngrams(_normalize_words(reply), 3)
+        reply_shingles = _ngrams(_normalize_words(reply, lang), 3)
         if _jaccard(shingles, reply_shingles) >= 0.6:
             return True
     return False
 
 
-def _check_polish_freq(text: str, ctx: FilterContext) -> bool:
+def _check_polish_freq(text: str, ctx: FilterContext, script: _Script) -> bool:
     whitelist = _places_whitelist(ctx)
-    text_latin = {m.group(0).casefold() for m in _LATIN_TOKEN_2PLUS_RE.finditer(text)} - whitelist
+    text_latin = {m.group(0).casefold() for m in script.two_plus.finditer(text)} - whitelist
     if not text_latin:
         return False
 
     last4 = ctx.recent_replies[-4:]
     last4_latin_sets = [
-        {m.group(0).casefold() for m in _LATIN_TOKEN_2PLUS_RE.finditer(reply)} - whitelist
+        {m.group(0).casefold() for m in script.two_plus.finditer(reply)} - whitelist
         for reply in last4
     ]
 
@@ -430,39 +445,10 @@ def _check_question_x2(text: str, recent_replies: list[str]) -> bool:
     return recent_replies[-1].rstrip().endswith("?")
 
 
-# Стоп-слова для dedup:self_echo (CLAUDE.md, "Интерфейсы этапа 4", правки): 4-грамма,
-# состоящая только из этих слов, слишком общая, чтобы считаться самоповтором.
-_SELF_ECHO_STOPWORDS = frozenset(
-    {
-        "я",
-        "и",
-        "в",
-        "на",
-        "не",
-        "что",
-        "это",
-        "у",
-        "меня",
-        "тебя",
-        "ты",
-        "а",
-        "но",
-        "да",
-        "нет",
-        "же",
-        "бы",
-        "как",
-        "так",
-        "то",
-        "все",
-        "всё",
-    }
-)
-
 _SELF_ECHO_RECENT = 20
 
 
-def _check_self_echo(text: str, ctx: FilterContext) -> bool:
+def _check_self_echo(text: str, ctx: FilterContext, lang: Language) -> bool:
     """dedup:self_echo — кандидат пересказывает свою же недавнюю байку.
 
     Нормализованная 4-грамма кандидата (без грамм из одних стоп-слов) сверяется
@@ -472,12 +458,12 @@ def _check_self_echo(text: str, ctx: FilterContext) -> bool:
     ``regex:echo``) — цель поймать пересказ той же байки другими словами/порядком,
     не только буквальное повторение.
     """
-    grams = _ngrams(_normalize_words(text), 4)
-    grams = {gram for gram in grams if set(gram) - _SELF_ECHO_STOPWORDS}
+    grams = _ngrams(_normalize_words(text, lang), 4)
+    grams = {gram for gram in grams if set(gram) - lang.stopwords}
     if not grams:
         return False
     for reply in ctx.recent_replies[-_SELF_ECHO_RECENT:]:
-        reply_words = set(_normalize_words(reply))
+        reply_words = set(_normalize_words(reply, lang))
         if any(set(gram) <= reply_words for gram in grams):
             return True
     return False
@@ -548,12 +534,14 @@ def _check_vocab(text: str, ctx: FilterContext) -> bool:
 def layer_rules(text: str, ctx: FilterContext, patterns: Patterns) -> list[str]:
     """Слой 2: детерминированные правила, 0 мс. ``patterns`` — см. ``layer_regex``."""
     reasons: list[str] = []
+    lang = patterns.lang
+    script = _foreign_script(ctx, lang)
 
-    if _check_dedup_jaccard(text, ctx.recent_replies):
+    if _check_dedup_jaccard(text, ctx.recent_replies, lang):
         reasons.append("dedup:jaccard")
-    if _check_polish_freq(text, ctx):
+    if script is not None and _check_polish_freq(text, ctx, script):
         reasons.append("dedup:polish_freq")
-    if _check_self_echo(text, ctx):
+    if _check_self_echo(text, ctx, lang):
         reasons.append("dedup:self_echo")
     if _check_motif(text, ctx, patterns):
         reasons.append("dedup:motif")
@@ -608,6 +596,8 @@ class FilterContext:
     vocab_allowed: frozenset[VocabEntry] = frozenset()
     # Фрагменты пакета: префикс записей-стикеров, который motifs пропускает при подсчёте.
     frag: Fragments = field(kw_only=True)
+    # Язык для запасного ``Patterns`` (когда ``patterns`` не передан); None -> английский.
+    lang: Language | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)

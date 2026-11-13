@@ -23,7 +23,7 @@ from sotto.config_models import Config
 from sotto.db import ChatMemoryRow, Database
 from sotto.llm import LLMClient
 from sotto.patterns import Patterns
-from tests.packs import LEGACY_FRAG, LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK, RU, legacy_config
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 CHAT_ID = -100123
@@ -37,7 +37,7 @@ def _ts(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> int:
 
 
 def _config() -> Config:
-    cfg = Config()
+    cfg = legacy_config()
     cfg.llm.main_model = "test/model"
     return cfg
 
@@ -542,7 +542,7 @@ def _extras_memorizer(
     threads: bool = True,
     patterns: bool = False,
 ) -> ChatMemorizer:
-    built = Patterns(cfg.filters, cfg.persona.name_triggers, "")
+    built = Patterns(cfg.filters, cfg.persona.name_triggers, "", RU)
     return ChatMemorizer(
         llm,
         db,

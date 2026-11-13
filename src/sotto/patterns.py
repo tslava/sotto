@@ -9,8 +9,7 @@ from __future__ import annotations
 import re
 
 from sotto.config_models import FiltersConfig
-from sotto.lang import Language
-from sotto.morph import name_pattern
+from sotto.lang import Language, get_language
 
 
 def _compile_regex_list(patterns: list[str]) -> list[re.Pattern[str]]:
@@ -39,8 +38,9 @@ class Patterns:
         bot_username: str,
         lang: Language | None = None,
     ) -> None:
-        # lang пока только запоминается (склонения имён и маркеры языка переедут в lang/ru.py
-        # позже); None — тесты и инструменты без пакета персоны.
+        # Язык пакета: склонения имён и всё, что зависит от алфавита и морфологии.
+        # Без языка (тесты, инструменты без пакета) — английский, нейтральный по умолчанию.
+        lang = lang if lang is not None else get_language("en")
         self.lang = lang
         self._topic_stop = _compile_regex_list(filters.topic_stop)
         self._injection_markers = _compile_regex_list(filters.injection_markers)
@@ -66,7 +66,7 @@ class Patterns:
         # «Федор» и «отец». Формы даёт morph.name_pattern закрытым списком
         # окончаний, чтобы «федерация» и «дедлайн» по-прежнему не совпадали.
         self._name_triggers = [
-            re.compile(name_pattern(trigger), re.IGNORECASE) for trigger in name_triggers
+            re.compile(lang.name_pattern(trigger), re.IGNORECASE) for trigger in name_triggers
         ]
         # "\b" не работает перед "@" (@ не словообразующий символ), поэтому границу
         # слева ставим лукбихайндом "не словообразующий символ перед @", а справа — "\b".

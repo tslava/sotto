@@ -32,7 +32,7 @@ from sotto.settings import Settings
 from sotto.stores import ConfigStore, PromptStore
 from sotto.timeutil import day_key
 from sotto.vocab import VocabStore
-from tests.packs import LEGACY_FRAG, LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK, RU, legacy_config
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
@@ -89,7 +89,7 @@ async def db(tmp_path: Path) -> Database:
 
 @pytest.fixture
 def config() -> Config:
-    return Config()
+    return legacy_config()
 
 
 def _deps(
@@ -107,7 +107,7 @@ def _deps(
     reaction_scheduler: object | None = None,
 ) -> Deps:
     reserved = {cfg.persona.name, cfg.persona.display_name, *cfg.persona.name_triggers}
-    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, bot_username)
+    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, bot_username, RU)
     # build_router (в отличие от build_commands_router) ни config_store, ни
     # prompt_store не читает — конструируем их без .load() (не делает I/O в
     # __init__), только чтобы Deps был валиден структурно и по типам.
@@ -142,7 +142,7 @@ def _config_ambient_always() -> Config:
     live_talk пинится к порогу «три сообщения», хотя дефолт с 22.09.2026 — два:
     сценарий этих тестов описан как «три сообщения от двух людей», и от значения
     дефолта он зависеть не должен (дефолты проверяет tests/test_config.py)."""
-    cfg = Config()
+    cfg = legacy_config()
     behaviour = cfg.behaviour.model_copy(
         update={
             "ambient_probability": 1.0,
@@ -708,7 +708,7 @@ class _FakeReactionBot:
 def _config_dice_drop(*, reaction_probability: float) -> Config:
     """Живой разговор идёт (ambient дошёл бы до кубика), но ambient_probability=0.0
     гарантирует детерминированный DROP gate:dice независимо от rng-сида."""
-    cfg = Config()
+    cfg = legacy_config()
     behaviour = cfg.behaviour.model_copy(
         update={
             "ambient_probability": 0.0,
@@ -934,7 +934,7 @@ def _config_hot_window_dice_drop() -> Config:
     """followup включён (дефолт), горячее окно открыто (see _set_hot_until) и его
     кубик детерминированно даёт DROP gate:dice независимо от rng-сида — иначе
     ambient_cap/probability по умолчанию сделали бы исход недетерминированным."""
-    cfg = Config()
+    cfg = legacy_config()
     hot_window = cfg.behaviour.hot_window.model_copy(update={"ambient_probability": 0.0})
     behaviour = cfg.behaviour.model_copy(update={"hot_window": hot_window})
     return cfg.model_copy(update={"behaviour": behaviour})
@@ -1108,7 +1108,7 @@ async def test_followup_disabled_by_config_skips_checker(
 def _config_name_check(**updates: object) -> Config:
     """Config с ambient_probability=0: обращение по имени проходит гейт по шагу
     прямого обращения, а не случайно по кубику ambient."""
-    cfg = Config()
+    cfg = legacy_config()
     followup = cfg.behaviour.followup.model_copy(update=updates)
     behaviour = cfg.behaviour.model_copy(update={"followup": followup, "ambient_probability": 0.0})
     return cfg.model_copy(update={"behaviour": behaviour})
@@ -1341,7 +1341,7 @@ def _photo(width: int = 800) -> list[PhotoSize]:
 
 
 def _config_vision(**updates: object) -> Config:
-    cfg = Config()
+    cfg = legacy_config()
     vision = cfg.behaviour.vision.model_copy(update=updates)
     behaviour = cfg.behaviour.model_copy(update={"vision": vision})
     return cfg.model_copy(update={"behaviour": behaviour})
@@ -1623,8 +1623,8 @@ async def _vocab_explain_setup(
 ) -> tuple[Callable[..., Any], _FakeResponder]:
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID)
     responder = _FakeResponder()
-    deps = _deps(db, cfg or Config(), settings=settings, responder=responder)
-    store = VocabStore(db)
+    deps = _deps(db, cfg or legacy_config(), settings=settings, responder=responder)
+    store = VocabStore(db, RU)
     await store.put(_VOCAB_YAML, now=0)
     deps.vocab_store = store
     await db.insert_bot_reply(

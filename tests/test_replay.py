@@ -286,7 +286,10 @@ def _write_name_trigger_export(path: Path, tz: str) -> None:
 
 
 def _write_minimal_generate_config(path: Path) -> None:
-    path.write_text('llm:\n  main_model: "test/model"\n', encoding="utf-8")
+    path.write_text(
+        f'llm:\n  main_model: "test/model"\npersona:\n  name_triggers: [федя]\n  timezone: {TZ}\n',
+        encoding="utf-8",
+    )
 
 
 @pytest.mark.skipif(

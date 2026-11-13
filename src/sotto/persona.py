@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -28,7 +29,7 @@ from sotto.fragments import (
     slot_errors,
 )
 from sotto.i18n import Catalog, CatalogError, load_catalog_dir
-from sotto.lang import Language, UnknownLanguageError, get_language
+from sotto.lang import Language, UnknownLanguageError, default_config_layer, get_language
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +75,10 @@ class Persona:
     def name(self) -> str:
         return self.manifest.name
 
-    def config_layers(self) -> list[Path]:
-        """Config files below the DB overrides, lowest first (language defaults come later)."""
-        return [self.config_path]
+    def config_layers(self) -> list[Path | Mapping[str, Any]]:
+        """Config layers below the DB overrides, lowest first: the language's generic
+        defaults, then the pack's ``config.yaml`` (which replaces them key by key)."""
+        return [default_config_layer(self.lang), self.config_path]
 
     def prompt_errors(self) -> list[str]:
         """Slot problems of all prompts (empty list = fine)."""

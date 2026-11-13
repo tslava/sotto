@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
-from sotto.lang.base import BaseLanguage, Language
+from collections.abc import Callable
 
-SUPPORTED_LANGUAGES: tuple[str, ...] = ("ru", "en")
+from sotto.lang.base import Language, VocabRule, default_config_layer
+from sotto.lang.en import EnglishLanguage
+from sotto.lang.ru import RussianLanguage
+
+_REGISTRY: dict[str, Callable[[], Language]] = {"ru": RussianLanguage, "en": EnglishLanguage}
+
+SUPPORTED_LANGUAGES: tuple[str, ...] = tuple(_REGISTRY)
 
 __all__ = [
     "SUPPORTED_LANGUAGES",
-    "BaseLanguage",
     "Language",
     "UnknownLanguageError",
+    "VocabRule",
+    "default_config_layer",
     "get_language",
 ]
 
@@ -20,7 +27,8 @@ class UnknownLanguageError(ValueError):
 
 
 def get_language(code: str) -> Language:
-    if code not in SUPPORTED_LANGUAGES:
+    factory = _REGISTRY.get(code)
+    if factory is None:
         known = ", ".join(SUPPORTED_LANGUAGES)
         raise UnknownLanguageError(f"unknown language {code!r} (known: {known})")
-    return BaseLanguage(code)
+    return factory()

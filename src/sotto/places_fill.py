@@ -54,6 +54,7 @@ import yaml
 from sotto.config import load_config
 from sotto.config_models import Config, PlacesConfig
 from sotto.fragments import Fragments
+from sotto.lang import Language
 from sotto.llm import LLMClient, LLMError, LLMResult
 from sotto.persona import Persona, persona_from_env
 from sotto.prompt import CHAT_CLOSE, CHAT_OPEN
@@ -292,7 +293,7 @@ def passes_filters(place: dict[str, Any], cfg: PlacesConfig) -> bool:
 
 
 async def compress_fact(
-    review_text: str, *, llm: LLMLike | None, model: str, now: int, frag: Fragments
+    review_text: str, *, llm: LLMLike | None, model: str, now: int, frag: Fragments, lang: Language
 ) -> str:
     """Сжимает склеенные отзывы в fact через LLM + ``places.validate_fact``.
 
@@ -322,7 +323,7 @@ async def compress_fact(
         logger.warning("places_fill: llm error while compressing fact: reason=%s", exc.reason)
         return ""
 
-    fact = validate_fact(result.text)
+    fact = validate_fact(result.text, lang=lang)
     if fact is None:
         logger.warning("places_fill: invalid fact from LLM, raw=%r", result.text)
         return ""
@@ -367,6 +368,7 @@ async def fetch_and_build(
     model: str,
     now: int,
     frag: Fragments,
+    lang: Language,
 ) -> list[FetchedPlace]:
     """Прогоняет все запросы, фильтрует, дедупит по ``place.id`` (сохраняя первое
     вхождение — порядок запросов из конфига важнее повторной находки)."""
@@ -393,7 +395,9 @@ async def fetch_and_build(
                 primary_type=str(place.get("primaryType", "")),
             )
             district = pick_district(address=address, manual=manual_entry, cfg=cfg)
-            fact = await compress_fact(review_text, llm=llm, model=model, now=now, frag=frag)
+            fact = await compress_fact(
+                review_text, llm=llm, model=model, now=now, frag=frag, lang=lang
+            )
 
             seen[place_id] = FetchedPlace(
                 place_id=place_id,
@@ -597,6 +601,7 @@ async def run(
                 model=cfg.llm.main_model,
                 now=now,
                 frag=persona.frag,
+                lang=persona.lang,
             )
         finally:
             if owns_http:

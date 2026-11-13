@@ -24,8 +24,8 @@ from sotto.config_models import Config
 from sotto.db import MessageRow
 from sotto.few_shot import load_few_shot
 from sotto.filters import FilterContext, FilterVerdict, check_output
-from sotto.vocab import Vocab, parse_vocab
-from tests.packs import LEGACY_FRAG, LEGACY_PACK
+from sotto.lang import get_language
+from tests.packs import LEGACY_FRAG, LEGACY_PACK, RU, legacy_config, parse_ru_vocab, ru_vocab
 
 SYSTEM_PROMPT = (LEGACY_PACK / "prompts" / "system.txt").read_text(encoding="utf-8")
 
@@ -62,7 +62,8 @@ def _ctx(
     now: int = 0,
 ) -> FilterContext:
     return FilterContext(
-        cfg=cfg if cfg is not None else Config(),
+        lang=RU,
+        cfg=cfg if cfg is not None else legacy_config(),
         recent_replies=recent_replies or [],
         context_rows=context_rows or [],
         places_names=places_names or [],
@@ -480,7 +481,7 @@ async def test_judge_called_when_layers_clean() -> None:
 
 
 async def test_judge_not_called_when_dirty_and_shadow_false() -> None:
-    cfg = Config()
+    cfg = legacy_config()
     cfg.filters.shadow = False
     ctx = _ctx(cfg=cfg)
     judge = _FakeJudge(["judge:risky"])
@@ -492,7 +493,7 @@ async def test_judge_not_called_when_dirty_and_shadow_false() -> None:
 
 
 async def test_judge_called_and_reasons_added_when_dirty_and_shadow_true() -> None:
-    cfg = Config()
+    cfg = legacy_config()
     cfg.filters.shadow = True
     ctx = _ctx(cfg=cfg)
     judge = _FakeJudge(["judge:risky"])
@@ -512,7 +513,12 @@ async def test_judge_called_and_reasons_added_when_dirty_and_shadow_true() -> No
 
 async def test_filter_context_accepts_legacy_four_field_call() -> None:
     ctx = FilterContext(
-        cfg=Config(), recent_replies=[], context_rows=[], places_names=[], frag=LEGACY_FRAG
+        cfg=legacy_config(),
+        recent_replies=[],
+        context_rows=[],
+        places_names=[],
+        frag=LEGACY_FRAG,
+        lang=RU,
     )
     verdict = await check_output("Кофе хороший, я не спорю.", ctx)
     assert verdict.ok is True
@@ -537,7 +543,7 @@ async def test_all_few_shot_speak_true_examples_pass_check_output() -> None:
     speak_items = [item for item in items if item.speak]
     assert speak_items, "few_shot.yaml должен содержать хотя бы один пример speak=true"
 
-    cfg = Config()
+    cfg = legacy_config()
     participant_names = [item.name for item in items]
     bot_names = [cfg.persona.name, cfg.persona.display_name, *cfg.persona.name_triggers]
 
@@ -570,7 +576,7 @@ words:
   - {word: сырюка, meaning: слякоть}
   - {word: зюфа, meaning: садись}
 """
-_VOCAB = Vocab([parse_vocab(_VOCAB_YAML)])
+_VOCAB = ru_vocab([parse_ru_vocab(_VOCAB_YAML)])
 
 
 @pytest.mark.parametrize(
@@ -616,7 +622,7 @@ async def test_dedup_motif_allows_other_prop() -> None:
 
 async def test_dedup_motif_ignores_replies_outside_window() -> None:
     """motif_recent_window=3: мотив из четвёртой с конца реплики уже не режет."""
-    cfg = Config()
+    cfg = legacy_config()
     assert cfg.filters.motif_recent_window == 3
     ctx = _ctx(
         cfg=cfg,
@@ -629,7 +635,7 @@ async def test_dedup_motif_ignores_replies_outside_window() -> None:
 
 
 async def test_dedup_motif_disabled_by_zero_window() -> None:
-    cfg = Config()
+    cfg = legacy_config()
     cfg.filters.motif_recent_window = 0
     ctx = _ctx(cfg=cfg, recent_replies=["Гараж закрыт."])
 
@@ -664,7 +670,7 @@ async def test_style_story_quota_allows_first_story_in_window() -> None:
 
 
 async def test_style_story_quota_zero_max_cuts_any_story() -> None:
-    cfg = Config()
+    cfg = legacy_config()
     cfg.filters.story_max = 0
     ctx = _ctx(cfg=cfg, recent_replies=[])
 
@@ -682,3 +688,57 @@ async def test_motifs_and_stories_ignore_sticker_records() -> None:
 
     assert "dedup:motif" not in verdict.reasons
     assert "style:story_quota" not in verdict.reasons
+
+
+# --- the language decides which script checks exist (PR-4) --------------------------------
+
+
+def _cfg_with(**filters: object) -> Config:
+    cfg = legacy_config()
+    return cfg.model_copy(update={"filters": cfg.filters.model_copy(update=filters)})
+
+
+async def test_english_has_no_foreign_script_checks() -> None:
+    en_ctx = FilterContext(
+        lang=get_language("en"),
+        cfg=legacy_config(),
+        recent_replies=["Tabela wystarczy"],
+        context_rows=[],
+        places_names=[],
+        frag=LEGACY_FRAG,
+    )
+
+    verdict = await check_output("Szalony Warsztat dobry", en_ctx)
+
+    assert not any(r in verdict.reasons for r in ("regex:venue", "regex:latin"))
+    assert "dedup:polish_freq" not in verdict.reasons
+
+
+async def test_missing_patterns_and_lang_fall_back_to_english() -> None:
+    ctx = FilterContext(
+        cfg=Config(), recent_replies=[], context_rows=[], places_names=[], frag=LEGACY_FRAG
+    )
+
+    verdict = await check_output("Szalony Warsztat dobry", ctx)
+
+    assert verdict.ok
+
+
+async def test_latin_extra_letters_extend_the_foreign_alphabet() -> None:
+    text = "Złoty Młyn znowu"
+    plain = _ctx(cfg=_cfg_with(latin_extra_letters="", districts=[], polish_words=[]))
+    extended = _ctx(cfg=_cfg_with(latin_extra_letters="ŁłŻż", districts=[], polish_words=[]))
+
+    # without the extra letters «Z» + «oty» is not one word, with them «Złoty» is a venue word
+    assert "regex:venue" in (await check_output(text, extended)).reasons
+    assert "regex:venue" not in (await check_output(text, plain)).reasons
+
+
+async def test_districts_from_config_are_whitelisted() -> None:
+    cfg = _cfg_with(districts=["Nordhaven"], known_places=[], polish_words=[], places_whitelist=[])
+    cut = _cfg_with(districts=[], known_places=[], polish_words=[], places_whitelist=[])
+
+    assert (
+        "regex:venue" not in (await check_output("Живу в Nordhaven давно", _ctx(cfg=cfg))).reasons
+    )
+    assert "regex:venue" in (await check_output("Живу в Nordhaven давно", _ctx(cfg=cut))).reasons

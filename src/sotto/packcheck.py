@@ -152,7 +152,7 @@ async def boot_check(persona: Persona) -> list[str]:
             await config_store.load()
             prompt_store = PromptStore(persona, db)
             await prompt_store.load()
-            vocab_store = VocabStore(db)
+            vocab_store = VocabStore(db, persona.lang)
             await vocab_store.load()
             config_store.set_bot_username("packcheck_bot")
             cfg = config_store.get()

@@ -13,7 +13,7 @@ import pytest
 from sotto.config_models import PlacesConfig
 from sotto.db import PlaceRow
 from sotto.places import render_places_block, render_places_menu, select_places, validate_fact
-from tests.packs import LEGACY_FRAG
+from tests.packs import LEGACY_FRAG, RU
 
 PLACES_NONE = LEGACY_FRAG.text("prompt.places_none")
 
@@ -63,7 +63,7 @@ def test_select_places_filters_by_rating_reviews_and_operational() -> None:
     ]
     cfg = _cfg(min_rating=4.2, min_reviews=50, max_per_reply=5)
 
-    result = select_places(rows, cfg, "куда сходить", random.Random(0))
+    result = select_places(rows, cfg, "куда сходить", random.Random(0), lang=RU)
 
     assert [r.place_id for r in result] == ["good"]
 
@@ -72,7 +72,7 @@ def test_select_places_returns_empty_when_nothing_qualifies() -> None:
     rows = [_row("low_rating", "Low Rating Bar", rating=3.0)]
     cfg = _cfg(min_rating=4.2, min_reviews=50, max_per_reply=5)
 
-    assert select_places(rows, cfg, "куда сходить", random.Random(0)) == []
+    assert select_places(rows, cfg, "куда сходить", random.Random(0), lang=RU) == []
 
 
 # --------------------------------------------------------------------------- #
@@ -95,7 +95,7 @@ def test_select_places_quiet_request_returns_only_quiet(request_text: str) -> No
     ]
     cfg = _cfg(max_per_reply=5)
 
-    result = select_places(rows, cfg, request_text, random.Random(0))
+    result = select_places(rows, cfg, request_text, random.Random(0), lang=RU)
 
     assert result
     assert all(r.quiet for r in result)
@@ -106,7 +106,7 @@ def test_select_places_quiet_request_empty_when_no_quiet_place_qualifies() -> No
     rows = [_row("loud1", "Loud Bar", quiet=False)]
     cfg = _cfg(max_per_reply=5)
 
-    assert select_places(rows, cfg, "где тихо посидеть", random.Random(0)) == []
+    assert select_places(rows, cfg, "где тихо посидеть", random.Random(0), lang=RU) == []
 
 
 # --------------------------------------------------------------------------- #
@@ -138,7 +138,7 @@ def test_select_places_district_mention_restricts_to_that_district(
     ]
     cfg = _cfg(max_per_reply=5)
 
-    result = select_places(rows, cfg, f"куда сходить в {mention}", random.Random(0))
+    result = select_places(rows, cfg, f"куда сходить в {mention}", random.Random(0), lang=RU)
 
     assert [r.place_id for r in result] == ["in_district"]
 
@@ -148,7 +148,7 @@ def test_select_places_district_mention_with_no_local_match_falls_back() -> None
     rows = [_row("elsewhere", "Elsewhere Bar", district="Kępice")]
     cfg = _cfg(max_per_reply=5)
 
-    result = select_places(rows, cfg, "куда сходить в Granwaldzie", random.Random(0))
+    result = select_places(rows, cfg, "куда сходить в Granwaldzie", random.Random(0), lang=RU)
 
     assert [r.place_id for r in result] == ["elsewhere"]
 
@@ -176,7 +176,7 @@ def test_select_places_outskirts_request_returns_only_outskirts_category(
     ]
     cfg = _cfg(max_per_reply=5)
 
-    result = select_places(rows, cfg, request_text, random.Random(0))
+    result = select_places(rows, cfg, request_text, random.Random(0), lang=RU)
 
     assert result
     assert all(r.category == "outskirts" for r in result)
@@ -190,7 +190,7 @@ def test_select_places_no_keywords_returns_any_category() -> None:
     ]
     cfg = _cfg(max_per_reply=5)
 
-    result = select_places(rows, cfg, "как дела", random.Random(0))
+    result = select_places(rows, cfg, "как дела", random.Random(0), lang=RU)
 
     assert {r.place_id for r in result} == {"out1", "craft1"}
 
@@ -204,7 +204,7 @@ def test_select_places_respects_max_per_reply() -> None:
     rows = [_row(f"p{i}", f"Bar {i}") for i in range(5)]
     cfg = _cfg(max_per_reply=2)
 
-    result = select_places(rows, cfg, "куда сходить", random.Random(1))
+    result = select_places(rows, cfg, "куда сходить", random.Random(1), lang=RU)
 
     assert len(result) == 2
 
@@ -213,15 +213,15 @@ def test_select_places_max_per_reply_zero_returns_empty() -> None:
     rows = [_row("p1", "Bar 1")]
     cfg = _cfg(max_per_reply=0)
 
-    assert select_places(rows, cfg, "куда сходить", random.Random(0)) == []
+    assert select_places(rows, cfg, "куда сходить", random.Random(0), lang=RU) == []
 
 
 def test_select_places_deterministic_with_same_seed() -> None:
     rows = [_row(f"p{i}", f"Bar {i}") for i in range(6)]
     cfg = _cfg(max_per_reply=2)
 
-    first = select_places(rows, cfg, "куда сходить", random.Random(42))
-    second = select_places(rows, cfg, "куда сходить", random.Random(42))
+    first = select_places(rows, cfg, "куда сходить", random.Random(42), lang=RU)
+    second = select_places(rows, cfg, "куда сходить", random.Random(42), lang=RU)
 
     assert [r.place_id for r in first] == [r.place_id for r in second]
 
@@ -349,9 +349,18 @@ VALIDATE_FACT_CASES = [
     ids=[c[0] for c in VALIDATE_FACT_CASES],
 )
 def test_validate_fact(case_id: str, raw: str, expected: str | None) -> None:
-    assert validate_fact(raw) == expected
+    assert validate_fact(raw, lang=RU) == expected
 
 
 def test_validate_fact_exactly_40_chars_ok() -> None:
     text = "а" * 40
-    assert validate_fact(text) == text
+    assert validate_fact(text, lang=RU) == text
+
+
+def test_validate_fact_follows_the_language_alphabet() -> None:
+    from sotto.lang import get_language
+
+    en = get_language("en")
+    assert validate_fact("quiet, near-park", lang=en) == "quiet, near-park"
+    assert validate_fact("тихо", lang=en) is None
+    assert validate_fact("quiet", lang=RU) is None

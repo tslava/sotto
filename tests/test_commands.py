@@ -38,7 +38,7 @@ from sotto.settings import Settings
 from sotto.timeutil import day_key, local_dt
 from sotto.vocab import VocabStore
 from sotto.weather import Place, Weather
-from tests.packs import LEGACY_FRAG, LEGACY_PACK
+from tests.packs import LEGACY_FRAG, LEGACY_PACK, legacy_config
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
@@ -446,7 +446,7 @@ def _make_settings(
 
 @pytest.fixture
 def config() -> Config:
-    return Config()
+    return legacy_config()
 
 
 @pytest.fixture

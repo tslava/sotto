@@ -1,7 +1,7 @@
 """Тесты для sotto.responder: дебаунс, отложенный ответ, генерация, джобы.
 
 Bot — простая подделка (FakeBot), без aiogram. БД — настоящая ``Database`` на
-временном файле, ``Patterns`` — настоящий из ``Config()``. LLM — настоящий
+временном файле, ``Patterns`` — настоящий из ``legacy_config()``. LLM — настоящий
 ``LLMClient`` с ``httpx.MockTransport``: тесты проверяют и реальную сборку
 промпта (по перехваченному запросу), и разбор ответа.
 
@@ -45,9 +45,9 @@ from sotto.patterns import Patterns
 from sotto.responder import Responder
 from sotto.stickers import Sticker
 from sotto.timeutil import day_key, in_window
-from sotto.vocab import Vocab, parse_vocab
+from sotto.vocab import Vocab
 from sotto.weather import Place, Weather
-from tests.packs import LEGACY_FRAG
+from tests.packs import LEGACY_FRAG, RU, legacy_config, parse_ru_vocab, ru_vocab
 
 PLACES_NONE = LEGACY_FRAG.text("prompt.places_none")
 SITUATION_AMBIENT = LEGACY_FRAG.text("situations.ambient")
@@ -97,7 +97,7 @@ NIGHT_NOW = int(datetime(2026, 1, 10, 3, 0, tzinfo=WARSAW).timestamp())
 
 
 def _config() -> Config:
-    cfg = Config()
+    cfg = legacy_config()
     cfg.llm.main_model = "test/model"
     return cfg
 
@@ -555,7 +555,7 @@ def _make_responder(
     diary: FakeDiary | None = None,
     vocab: Vocab | None = None,
 ) -> Responder:
-    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, BOT_USERNAME)
+    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, BOT_USERNAME, RU)
     return Responder(
         bot=bot,
         db=db_,
@@ -2060,7 +2060,7 @@ async def test_shutdown_waits_for_inflight_generation_before_cancelling(db: Data
     async def instant_sleep(_seconds: float) -> None:
         await asyncio.sleep(0)
 
-    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, BOT_USERNAME)
+    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, BOT_USERNAME, RU)
     responder = Responder(
         bot=bot,
         db=db,
@@ -2570,7 +2570,7 @@ async def test_ambient_generation_is_serialized_and_recheck_blocks_second(
     async def instant_sleep(_seconds: float) -> None:
         await asyncio.sleep(0)
 
-    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, BOT_USERNAME)
+    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, BOT_USERNAME, RU)
     responder = Responder(
         bot=bot,
         db=db,
@@ -6021,7 +6021,7 @@ words:
 
 
 def _test_vocab() -> Vocab:
-    return Vocab([parse_vocab(VOCAB_YAML)])
+    return ru_vocab([parse_ru_vocab(VOCAB_YAML)])
 
 
 async def _insert_human(db_: Database, tg_id: int, text: str, at: int) -> None:

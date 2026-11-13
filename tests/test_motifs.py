@@ -6,7 +6,6 @@ import re
 
 import pytest
 
-from sotto.config_models import FiltersConfig
 from sotto.motifs import (
     SelfShare,
     motifs_in,
@@ -18,11 +17,11 @@ from sotto.motifs import (
     used_motifs,
 )
 from sotto.patterns import Patterns
-from tests.packs import LEGACY_FRAG
+from tests.packs import LEGACY_FRAG, RU, legacy_config
 
 
 def _patterns() -> Patterns:
-    return Patterns(FiltersConfig(), ["федя"], "")
+    return Patterns(legacy_config().filters, ["федя"], "", RU)
 
 
 def _motifs() -> dict[str, list[re.Pattern[str]]]:
@@ -177,7 +176,7 @@ def test_render_avoid_has_no_typographic_dash() -> None:
 
 
 def _self_markers() -> list[re.Pattern[str]]:
-    return [re.compile(p, re.IGNORECASE) for p in FiltersConfig().self_markers]
+    return [re.compile(p, re.IGNORECASE) for p in legacy_config().filters.self_markers]
 
 
 @pytest.mark.parametrize(

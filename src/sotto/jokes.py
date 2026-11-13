@@ -16,6 +16,7 @@ from collections.abc import Sequence
 
 from sotto.db import JokeRow
 from sotto.fragments import Fragments
+from sotto.lang import Language
 
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
@@ -33,8 +34,8 @@ def _clean(text: str) -> str:
     return cleaned.strip().rstrip(".;")
 
 
-def _words(text: str) -> list[str]:
-    return _WORD_RE.findall(text.lower().replace("ё", "е"))
+def _words(text: str, lang: Language) -> list[str]:
+    return _WORD_RE.findall(lang.fold(text))
 
 
 def render_jokes(rows: Sequence[JokeRow], *, now: int, cooldown_days: int, frag: Fragments) -> str:
@@ -56,11 +57,11 @@ def render_jokes(rows: Sequence[JokeRow], *, now: int, cooldown_days: int, frag:
     return frag.text("render.jokes_header") + "; ".join(parts) + "."
 
 
-def joke_used(text: str, joke: str) -> bool:
+def joke_used(text: str, joke: str, lang: Language) -> bool:
     """Шутка прозвучала в ``text``: 3+ общих нормализованных слова подряд, либо шутка
     короче трёх слов и целиком (по словам, подряд) входит в текст."""
-    text_words = _words(text)
-    joke_words = _words(joke)
+    text_words = _words(text, lang)
+    joke_words = _words(joke, lang)
     if not joke_words or not text_words:
         return False
     if len(joke_words) < _MIN_RUN:

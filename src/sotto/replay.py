@@ -80,6 +80,7 @@ from sotto.gate_types import (
     Verdict,
 )
 from sotto.judge import Judge
+from sotto.lang import default_config_layer
 from sotto.llm import LLMClient, LLMError
 from sotto.patterns import Patterns
 from sotto.persona import Persona, load_persona, persona_from_env
@@ -670,7 +671,7 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
     # Пакет нужен всегда: плейсхолдеры медиа и имя-заглушка берутся из его фрагментов.
     persona = load_persona(Path(persona_arg)) if persona_arg is not None else persona_from_env()
     if config_arg is not None:
-        cfg = load_config(Path(config_arg))
+        cfg = load_config([default_config_layer(persona.lang), Path(config_arg)])
     else:
         cfg = load_config(persona.config_layers())
     patterns = Patterns(

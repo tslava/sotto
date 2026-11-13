@@ -125,19 +125,10 @@ def parse_hhmm(value: str) -> time:
 
 
 class PersonaConfig(BaseModel):
-    name: str = Field(default="Фёдор", description="Имя персонажа")
-    display_name: str = Field(default="Отец Фёдор", description="Имя профиля бота в Telegram")
+    name: str = Field(default="Persona", description="Имя персонажа")
+    display_name: str = Field(default="Persona", description="Имя профиля бота в Telegram")
     name_triggers: list[str] = Field(
-        default_factory=lambda: [
-            "фёдор",
-            "федор",
-            "федя",
-            "федь",
-            "отец",
-            "отче",
-            "батюшка",
-            "дед",
-        ],
+        default_factory=list,
         description="Слова-обращения к персонажу без @, по границам слов",
     )
     birth_date: date = Field(
@@ -147,9 +138,7 @@ class PersonaConfig(BaseModel):
         default=2006, ge=1950, le=2100, description="Год переезда в Волсань"
     )
     district: str = Field(default="Dolna", description="Родной район, который персонаж защищает")
-    timezone: str = Field(
-        default="Europe/Warsaw", description="Таймзона персонажа для суток и окон времени"
-    )
+    timezone: str = Field(default="UTC", description="Таймзона персонажа для суток и окон времени")
 
     def age(self, today: date) -> int:
         years = today.year - self.birth_date.year
@@ -1115,253 +1104,6 @@ class PlacesConfig(BaseModel):
         return value
 
 
-_TOPIC_STOP_DEFAULT = [
-    r"\bвойн[а-я]*",
-    r"\bукраин[а-я]*",
-    r"\bросси[а-я]*",
-    r"\bрф\b",
-    r"\bобстрел[а-я]*",
-    r"\bфронт[а-я]*",
-    r"\bмобилизац[а-я]*",
-    r"\bпутин[а-я]*",
-    r"\bзеленск[а-я]*",
-    r"\bтрамп(а|у|ом|е|ы)?\b",
-    r"\bвыбор(ы|ов|ах|ам)\b",
-    r"\bсанкци[а-я]*",
-    r"\bпис\b",
-    r"\bpis\b",
-    r"\bтуск[а-я]*",
-    r"\bконфедерац[а-я]*",
-    r"\bмигрант[а-я]*",
-    r"\bбеженц[а-я]*",
-    r"\bизраил[а-я]*",
-    r"\bпалестин[а-я]*",
-    r"\bсектор газа",
-    r"\bцерк[а-я]*",
-    r"\bкостёл[а-я]*",
-    r"\bкостел[а-я]*",
-    r"\bаборт[а-я]*",
-    r"\bлгбт\b",
-    r"\bнациз[а-я]*",
-    r"\bфашис[а-я]*",
-]
-
-_INJECTION_MARKERS_DEFAULT = [
-    r"забудь (инструкции|правила|всё)",
-    r"\bигнорируй (все|всё|предыдущ\w*|инструкци\w*|правил\w*)\b",
-    r"\bты теперь (бот|пират|ассистент|помощник|нейросеть|другой человек"
-    r"|другой персонаж|играешь роль)\b",
-    r"системн\w+ промпт",
-    r"повтори за мной",
-    r"скажи дословно",
-    r"напиши слово",
-    r"ignore (previous|all)",
-    r"как языковая модель",
-    r"\bпредставь,? что ты\b",
-    r"\bпритворись\b",
-    r"\bиграй роль\b",
-]
-
-_LOGISTICS_DEFAULT = [
-    r"\b\d{1,2}[:.]\d{2}\b",
-    r"\bв (семь|восемь|девять|десять|шесть|пять|четыре|три|два)\b(?! раз)",
-    r"\bв час\b(?! пик)",
-    r"\bво сколько\b",
-    r"\bкто (идёт|идет|будет|со мной)\b",
-    r"\bя пас\b",
-    r"\bвстречаемся\b",
-    r"\bгде (собираемся|встречаемся)\b",
-    r"\bкто в (пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|среду|четверг"
-    r"|пятницу|субботу|воскресенье|выходные)\b",
-    r"\bподтянусь\b",
-    r"\bбуду через\b",
-]
-
-_URGENT_DEFAULT = [
-    r"\bсегодня\b",
-    r"\bсейчас\b",
-    r"\bчерез час\b",
-    r"\bкуда идём\b",
-    r"\bкуда идем\b",
-    r"\bты где\b",
-]
-
-_PLACES_REQUEST_DEFAULT = [
-    r"\bкуда сходить\b",
-    r"\bпосоветуй",
-    r"\bгде посидеть\b",
-    r"\bгде выпить\b",
-    r"\bкакой бар\b",
-    r"\bпаб\b",
-    r"\bпивнух",
-    r"\bкуда съездить\b",
-    r"\bгде (пиво|бар|паб|пивная|посидеть|выпить|нормальн\w+ пиво|вкусн\w+ пиво)",
-    r"\bколись,? где\b",
-    r"\bкуда (пойти|податься|зайти)\b",
-    r"\bпосовет\w+ (бар|паб|место|куда)\b",
-    r"\bкакой (бар|паб|пивняк)\b",
-    r"\bесть (бар|паб|место)\b",
-    r"\bпивняк\b",
-]
-
-# Повод посмотреть погоду в месте, про которое спросили (CLAUDE.md, "погода в
-# другом месте"). Регулярка только включает дешёвый вызов, который достаёт из
-# текста название места, — само решение «спрашивали ли про погоду» за моделью.
-_WEATHER_REQUEST_DEFAULT = [
-    r"\bпогод",
-    r"\bдожд",
-    r"\bснег",
-    r"\bжар[аеуы]\b",
-    r"\bupał",
-    r"\bтемператур",
-    r"\bградус",
-    r"\bтепл[оаы]",
-    r"\bхолодн",
-]
-
-_MODEL_TALK_DEFAULT = [
-    r"языковая модель",
-    r"нейросет\w*",
-    r"инструкци\w*",
-    r"промпт\w*",
-    r"\bИИ\b",
-    r"OpenAI",
-    r"Anthropic",
-    r"OpenRouter",
-]
-
-_GRUMPY_MARKERS_DEFAULT = [
-    r"\bя (же|уже|вам уже) (говорил|сказал|написал)\b",
-    r"\bразговор закрыт\b",
-    r"\bникому не интересно\b",
-    r"\bне буду (говорить|рассказывать|отвечать)\b",
-    r"\bнеинтересно\b",
-    r"\bотстань",
-    r"\bхватит (уже|про|об)",
-    r"\bсколько можно\b",
-]
-
-_ASSISTANT_MARKERS_DEFAULT = [
-    "важно отметить",
-    "стоит учесть",
-    "рекомендую",
-    "могу помочь",
-    "дай знать",
-    "надеюсь это поможет",
-    "во-первых",
-    "конечно!",
-    "отличный вопрос",
-    "если у тебя есть вопросы",
-]
-
-# Заведения из CHARACTER.md, раздел 7 — белый список для regex:venue/regex:latin.
-# Многословные названия матчатся по каждому слову (filters.py разбивает фразу на слова),
-# поэтому "ZORZA" продублирована отдельно от "Klubokawiarnia ZORZA": в чате её называют
-# и полным, и сокращённым именем (см. few_shot.yaml).
-_KNOWN_PLACES_DEFAULT = [
-    "Złota Łapa",
-    "Dom Mąki",
-    "Burza",
-    "Żurawinka",
-    "Klubokawiarnia ZORZA",
-    "ZORZA",
-    "PLAMY",
-    "Komora",
-    "Szalony Chmiel",
-    "Lot Sokoła",
-    "ARK",
-    "Ministerstwo Zacieru",
-]
-
-# Польский словарь Фёдора (CHARACTER.md, раздел 1: "двести слов, все нужные") — белый
-# список для regex:venue/regex:latin, и одновременно то, что dedup:polish_freq
-# сознательно СЧИТАЕТ латинскими токенами (это и есть польские слова, частоту которых
-# правило ограничивает).
-_POLISH_WORDS_DEFAULT = [
-    "działka",
-    "działki",
-    "działce",
-    "przegląd",
-    "urząd",
-    "urzędzie",
-    "sklep",
-    "piwo",
-    "zrobiony",
-    "mechanik",
-    "sąsiad",
-    "pomidory",
-    "garaż",
-    "grzyby",
-    "las",
-    "dobra",
-    "nie",
-    "tak",
-    "spoko",
-    "pan",
-    "pani",
-    "dziękuję",
-    "lech",
-    "tyskie",
-    "żywiec",
-]
-
-# Реквизит персонажа (CLAUDE.md, "меньше и разнообразнее", мера 5): метка мотива ->
-# регулярки. 14.09 в 22 репликах жена встретилась 7 раз, теплица 5, гараж 5,
-# «в девяносто пятом» 5 — мотивы нужны и фильтру (dedup:motif), и промпту (слот
-# {avoid}), поэтому список один и живёт в конфиге.
-_MOTIFS_DEFAULT: dict[str, list[str]] = {
-    "жена": [r"\bжен[аеуы]\b", r"\bжено[йю]\b"],
-    "теплица": [r"\bтеплиц"],
-    "гараж": [r"\bгараж"],
-    "девяностые": [r"\bдевяност", r"\b9\d-?[мхе]\b"],
-    "двухтысячные": [r"\bдвухтысячн"],
-    "сын": [r"\bсын"],
-    "грибы": [r"\bгриб"],
-    "участок": [r"\bучасток", r"\bучастк"],
-    "машина": [r"\bмашин"],
-    "зато": [r"\bзато\b"],
-    "завод": [
-        r"\bзавод(а|у|ом|е|ы|ов|ах|ам|ами)?\b",
-        r"\bзаводск",
-        r"\bцех",
-        r"\bналадчик",
-    ],
-}
-
-# Маркеры байки (CLAUDE.md, мера 5) — по ним считается квота историй в окне
-# story_window: байка не в каждом ответе, а одна на несколько реплик.
-_STORY_MARKERS_DEFAULT = [
-    r"\bдевяност",
-    r"\bдвухтысячн",
-    r"\bв прошлом году",
-    r"\bлет назад",
-    r"\bпомню\b",
-    r"\bкогда-то\b",
-    r"\bодин раз\b",
-    r"\bкак-то раз\b",
-]
-
-# Маркеры «говорит о себе» (CLAUDE.md, "про себя через раз") — только для метрики в
-# /status, ничего не режут. Местоимения первого лица и его родня; «мне кажется» не
-# считается. Формы перечислены закрытым списком окончаний («Внуково» и «нашёл» мимо).
-# Ложные срабатывания («у нас» про весь чат) допустимы: метрика грубая и
-# нужна, чтобы видеть тренд, а не судить отдельную реплику.
-_SELF_MARKERS_DEFAULT = [
-    r"\bя\b",
-    r"\bмен[яе]\b",
-    r"\bмне\b(?!\s+кажется)",
-    r"\bмной\b",
-    r"\bмо(й|я|ё|е|и|ю|его|ей|их|им|ими|ему|ём|ем)\b",
-    r"\bмы\b",
-    r"\bу нас\b",
-    r"\bнаш(а|е|и|у|его|ей|их|им|ими|ему|ем|ём)?\b",
-    r"\bвнук(а|у|ом|е|и|ов|ам|ами|ах)?\b",
-    r"\bвнучк(а|и|е|у|ой)\b",
-    r"\bжен[аеуы]\b",
-    r"\bжено[йю]\b",
-    r"\bсын(а|у|ом|е|ы|ов|овья|овей|овьям|ок|ка|ку|ком|ке)?\b",
-]
-
 # Стадии выходного фильтра, которые режут даже при filters.shadow: true
 # (CLAUDE.md, мера 4): повторы и сорванный стиль — ровно то, из-за чего чат
 # остановил бота, а shadow их пропускал.
@@ -1391,7 +1133,7 @@ class FiltersConfig(BaseModel):
         default=True, description="true = фильтры логируют, но не режут ответ (щадящий старт)"
     )
     places_whitelist: list[str] = Field(
-        default_factory=lambda: ["Lidl", "OLX", "Biedronka", "Żabka", "Allegro"],
+        default_factory=list,
         description="Бытовые бренды, не заведения из CHARACTER.md раздел 7",
     )
     # Разрешённые эмодзи для regex:emoji/style:emoji_* (CHARACTER.md раздел 3/4).
@@ -1406,54 +1148,61 @@ class FiltersConfig(BaseModel):
     emoji_recent_window: int = Field(
         default=4, ge=0, le=20, description="Окно последних реплик для проверки частоты эмодзи"
     )
-    # Заведения из CHARACTER.md, раздел 7 — белый список regex:venue/regex:latin,
-    # см. _KNOWN_PLACES_DEFAULT.
+    # Заведения из CHARACTER.md, раздел 7 — белый список regex:venue/regex:latin.
     known_places: list[str] = Field(
-        default_factory=lambda: list(_KNOWN_PLACES_DEFAULT),
+        default_factory=list,
         description="Заведения из CHARACTER.md раздел 7, белый список regex:venue/regex:latin",
     )
     # Польский словарь Фёдора — тот же белый список, а для dedup:polish_freq (наоборот)
-    # это и есть слова, чью частоту правило ограничивает, см. _POLISH_WORDS_DEFAULT.
+    # это и есть слова, чью частоту правило ограничивает.
     polish_words: list[str] = Field(
-        default_factory=lambda: list(_POLISH_WORDS_DEFAULT),
+        default_factory=list,
         description="Польский словарь персонажа, белый список и предмет dedup:polish_freq",
     )
+    districts: list[str] = Field(
+        default_factory=list,
+        description="Районы города: латиницей они не считаются выдуманным заведением",
+    )
+    latin_extra_letters: str = Field(
+        default="",
+        description="Буквы чужого алфавита сверх A-Za-z (диакритики), напр. польские",
+    )
     topic_stop: list[str] = Field(
-        default_factory=lambda: list(_TOPIC_STOP_DEFAULT),
+        default_factory=list,
         description="Стоп-лист тем (вход и выход), регулярки по границам слов",
     )
     injection_markers: list[str] = Field(
-        default_factory=lambda: list(_INJECTION_MARKERS_DEFAULT),
+        default_factory=list,
         description="Маркеры команд управления ботом (входной гейт, шаг 5a)",
     )
     logistics: list[str] = Field(
-        default_factory=lambda: list(_LOGISTICS_DEFAULT),
+        default_factory=list,
         description="Логистические фразы: время, «кто идёт», «я пас» — не мешать договорённостям",
     )
     urgent: list[str] = Field(
-        default_factory=lambda: list(_URGENT_DEFAULT),
+        default_factory=list,
         description="Маркеры срочности («сегодня», «сейчас») — ускоряют бакет задержки ответа",
     )
     places_request: list[str] = Field(
-        default_factory=lambda: list(_PLACES_REQUEST_DEFAULT),
+        default_factory=list,
         description="Маркеры запроса про заведение («куда сходить», «посоветуй»)",
     )
     weather_request: list[str] = Field(
-        default_factory=lambda: list(_WEATHER_REQUEST_DEFAULT),
+        default_factory=list,
         description="Маркеры разговора о погоде — повод узнать погоду в названном месте",
     )
     model_talk: list[str] = Field(
-        default_factory=lambda: list(_MODEL_TALK_DEFAULT),
+        default_factory=list,
         description="Маркеры разговора о модели/ИИ, которых персонаж не знает (выходной фильтр)",
     )
     assistant_markers: list[str] = Field(
-        default_factory=lambda: list(_ASSISTANT_MARKERS_DEFAULT),
+        default_factory=list,
         description="Фразы-маркеры ассистента, не в характере персонажа (выходной фильтр)",
     )
     # Сухие/раздражённые формулировки (style:grumpy, выходной фильтр) — добродушный
     # персонаж не отмахивается от вопросов и не злится на повторы (CHARACTER.md раздел 3).
     grumpy_markers: list[str] = Field(
-        default_factory=lambda: list(_GRUMPY_MARKERS_DEFAULT),
+        default_factory=list,
         description="Сухие/раздражённые формулировки не в характере персонажа (выходной фильтр)",
     )
     # Мера 4 контракта «меньше и разнообразнее»: shadow остаётся щадящим для новых
@@ -1464,7 +1213,7 @@ class FiltersConfig(BaseModel):
     )
     # Мера 5: реквизит (жена/теплица/гараж/девяностые) — метка -> регулярки.
     motifs: dict[str, list[str]] = Field(
-        default_factory=lambda: {label: list(items) for label, items in _MOTIFS_DEFAULT.items()},
+        default_factory=dict,
         description="Метка мотива -> регулярки реквизита: жена, теплица, гараж, девяностые",
     )
     motif_recent_window: int = Field(
@@ -1480,14 +1229,14 @@ class FiltersConfig(BaseModel):
         description="Окно последних реплик, чьи мотивы уходят в промпт слотом {avoid}",
     )
     story_markers: list[str] = Field(
-        default_factory=lambda: list(_STORY_MARKERS_DEFAULT),
+        default_factory=list,
         description="Маркеры байки: «девяностые», «помню», «как-то раз» (квота историй)",
     )
     story_window: int = Field(
         default=5, ge=1, le=20, description="Окно последних реплик, в котором считается квота баек"
     )
     self_markers: list[str] = Field(
-        default_factory=lambda: list(_SELF_MARKERS_DEFAULT),
+        default_factory=list,
         description="Маркеры «говорит о себе» (я, у меня, внук): только метрика в /status",
     )
     story_max: int = Field(

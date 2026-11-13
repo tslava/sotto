@@ -521,3 +521,5 @@ filters:
     - \bжен[аеуы]\b
     - \bжено[йю]\b
     - \bсын(а|у|ом|е|ы|ов|овья|овей|овьям|ок|ка|ку|ком|ке)?\b
+  districts: [Dolna, Rożyce, Dawne Miasto, Granwald, Łanowo, Kępice, Ogrody, Wolsań, Bórnik, Leszczykowo, Strzechyn]
+  latin_extra_letters: "ĄąĆćĘęŁłŃńÓóŚśŹźŻż"

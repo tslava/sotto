@@ -23,59 +23,40 @@ import random
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from sotto.config_models import VocabConfig
 from sotto.fragments import Fragments
+from sotto.lang import Language, get_language
 
 if TYPE_CHECKING:
     from sotto.db import Database, VocabDictRow
 
 logger = logging.getLogger(__name__)
 
-# Знаки ударения (острое и тупое) — в публичных глоссариях они в каждом слове.
-_ACCENTS_RE = re.compile("[̀́]")
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+# Знаки ударения (острое и тупое) — в публичных глоссариях они в каждом слове.
+_ACCENTS_RE = re.compile("[\u0300\u0301]")
 _SPACES_RE = re.compile(r"\s+")
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 # Тире в промпте модель копирует в реплики (CLAUDE.md, "пост-обработка").
 _DASH_RE = re.compile(r"\s*[‒–—―]\s*")
 
-# Формы слова ищутся по основе и ЗАКРЫТОМУ списку русских окончаний (ревью Codex
-# 17.10: «любой хвост до N букв» путал «костюм» с «коста»). Основа короче трёх букв —
-# только точное совпадение.
-_REFLEXIVE = ("ся", "сь")
-_VERB_ENDINGS = ("ть", "ти", "чь")
-_ADJ_ENDINGS_WORD = ("ый", "ий", "ой")
-_FLEETING = ("ок", "ек", "ец")  # беглая гласная: кумонок -> кумонка, мошнок -> мошнков
-_SOFT_ENDINGS = frozenset("аеиоуыэюяйь")
-_NOUN_ENDINGS = frozenset(
-    {"", "а", "я", "о", "е", "ы", "и", "у", "ю", "ь", "й", "ой", "ей", "ою", "ею", "ом", "ем"}
-    | {"ам", "ям", "ах", "ях", "ами", "ями", "ов", "ев", "ью"}
-)
-_ADJ_ENDINGS = frozenset(
-    {"ый", "ий", "ой", "ая", "яя", "ое", "ее", "ые", "ие", "ого", "его", "ому", "ему", "ую"}
-    | {"юю", "ых", "их", "ым", "им", "ыми", "ими", "ом", "ем", "", "а", "о", "ы", "и"}
-)
-_NOMINAL_ENDINGS = _NOUN_ENDINGS | _ADJ_ENDINGS
-# Разносклоняемые на «-мя» (кремя): косвенные падежи от основы на «-ен».
-_MYA_ENDINGS = frozenset({"и", "ем", "а", "ам", "ами", "ах"})
-# Окончания на основе инфинитива: гурха|л, бура|ет(ся), маргани|ла, скруди|.
-_VERB_FORMS = frozenset(
-    {"", "ть", "ти", "чь", "л", "ла", "ло", "ли", "в", "вши", "я", "й", "йте"}
-    | {"ю", "у", "ешь", "ет", "ем", "ете", "ют", "ут"}
-)
-# Настоящее время, где основа инфинитива меняется: марган|ит, друж|у|ешь, ша|ют.
-_PRESENT_E = frozenset({"ю", "у", "ешь", "ет", "ем", "ете", "ют", "ут", "й", "йте", "я"})
-_PRESENT_I = frozenset({"ю", "у", "ишь", "ит", "им", "ите", "ят", "ат", "ь", "я"})
-# Глагольные приставки: «по|марганил», «на|трунил», «от|кружили». Отрезаются только
-# перед глагольной основой и только если после них остаётся длинное слово.
-_VERB_PREFIXES = ("пере", "при", "раз", "рас", "под", "над", "об", "от", "вы", "за", "на", "по")
-_PREFIXED_MIN = 5
+# Формы слова ищутся по основе и ЗАКРЫТОМУ списку окончаний языка (``Language.vocab_rules``;
+# ревью Codex 17.10: «любой хвост до N букв» путал «костюм» с «коста»). Основа короче
+# трёх букв — только точное совпадение.
 _MIN_STEM = 3
 _PREFIX_KEY = 3
 
@@ -88,24 +69,28 @@ _FORMS_MAX = 30
 _WORDS_MAX = 2000
 _ERRORS_SHOWN = 5
 
-# Имя словаря как признак просьбы: «дворовые» -> «дворо» ловит «по-дворовому»,
-# «дворовое», но не «двора».
-_NAME_STEM_MIN = 5
-_NAME_STEM_CUT = 3
+
+def normalize(text: str, lang: Language) -> str:
+    """``lang.fold`` (регистр, «ё», ударения), пробелы схлопнуты."""
+    return _SPACES_RE.sub(" ", lang.fold(text)).strip()
 
 
-def normalize(text: str) -> str:
-    """Без ударений, в нижнем регистре, «ё» -> «е», пробелы схлопнуты."""
-    cleaned = _ACCENTS_RE.sub("", text).lower().replace("ё", "е")
-    return _SPACES_RE.sub(" ", cleaned).strip()
-
-
-def _tokens(text: str) -> list[str]:
-    return _TOKEN_RE.findall(normalize(text))
+def _tokens(text: str, lang: Language) -> list[str]:
+    return _TOKEN_RE.findall(normalize(text, lang))
 
 
 def _display(text: str) -> str:
+    """Текст для показа: без знаков ударения, пробелы схлопнуты, регистр сохранён."""
     return _SPACES_RE.sub(" ", _ACCENTS_RE.sub("", text)).strip()
+
+
+def _context_lang(info: ValidationInfo) -> Language:
+    """Язык разбора из ``model_validate(context=...)``; без контекста (модель собрана
+    руками) — английский: на «есть ли в слове буквы» и повтор слов язык почти не влияет."""
+    context = info.context
+    if isinstance(context, dict) and context.get("lang") is not None:
+        return cast(Language, context["lang"])
+    return get_language("en")
 
 
 class VocabWord(BaseModel):
@@ -123,17 +108,18 @@ class VocabWord(BaseModel):
 
     @field_validator("word")
     @classmethod
-    def _has_letters(cls, value: str) -> str:
-        if not _tokens(value):
+    def _has_letters(cls, value: str, info: ValidationInfo) -> str:
+        if not _tokens(value, _context_lang(info)):
             raise ValueError("в слове нет букв")
         return value
 
     @field_validator("forms")
     @classmethod
-    def _forms(cls, value: list[str]) -> list[str]:
+    def _forms(cls, value: list[str], info: ValidationInfo) -> list[str]:
+        lang = _context_lang(info)
         cleaned = [form.strip() for form in value if form.strip()]
         for form in cleaned:
-            if len(form) > _WORD_MAX or not _tokens(form):
+            if len(form) > _WORD_MAX or not _tokens(form, lang):
                 raise ValueError(f"кривая форма «{form[:_WORD_MAX]}»")
         return cleaned
 
@@ -151,10 +137,11 @@ class VocabDict(BaseModel):
         return " ".join(value.split()) if isinstance(value, str) else value
 
     @model_validator(mode="after")
-    def _unique_words(self) -> VocabDict:
+    def _unique_words(self, info: ValidationInfo) -> VocabDict:
+        lang = _context_lang(info)
         seen: set[str] = set()
         for item in self.words:
-            key = normalize(item.word)
+            key = normalize(item.word, lang)
             if key in seen:
                 raise ValueError(f"слово «{_display(item.word)}» повторяется")
             seen.add(key)
@@ -173,7 +160,7 @@ def _format_loc(loc: tuple[int | str, ...]) -> str:
     return " → ".join(parts)
 
 
-def parse_vocab(raw: str) -> VocabDict:
+def parse_vocab(raw: str, lang: Language) -> VocabDict:
     """YAML -> VocabDict. Любая ошибка — ``ValueError`` с текстом для владельца."""
     try:
         data = yaml.safe_load(raw)
@@ -182,7 +169,7 @@ def parse_vocab(raw: str) -> VocabDict:
     if not isinstance(data, dict):
         raise ValueError("ожидался YAML-объект с полями name и words")
     try:
-        return VocabDict.model_validate(data)
+        return VocabDict.model_validate(data, context={"lang": lang})
     except ValidationError as exc:
         lines = []
         for error in exc.errors()[:_ERRORS_SHOWN]:
@@ -203,12 +190,11 @@ class VocabEntry:
     dict_name: str
 
 
-def _name_stem(name: str) -> str | None:
-    tokens = _tokens(name)
-    if not tokens or len(tokens[0]) < _NAME_STEM_MIN:
+def _name_stem(name: str, lang: Language) -> str | None:
+    tokens = _tokens(name, lang)
+    if not tokens:
         return None
-    word = tokens[0]
-    return word[: max(_NAME_STEM_MIN, len(word) - _NAME_STEM_CUT)]
+    return lang.vocab_name_stem(tokens[0])
 
 
 @functools.lru_cache(maxsize=32)
@@ -223,7 +209,7 @@ def vocab_requested(text: str, vocab: Vocab, cfg: VocabConfig) -> bool:
         return False
     if any(p.search(text) for p in _compile(tuple(cfg.request_markers))):
         return True
-    tokens = _tokens(text)
+    tokens = _tokens(text, vocab.lang)
     return any(token.startswith(stem) for stem in vocab.name_stems for token in tokens)
 
 
@@ -237,54 +223,16 @@ def explain_requested(text: str, cfg: VocabConfig) -> bool:
 class _Rule:
     stem: str
     endings: frozenset[str]
-    reflexive: bool | None  # None — не глагол; True — форма обязана кончаться на «ся/сь»
+    reflexive: bool | None  # None — не глагол; True — форма кончается на суффикс возвратности
     entry: VocabEntry
-
-
-def _rules(word: str) -> list[tuple[str, frozenset[str], bool | None]]:
-    """Основы и допустимые окончания для слова (CLAUDE.md, "словечки из словаря")."""
-    base, reflexive = word, False
-    for suffix in _REFLEXIVE:
-        if base.endswith(suffix) and base[: -len(suffix)].endswith(_VERB_ENDINGS):
-            base, reflexive = base[: -len(suffix)], True
-            break
-    for ending in _VERB_ENDINGS:
-        if base.endswith(ending) and len(base) > len(ending) + 2:
-            stem = base[: -len(ending)]
-            rules: list[tuple[str, frozenset[str], bool | None]] = [(stem, _VERB_FORMS, reflexive)]
-            if stem.endswith(("ова", "ева")):
-                rules.append(
-                    (stem[:-3] + ("у" if stem.endswith("ова") else "ю"), _PRESENT_E, reflexive)
-                )
-            elif stem.endswith(("и", "е")):
-                rules.append((stem[:-1], _PRESENT_I, reflexive))
-            elif stem.endswith("я"):
-                rules.append((stem[:-1], _PRESENT_E, reflexive))
-            elif stem.endswith("ну"):  # фырну|ть -> фырн|и, фырн|ешь
-                rules.append((stem[:-1], _PRESENT_E | {"и", "ите"}, reflexive))
-            return rules
-    rules = []
-    if base.endswith(_ADJ_ENDINGS_WORD) and len(base) >= 5:
-        rules.append((base[:-2], _NOMINAL_ENDINGS, None))
-        if not base.endswith("ой"):  # «орехобой» — существительное: орехобо|ев
-            return rules
-    if base.endswith("мя") and len(base) >= 3:
-        # Кремя, бремя, имя, семя: кремени, кременем, об имени. Общая основа «крем»
-        # с пустым окончанием путала его с «крем» (05.11, живой случай).
-        rules.append((base[:-1] + "ен", _MYA_ENDINGS, None))
-        return rules
-    stem = base[:-1] if base[-1] in _SOFT_ENDINGS else base
-    rules.append((stem, _NOMINAL_ENDINGS, None))
-    if base.endswith(_FLEETING) and len(base) > 4:
-        rules.append((base[:-2] + base[-1], _NOMINAL_ENDINGS - {""}, None))
-    return rules
 
 
 class Vocab:
     """Включённые словари, собранные в один матчер. Повтор слова в двух словарях —
     берётся первое (словари идут по имени)."""
 
-    def __init__(self, dicts: Sequence[VocabDict] = ()) -> None:
+    def __init__(self, dicts: Sequence[VocabDict] = (), *, lang: Language) -> None:
+        self.lang = lang
         entries: list[VocabEntry] = []
         self._exact: dict[str, VocabEntry] = {}
         self._phrases: dict[tuple[str, ...], VocabEntry] = {}
@@ -292,7 +240,7 @@ class Vocab:
         seen: set[str] = set()
         for vocab_dict in dicts:
             for item in vocab_dict.words:
-                key = normalize(item.word)
+                key = normalize(item.word, lang)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -308,27 +256,25 @@ class Vocab:
         self.entries: tuple[VocabEntry, ...] = tuple(entries)
         self._max_phrase = max((len(p) for p in self._phrases), default=0)
         self.name_stems: tuple[str, ...] = tuple(
-            stem for stem in (_name_stem(d.name) for d in dicts) if stem is not None
+            stem for stem in (_name_stem(d.name, lang) for d in dicts) if stem is not None
         )
 
     def _index(self, entry: VocabEntry, item: VocabWord) -> None:
         for variant in (item.word, *item.forms):
-            tokens = tuple(_tokens(variant))
+            tokens = tuple(_tokens(variant, self.lang))
             if len(tokens) > 1:
                 self._phrases.setdefault(tokens, entry)
             elif tokens:
                 self._exact.setdefault(tokens[0], entry)
-        word_tokens = _tokens(item.word)
+        word_tokens = _tokens(item.word, self.lang)
         if item.forms or len(word_tokens) != 1:
             return
-        for stem, endings, reflexive in _rules(word_tokens[0]):
-            if len(stem) >= _MIN_STEM:
-                rule = _Rule(stem, endings, reflexive, entry)
-                self._rules.setdefault(stem[:_PREFIX_KEY], []).append(rule)
-            # Родительный множественного с беглой гласной: ягушк|а -> ягушек.
-            if reflexive is None and len(stem) > _MIN_STEM and stem.endswith("к"):
-                for vowel in ("е", "о"):
-                    self._exact.setdefault(f"{stem[:-1]}{vowel}к", entry)
+        for vocab_rule in self.lang.vocab_rules(word_tokens[0]):
+            if len(vocab_rule.stem) >= _MIN_STEM:
+                rule = _Rule(vocab_rule.stem, vocab_rule.endings, vocab_rule.reflexive, entry)
+                self._rules.setdefault(vocab_rule.stem[:_PREFIX_KEY], []).append(rule)
+            for form in vocab_rule.exact_forms:
+                self._exact.setdefault(form, entry)
 
     def __bool__(self) -> bool:
         return bool(self.entries)
@@ -340,11 +286,10 @@ class Vocab:
         found = self._match_rules(token, verbs_only=False)
         if found is not None:
             return found
-        for prefix in _VERB_PREFIXES:
-            if token.startswith(prefix) and len(token) - len(prefix) >= _PREFIXED_MIN:
-                found = self._match_rules(token[len(prefix) :], verbs_only=True)
-                if found is not None:
-                    return found
+        for tail in self.lang.vocab_prefix_tails(token):
+            found = self._match_rules(tail, verbs_only=True)
+            if found is not None:
+                return found
         return None
 
     def _match_rules(self, token: str, *, verbs_only: bool) -> VocabEntry | None:
@@ -357,9 +302,10 @@ class Vocab:
                 continue
             rest = token[len(rule.stem) :]
             if rule.reflexive:
-                if not rest.endswith(_REFLEXIVE):
+                suffix = next((x for x in self.lang.reflexive_suffixes if rest.endswith(x)), None)
+                if suffix is None:
                     continue
-                rest = rest[:-2]
+                rest = rest[: -len(suffix)]
             if rest in rule.endings and (best is None or len(rule.stem) > len(best.stem)):
                 best = rule
         return best.entry if best is not None else None
@@ -368,7 +314,7 @@ class Vocab:
         """Слова словаря, упомянутые в ``text``, по порядку первого появления, без повторов."""
         if not self.entries or not text:
             return []
-        tokens = _tokens(text)
+        tokens = _tokens(text, self.lang)
         found: list[VocabEntry] = []
         seen: set[int] = set()
         i = 0
@@ -490,10 +436,12 @@ class VocabStore:
     """Словари из БД, собранные в ``Vocab``. Источник истины — таблица ``vocab_dicts``;
     в памяти — только разобранные включённые словари, пересобираются после каждой правки."""
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, lang: Language | None = None) -> None:
+        lang = lang if lang is not None else get_language("en")
         self._db = db
+        self._lang = lang
         self._lock = asyncio.Lock()
-        self._vocab = Vocab()
+        self._vocab = Vocab(lang=lang)
 
     def get(self) -> Vocab:
         return self._vocab
@@ -508,15 +456,15 @@ class VocabStore:
             if not row.enabled:
                 continue
             try:
-                dicts.append(parse_vocab(row.body))
+                dicts.append(parse_vocab(row.body, self._lang))
             except ValueError as exc:
                 logger.warning("словарь %r не разобрался, пропущен: %s", row.name, exc)
-        self._vocab = Vocab(dicts)
+        self._vocab = Vocab(dicts, lang=self._lang)
         logger.info("vocab: %d dicts, %d words", len(dicts), len(self._vocab.entries))
 
     async def put(self, raw: str, now: int) -> VocabDict:
         """Разобрать и сохранить словарь (тот же ``name`` — замена). ``ValueError`` наружу."""
-        parsed = parse_vocab(raw)
+        parsed = parse_vocab(raw, self._lang)
         async with self._lock:
             await self._db.upsert_vocab_dict(parsed.name, raw, now)
             await self._load_locked()
@@ -540,7 +488,7 @@ class VocabStore:
         result: list[tuple[VocabDictRow, VocabDict | None]] = []
         for row in await self._db.vocab_dicts():
             try:
-                parsed: VocabDict | None = parse_vocab(row.body)
+                parsed: VocabDict | None = parse_vocab(row.body, self._lang)
             except ValueError:
                 parsed = None
             result.append((row, parsed))

@@ -2,7 +2,7 @@
 
 AST check of PR-3 (plan 04, section 5): in the modules whose wording moved into the pack
 (``fragments.yaml``) no module-level UPPER constant may hold Cyrillic text, except language
-logic (morphology tables, the fact-character class). Docstrings, comments, log messages and
+logic (which now lives in ``sotto/lang/ru.py``). Docstrings, comments, log messages and
 CLI texts are a later stage and are not looked at here.
 """
 
@@ -40,28 +40,13 @@ CHECKED = (
     "chat_memory",
     "motifs",
     "vision",
+    # PR-4: language logic and marker lists moved to sotto/lang/ru.py.
+    "filters",
+    "patterns",
 )
 
-# Language logic (class L in plan 1.1): stays until the language modules (PR-4).
-LANGUAGE_LOGIC: dict[str, frozenset[str]] = {
-    "places": frozenset({"_FACT_RE"}),
-    "vocab": frozenset(
-        {
-            "_REFLEXIVE",
-            "_VERB_ENDINGS",
-            "_ADJ_ENDINGS_WORD",
-            "_FLEETING",
-            "_SOFT_ENDINGS",
-            "_NOUN_ENDINGS",
-            "_ADJ_ENDINGS",
-            "_MYA_ENDINGS",
-            "_VERB_FORMS",
-            "_PRESENT_E",
-            "_PRESENT_I",
-            "_VERB_PREFIXES",
-        }
-    ),
-}
+# Language logic lives in ``sotto/lang/ru.py`` since PR-4: nothing is allowed here any more.
+LANGUAGE_LOGIC: dict[str, frozenset[str]] = {}
 
 
 def _cyrillic_constants(path: Path) -> list[str]:

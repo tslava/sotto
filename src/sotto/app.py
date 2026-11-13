@@ -90,7 +90,7 @@ async def main() -> None:
 
         # Словари словечек (CLAUDE.md, "словечки из словаря") живут в БД: владелец
         # грузит их файлом в личку, в репозитории их нет.
-        vocab_store = VocabStore(db)
+        vocab_store = VocabStore(db, persona.lang)
         await vocab_store.load()
 
         bot = Bot(token=settings.bot_token.get_secret_value())

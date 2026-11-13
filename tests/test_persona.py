@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from sotto.fragments import PROMPT_NAMES
-from sotto.lang import UnknownLanguageError, get_language
+from sotto.lang import UnknownLanguageError, default_config_layer, get_language
 from sotto.persona import (
     DEMO_PACK_DIR,
     PACK_FORMAT,
@@ -44,7 +44,10 @@ def test_legacy_pack_loads_with_expected_shape() -> None:
     assert persona.lang.code == "ru"
     assert persona.root == LEGACY_PACK
     assert persona.config_path == LEGACY_PACK / "config.yaml"
-    assert persona.config_layers() == [LEGACY_PACK / "config.yaml"]
+    assert persona.config_layers() == [
+        default_config_layer(persona.lang),
+        LEGACY_PACK / "config.yaml",
+    ]
     assert persona.few_shot_path == LEGACY_PACK / "few_shot.yaml"
     assert persona.stickers_path == LEGACY_PACK / "stickers.yaml"
     assert persona.places_manual_path == LEGACY_PACK / "places_manual.yaml"

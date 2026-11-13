@@ -22,54 +22,58 @@
 from __future__ import annotations
 
 import random
-import re
 
 from sotto.config_models import PlacesConfig
 from sotto.db import PlaceRow
 from sotto.fragments import Fragments
+from sotto.lang import Language
 
 _OUTSKIRTS_CATEGORY = "outskirts"
 
 _FACT_MAX_LEN = 40
-_FACT_RE = re.compile(r"^[а-яёА-ЯЁ ,\-]+$")
 
 
-def _normalize(text: str) -> str:
-    """casefold + ё->е, для сравнения без учёта регистра, принятого в контракте."""
-    return text.strip().casefold().replace("ё", "е")
+def _normalize(text: str, lang: Language) -> str:
+    """``lang.fold`` (регистр, «ё»), для сравнения без учёта регистра, принятого в контракте."""
+    return lang.fold(text.strip())
 
 
-def _district_lookup(cfg: PlacesConfig) -> dict[str, str]:
+def _district_lookup(cfg: PlacesConfig, lang: Language) -> dict[str, str]:
     """Вариант написания (без регистра, ё/е) -> каноническое имя района из ``district_aliases``."""
     lookup: dict[str, str] = {}
     for canonical, variants in cfg.district_aliases.items():
-        lookup[_normalize(canonical)] = canonical
+        lookup[_normalize(canonical, lang)] = canonical
         for variant in variants:
-            lookup[_normalize(variant)] = canonical
+            lookup[_normalize(variant, lang)] = canonical
     return lookup
 
 
-def _district_group(name: str, lookup: dict[str, str]) -> str | None:
+def _district_group(name: str, lookup: dict[str, str], lang: Language) -> str | None:
     """Канонический район для произвольного написания (PlaceRow.district), либо None."""
-    return lookup.get(_normalize(name))
+    return lookup.get(_normalize(name, lang))
 
 
-def _detect_district(request_text: str, lookup: dict[str, str]) -> str | None:
+def _detect_district(request_text: str, lookup: dict[str, str], lang: Language) -> str | None:
     """Первый упомянутый в тексте район (любой вариант написания), либо None."""
-    normalized = _normalize(request_text)
+    normalized = _normalize(request_text, lang)
     for variant, canonical in lookup.items():
         if variant and variant in normalized:
             return canonical
     return None
 
 
-def _mentions_any(request_text: str, keywords: list[str]) -> bool:
-    normalized = _normalize(request_text)
-    return any(_normalize(keyword) in normalized for keyword in keywords)
+def _mentions_any(request_text: str, keywords: list[str], lang: Language) -> bool:
+    normalized = _normalize(request_text, lang)
+    return any(_normalize(keyword, lang) in normalized for keyword in keywords)
 
 
 def select_places(
-    rows: list[PlaceRow], cfg: PlacesConfig, request_text: str, rng: random.Random
+    rows: list[PlaceRow],
+    cfg: PlacesConfig,
+    request_text: str,
+    rng: random.Random,
+    *,
+    lang: Language,
 ) -> list[PlaceRow]:
     """Фильтрует ``rows`` по тексту запроса и выбирает до ``cfg.max_per_reply``.
 
@@ -96,20 +100,20 @@ def select_places(
     if not candidates:
         return []
 
-    if _mentions_any(request_text, cfg.quiet_keywords):
+    if _mentions_any(request_text, cfg.quiet_keywords, lang):
         candidates = [row for row in candidates if row.quiet]
         if not candidates:
             return []
 
-    lookup = _district_lookup(cfg)
-    district = _detect_district(request_text, lookup)
+    lookup = _district_lookup(cfg, lang)
+    district = _detect_district(request_text, lookup, lang)
     if district is not None:
         district_matches = [
-            row for row in candidates if _district_group(row.district, lookup) == district
+            row for row in candidates if _district_group(row.district, lookup, lang) == district
         ]
         if district_matches:
             candidates = district_matches
-    elif _mentions_any(request_text, cfg.outskirts_keywords):
+    elif _mentions_any(request_text, cfg.outskirts_keywords, lang):
         candidates = [row for row in candidates if row.category == _OUTSKIRTS_CATEGORY]
         if not candidates:
             return []
@@ -166,7 +170,7 @@ def render_places_menu(rows: list[PlaceRow], *, frag: Fragments) -> str:
     return "\n".join(lines)
 
 
-def validate_fact(raw: str) -> str | None:
+def validate_fact(raw: str, *, lang: Language) -> str | None:
     """Только кириллица, пробелы, запятая, дефис; <= 40 символов; иначе None.
 
     Отзыв Google — недоверенный внешний текст (PLAN.md, этап 5, п.3): латиница,
@@ -176,6 +180,6 @@ def validate_fact(raw: str) -> str | None:
     text = raw.strip()
     if not text or len(text) > _FACT_MAX_LEN:
         return None
-    if not _FACT_RE.fullmatch(text):
+    if not lang.fact_re().fullmatch(text):
         return None
     return text

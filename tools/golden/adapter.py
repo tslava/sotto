@@ -58,7 +58,6 @@ from sotto.followup import FollowupChecker
 from sotto.gate_types import GateMessage, Trigger
 from sotto.judge import Judge
 from sotto.llm import LLMClient
-from sotto.morph import name_forms, name_pattern
 from sotto.persona import Persona, load_persona
 from sotto.reactions import (
     REPLY_UNAVAILABLE,
@@ -527,7 +526,7 @@ async def build_engine(
     await config_store.load()
     prompt_store = PromptStore(persona, db)
     await prompt_store.load()
-    vocab_store = VocabStore(db)
+    vocab_store = VocabStore(db, persona.lang)
     for raw in scenario.seed.vocab:
         await vocab_store.put(raw, clock.now())
     await vocab_store.load()
@@ -1038,6 +1037,7 @@ async def _act_aux(engine: Engine, args: dict[str, Any]) -> Any:
             model=cfg.llm.main_model,
             now=now,
             frag=engine.persona.frag,
+            lang=engine.persona.lang,
         )
     if which == "stickers_ocr":
         return await engine_stickers_fill.recognize_sticker(
@@ -1145,7 +1145,8 @@ def _call_normalize_text(engine: Engine, case: dict[str, Any]) -> Any:
 
 def _call_name_forms(engine: Engine, case: dict[str, Any]) -> Any:
     word = case["word"]
-    return {"pattern": name_pattern(word), "forms": name_forms(word)}
+    lang = engine.persona.lang
+    return {"pattern": lang.name_pattern(word), "forms": lang.name_forms(word)}
 
 
 def _call_vocab(engine: Engine, case: dict[str, Any]) -> Any:
@@ -1188,7 +1189,7 @@ def _call_motifs(engine: Engine, case: dict[str, Any]) -> Any:
 
 
 def _call_validate_fact(engine: Engine, case: dict[str, Any]) -> Any:
-    return engine_places.validate_fact(case["raw"])
+    return engine_places.validate_fact(case["raw"], lang=engine.persona.lang)
 
 
 async def _call_places_menu(engine: Engine, case: dict[str, Any]) -> Any:
@@ -1300,6 +1301,9 @@ POST_BASELINE_CONFIG_KEYS = frozenset(
         "places.default_district",
         "places.quiet_keywords",
         "places.outskirts_keywords",
+        # PR-4: the old filters.py constants _DISTRICTS and _LATIN_LETTERS became config keys.
+        "filters.districts",
+        "filters.latin_extra_letters",
     }
 )
 

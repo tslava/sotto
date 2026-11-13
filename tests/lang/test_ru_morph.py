@@ -1,4 +1,4 @@
-"""Тесты для sotto.morph — падежные формы слова-обращения.
+"""Тесты склонения имени (sotto.lang.ru) — падежные формы слова-обращения.
 
 Главное здесь не полнота склонения, а отсутствие ложных срабатываний: «федерация»,
 «дедлайн», «Федяев», «отечество», «батюшкам» не должны совпадать ни с одним
@@ -11,7 +11,7 @@ import re
 
 import pytest
 
-from sotto.morph import name_forms, name_pattern
+from tests.packs import RU
 
 # Все триггеры из PersonaConfig.name_triggers по умолчанию — «фёдор» и «федор»
 # держатся отдельными словами, буква «ё» в коде не нормализуется.
@@ -20,7 +20,7 @@ TRIGGERS = ["фёдор", "федор", "федя", "федь", "отец", "о�
 
 def _matches(text: str) -> bool:
     return any(
-        re.search(name_pattern(trigger), text, re.IGNORECASE) is not None for trigger in TRIGGERS
+        re.search(RU.name_pattern(trigger), text, re.IGNORECASE) is not None for trigger in TRIGGERS
     )
 
 
@@ -40,36 +40,36 @@ FORMS_CASES = [
 
 @pytest.mark.parametrize("case_id, word, expected", FORMS_CASES, ids=[c[0] for c in FORMS_CASES])
 def test_name_forms(case_id: str, word: str, expected: list[str]) -> None:
-    assert name_forms(word) == expected
+    assert RU.name_forms(word) == expected
 
 
 def test_name_forms_are_unique() -> None:
     for trigger in TRIGGERS:
-        forms = name_forms(trigger)
+        forms = RU.name_forms(trigger)
         assert len(forms) == len(set(forms)), trigger
 
 
 def test_name_forms_all_match_their_pattern() -> None:
     """Формы и регулярка — одно и то же множество: каждая форма обязана матчиться."""
     for trigger in TRIGGERS:
-        pattern = re.compile(name_pattern(trigger), re.IGNORECASE)
-        for form in name_forms(trigger):
+        pattern = re.compile(RU.name_pattern(trigger), re.IGNORECASE)
+        for form in RU.name_forms(trigger):
             assert pattern.search(form) is not None, (trigger, form)
 
 
 def test_empty_word_is_literal() -> None:
-    assert name_forms("") == [""]
+    assert RU.name_forms("") == [""]
 
 
 def test_latin_word_falls_back_to_exact_match() -> None:
     """Латиница ничем не склоняется: поведение как до morph — точное слово."""
-    assert name_forms("fedor") == ["fedor"]
-    assert re.search(name_pattern("fedor"), "fedora linux", re.IGNORECASE) is None
+    assert RU.name_forms("fedor") == ["fedor"]
+    assert re.search(RU.name_pattern("fedor"), "fedora linux", re.IGNORECASE) is None
 
 
 def test_special_characters_are_escaped() -> None:
     """Триггер приходит из config.yaml: регулярка не должна ломаться на точке."""
-    pattern = name_pattern("о.тец")
+    pattern = RU.name_pattern("о.тец")
     assert re.search(pattern, "о.тец", re.IGNORECASE) is not None
     assert re.search(pattern, "оxтец", re.IGNORECASE) is None
 

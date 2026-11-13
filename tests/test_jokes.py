@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sotto.db import JokeRow
 from sotto.jokes import joke_used, render_jokes
-from tests.packs import LEGACY_FRAG
+from tests.packs import LEGACY_FRAG, RU
 
 DAY = 86400
 NOW = 100 * DAY
@@ -77,30 +77,39 @@ def test_render_jokes_cleans_bullets_and_delimiters_and_never_starts_with_dash()
 
 
 def test_joke_used_three_common_words_in_a_row() -> None:
-    assert joke_used("Ну вот, опять Мишины шурупы в стене!", "опять Мишины шурупы")
-    assert joke_used("опять мишины шурупы вспомнил", "Это опять Мишины шурупы, да")
+    assert joke_used("Ну вот, опять Мишины шурупы в стене!", "опять Мишины шурупы", RU)
+    assert joke_used("опять мишины шурупы вспомнил", "Это опять Мишины шурупы, да", RU)
 
 
 def test_joke_used_needs_consecutive_words() -> None:
-    assert not joke_used("опять про какие-то шурупы Мишины", "опять Мишины шурупы")
+    assert not joke_used("опять про какие-то шурупы Мишины", "опять Мишины шурупы", RU)
 
 
 def test_joke_used_two_common_words_not_enough_for_long_joke() -> None:
-    assert not joke_used("опять Мишины проблемы", "опять Мишины шурупы в стене")
+    assert not joke_used("опять Мишины проблемы", "опять Мишины шурупы в стене", RU)
 
 
 def test_joke_used_short_joke_must_be_contained_entirely() -> None:
-    assert joke_used("Ну как у Вовы, да.", "как у Вовы")
-    assert joke_used("Вова вернулся", "Вова")
-    assert not joke_used("как у Васи", "как у Вовы")
-    assert not joke_used("Вовы тут нет", "Вова")  # целое слово, не подстрока
+    assert joke_used("Ну как у Вовы, да.", "как у Вовы", RU)
+    assert joke_used("Вова вернулся", "Вова", RU)
+    assert not joke_used("как у Васи", "как у Вовы", RU)
+    assert not joke_used("Вовы тут нет", "Вова", RU)  # целое слово, не подстрока
 
 
 def test_joke_used_normalizes_case_punctuation_and_yo() -> None:
-    assert joke_used("КАК У ВОВЫ!!!", "как у Вовы")
+    assert joke_used("КАК У ВОВЫ!!!", "как у Вовы", RU)
 
 
 def test_joke_used_empty_inputs() -> None:
-    assert not joke_used("", "опять шурупы")
-    assert not joke_used("опять шурупы", "")
-    assert not joke_used("...", "!!!")
+    assert not joke_used("", "опять шурупы", RU)
+    assert not joke_used("опять шурупы", "", RU)
+    assert not joke_used("...", "!!!", RU)
+
+
+def test_joke_used_folds_with_the_language() -> None:
+    from sotto.lang import get_language
+
+    en = get_language("en")
+    assert joke_used("Again Mike's screws in the wall", "again Mike's screws", en)
+    assert not joke_used("screws Mike's again", "again Mike's screws", en)
+    assert joke_used("Ёлка зелёная", "елка", RU)
