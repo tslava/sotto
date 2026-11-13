@@ -5,11 +5,13 @@
 <p align="center">A Telegram group-chat regular, not an assistant: it decides when to speak, mostly stays quiet, and replies late like a person.</p>
 
 <p align="center">
+
 [![CI](https://github.com/tslava/sotto/actions/workflows/ci.yml/badge.svg)](https://github.com/tslava/sotto/actions/workflows/ci.yml)
 [![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/tslava/sotto/badges/coverage.json)](https://github.com/tslava/sotto/actions/workflows/badges.yml)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![golden: 101 scenarios](https://img.shields.io/badge/golden-101%20scenarios-informational)
+
 </p>
 
 A Telegram bot that plays one character in one group chat, as a regular and not as an assistant.
