@@ -632,7 +632,7 @@ def test_telegram_reactions_set() -> None:
 
 
 def test_reactions_config_default_max_tokens() -> None:
-    # The reaction model thinks first: at 120 tokens Haiku and Luna did not manage to
+    # The reaction model thinks first: at 120 tokens the cheap models did not manage to
     # finish the JSON (measured on 15.10).
     assert ReactionsConfig().max_tokens == 600
 
