@@ -293,7 +293,7 @@
      "role": "user"
     }
    ],
-   "model": "anthropic/claude-sonnet-5",
+   "model": "anthropic/claude-sonnet-5.5",
    "temperature": 0.8
   },
   {
@@ -333,7 +333,7 @@
      "role": "user"
     }
    ],
-   "model": "anthropic/claude-sonnet-5",
+   "model": "anthropic/claude-sonnet-5.5",
    "temperature": 0.8
   },
   {

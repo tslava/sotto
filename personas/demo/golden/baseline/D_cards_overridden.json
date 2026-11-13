@@ -12,7 +12,7 @@
    "behaviour.chat_cooldown_min": {
     "bounds": "0..1440",
     "default": "25",
-    "description": "Минимум минут между ambient-репликами",
+    "description": "Minimum minutes between ambient replies",
     "key": "behaviour.chat_cooldown_min",
     "overridden": false,
     "settable": true,
@@ -22,7 +22,7 @@
    "behaviour.daily_cap": {
     "bounds": "0..50",
     "default": "3",
-    "description": "Суточный лимит ambient и «просто так» вместе",
+    "description": "Daily limit of ambient and unprompted replies together",
     "key": "behaviour.daily_cap",
     "overridden": true,
     "settable": true,
@@ -32,7 +32,7 @@
    "behaviour.mention_daily_cap": {
     "bounds": "0..200",
     "default": "50",
-    "description": "Суточный лимит ответов на прямые обращения",
+    "description": "Daily limit of replies to direct addresses",
     "key": "behaviour.mention_daily_cap",
     "overridden": true,
     "settable": true,

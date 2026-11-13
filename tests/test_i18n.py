@@ -29,9 +29,6 @@ from tests.packs import LEGACY_PACK, REPO_ROOT
 EN = read_locale_dir(ENGINE_LOCALES_DIR / "en")
 RU = read_locale_dir(LEGACY_PACK / "locale" / "ru")
 AREAS = {"help", "status", "commands", "alerts", "errors", "validation", "config_keys"}
-# Dead since the /ex add fallback names moved into the pack fragments; they leave the three
-# commands.yaml files together (the English one is owned by the demo-persona change).
-PENDING_REMOVAL = {"commands.ex_add_name", "commands.ex_add_user"}
 SRC = REPO_ROOT / "src" / "sotto"
 
 
@@ -194,7 +191,7 @@ def test_every_english_key_is_used_by_the_engine() -> None:
     mentioned |= {"alerts.hint_401", "alerts.hint_402"}
     # config_keys.<key> is read by describe_key for every config key.
     unused = {key for key in set(EN) - mentioned if not key.startswith("config_keys.")}
-    assert sorted(unused - PENDING_REMOVAL) == []
+    assert sorted(unused) == []
 
 
 # -- loading and fallback -----------------------------------------------------------

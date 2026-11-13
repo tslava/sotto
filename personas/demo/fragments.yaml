@@ -13,6 +13,8 @@ placeholders:
   messages_empty: (none yet)
   reply_to_none: (this is not a reply to another message)
   reply_to_unavailable: (a reply to a message that cannot be seen)
+  ex_add_name: Chat
+  ex_add_user: (no addressee)
 situations:
   ambient: 'Nobody has addressed you just now. Do not answer as if you were asked. You may react to the last message, to the topic as a whole, or turn it somewhere unexpected: tease, agree, be surprised, ask. Do not start your own story now: if all you feel like doing is talking about yourself, stay quiet (speak: false).'
   late: You were not around, you got distracted by your own business. You may play that in one sentence, but do not make excuses.

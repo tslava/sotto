@@ -60,8 +60,6 @@ def test_pack_has_no_cyrillic_and_no_private_words() -> None:
             continue
         text = path.read_text(encoding="utf-8")
         assert not _CYRILLIC.search(text), f"{path.name}: Cyrillic text"
-        # ``arrived_wolsan`` is the engine's own (legacy-named) persona field: the key stays.
-        text = text.replace("arrived_wolsan", "arrived_year")
         assert not _PRIVATE_WORDS.search(text), f"{path.name}: private persona wording"
 
 

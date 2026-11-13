@@ -60,7 +60,7 @@
      "role": "user"
     }
    ],
-   "model": "anthropic/claude-sonnet-5",
+   "model": "anthropic/claude-sonnet-5.5",
    "temperature": 0.8
   }
  ],
@@ -98,7 +98,7 @@
    "op": "send_message",
    "reply_to": null,
    "t": 0,
-   "text": "OpenRouter refused the request: 402, out of credits, top up at openrouter.ai/settings/credits.\nModel: anthropic/claude-sonnet-5.\nResponse: Insufficient credits\nUntil this is fixed, the bot stays silent wherever this model is needed. The next message like this will come in 24 h at the earliest."
+   "text": "OpenRouter refused the request: 402, out of credits, top up at openrouter.ai/settings/credits.\nModel: anthropic/claude-sonnet-5.5.\nResponse: Insufficient credits\nUntil this is fixed, the bot stays silent wherever this model is needed. The next message like this will come in 24 h at the earliest."
   }
  ]
 }

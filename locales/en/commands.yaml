@@ -18,8 +18,6 @@ commands:
   rollback_not_found: 'Error: version {version} not found'
   ex_line: '{name}: {user} → {payload}'
   ex_rm_done: 'few-shot: version {version} (example {n} from the end removed)'
-  ex_add_name: Chat
-  ex_add_user: (no one addressed the bot)
   panic_done: Panic. The bot stays silent until /resume.
   resume_done: Resuming.
   resume_cleared: 'Resuming. Cleared: {items}.'

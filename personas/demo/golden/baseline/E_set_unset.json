@@ -130,7 +130,7 @@
     "answers": [
      {
       "chat": 7001,
-      "text": "behaviour.daily_cap: 7\ntype: int, 0..50\nСуточный лимит ambient и «просто так» вместе\noverridden, yaml value: 3"
+      "text": "behaviour.daily_cap: 7\ntype: int, 0..50\nDaily limit of ambient and unprompted replies together\noverridden, yaml value: 3"
      }
     ],
     "command": "/get behaviour.daily_cap"

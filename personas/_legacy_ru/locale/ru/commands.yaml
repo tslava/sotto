@@ -18,8 +18,6 @@ commands:
   rollback_not_found: 'Ошибка: версия {version} не найдена'
   ex_line: '{name}: {user} → {payload}'
   ex_rm_done: 'few-shot: версия {version} (удалён пример {n} с конца)'
-  ex_add_name: Чат
-  ex_add_user: (без обращения)
   panic_done: Паника. Бот молчит до /resume.
   resume_done: Продолжаем.
   resume_cleared: 'Продолжаем. Снято: {items}.'

@@ -6,7 +6,6 @@ persona:
   display_name: Gus Marlow     # the bot's Telegram profile name
   name_triggers: [gus, marlow]  # addressing without @, word-boundary match (also "Gus's")
   birth_date: 1965-03-09       # the age slot is computed on the fly, he ages with the chat
-  arrived_wolsan: 1991         # legacy field name: the year he settled in town
   district: Kettle Hill        # legacy field name: the home district he defends
   timezone: Europe/London
 
@@ -183,7 +182,7 @@ behaviour:
 
 llm:
   provider: openrouter
-  main_model: "anthropic/claude-sonnet-5"
+  main_model: "anthropic/claude-sonnet-5.5"
   judge_model: "openai/gpt-5.4-nano"
   timeout_sec: 30
   max_tokens: 200
