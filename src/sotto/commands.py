@@ -30,7 +30,7 @@ from aiogram import F, Router
 from aiogram.types import Message, User
 
 from sotto import __version__
-from sotto.changelog import Release, chat_releases, owner_releases
+from sotto.changelog import Release, chat_releases, engine_changelog_text, owner_releases
 from sotto.chat_memory import format_period
 from sotto.config import KeyInfo
 from sotto.config_models import Config
@@ -1355,7 +1355,8 @@ async def _cmd_words_upload(
     try:
         parsed = await store.put(raw, now)
     except ValueError as exc:
-        await _reply(message, _t(deps, "commands.words_parse_error", error=exc))
+        detail = exc.render(_catalog(deps)) if isinstance(exc, OwnerError) else str(exc)
+        await _reply(message, _t(deps, "commands.words_parse_error", error=detail))
         return
     await deps.db.audit_stop("words:put", admin_user_id, now, parsed.name)
     logger.info("words put: %r, %d words", parsed.name, len(parsed.words))
@@ -1486,20 +1487,25 @@ async def _cmd_changelog(message: Message, deps: _CommandsDeps, args: list[str])
     legacy = persona.legacy_changelog if persona is not None else ""
 
     owner_view = bool(args) and args[0].lower() == "owner"
-    releases = owner_releases(legacy) if owner_view else chat_releases(chat_notes, legacy)
+    releases = (
+        owner_releases(legacy, engine_changelog_text())
+        if owner_view
+        else chat_releases(chat_notes, legacy)
+    )
     if not releases:
         await _reply(message, _t(deps, "commands.changelog_missing"))
         return
 
     found: Release | None
-    if owner_view or not args:
+    version_args = args[1:] if owner_view else args
+    if not version_args:
         found = releases[0]
     else:
-        raw = args[0].lower()
+        raw = version_args[0].lower()
         wanted = raw[1:] if raw.startswith("v") else raw
         found = next((r for r in releases if r.version == wanted), None)
         if found is None:
-            await _reply(message, _t(deps, "commands.changelog_no_version", arg=args[0]))
+            await _reply(message, _t(deps, "commands.changelog_no_version", arg=version_args[0]))
             return
     release = found
 

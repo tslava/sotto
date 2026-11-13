@@ -1481,7 +1481,7 @@ async def test_photo_download_error_falls_back_to_placeholder(
     assert describer.calls == []
     summary = dict(await db.filter_log_summary(0))
     assert summary.get("vision:failed") == 1
-    download_failed = "не удалось скачать фото"  # PR-8: Russian log message in src/sotto/bot.py
+    download_failed = "could not download the photo"
     assert any(download_failed in record.getMessage() for record in caplog.records)
 
 

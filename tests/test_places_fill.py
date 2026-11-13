@@ -338,7 +338,7 @@ async def test_dry_run_prints_table_and_writes_nothing(
     assert len(rows) == 1
     out = capsys.readouterr().out
     assert "Dry Run Bar" in out
-    assert "Проверьте fact руками" in out  # PR-8: report text is hard-coded Russian in src/
+    assert "Check the fact column by hand" in out
 
     assert not settings.db_path.exists()
 
@@ -536,8 +536,12 @@ def test_pick_category_priority_manual_then_cheap_then_outskirts_then_type() -> 
     )
     assert (
         pick_category(
-            manual=None, review_text="", address="near Bórnik", primary_type=""
-        )  # PR-8: _OUTSKIRTS_MARKERS is hard-coded in src/
+            manual=None,
+            review_text="",
+            address="near Bórnik",
+            primary_type="",
+            outskirts_markers=["bórnik"],
+        )
         == "outskirts"
     )
     assert pick_category(manual=None, review_text="", address="", primary_type="bar") == "pub"
@@ -606,14 +610,14 @@ def test_render_report_contains_header_rows_and_reminder() -> None:
     assert "Test Bar" in report
     assert "Old Mill" in report
     assert "4.6/120" in report
-    assert "да" in report  # PR-8: report text is hard-coded Russian in src/
+    assert "yes" in report
     assert "quiet" in report
-    assert "Проверьте fact руками" in report  # PR-8: same
+    assert "Check the fact column by hand" in report
 
 
 def test_render_report_empty_list() -> None:
     report = render_report([])
-    assert "Всего: 0" in report  # PR-8: report text is hard-coded Russian in src/
+    assert "Total: 0" in report
 
 
 async def test_manual_defaults_to_the_places_manual_of_the_persona(tmp_path: Path) -> None:

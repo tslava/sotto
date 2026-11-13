@@ -73,7 +73,6 @@ _FIELD_MASK = (
 _SEARCH_RADIUS_M = 15000
 
 _CHEAP_MARKERS = ("cheap", "tanio", "fair price")
-_OUTSKIRTS_MARKERS = ("bórnik", "bornik", "leszczykowo", "strzechyn")
 
 _PRICE_LEVELS = {
     "PRICE_LEVEL_FREE": 0,
@@ -233,7 +232,12 @@ def pick_district(*, address: str, manual: ManualEntry | None, cfg: PlacesConfig
 
 
 def pick_category(
-    *, manual: ManualEntry | None, review_text: str, address: str, primary_type: str
+    *,
+    manual: ManualEntry | None,
+    review_text: str,
+    address: str,
+    primary_type: str,
+    outskirts_markers: Sequence[str] = (),
 ) -> str:
     """category: manual > "cheap"/"tanio"/"fair price" в отзывах > outskirts по
     адресу > craft/pub по primaryType (PLAN.md, этап 5, п.4 — НЕ по price_level)."""
@@ -243,7 +247,7 @@ def pick_category(
     if any(marker in lowered_reviews for marker in _CHEAP_MARKERS):
         return "cheap"
     lowered_address = address.casefold()
-    if any(marker in lowered_address for marker in _OUTSKIRTS_MARKERS):
+    if any(marker.casefold() in lowered_address for marker in outskirts_markers):
         return "outskirts"
     if "bar" in (primary_type or "").casefold():
         return "pub"
@@ -394,6 +398,7 @@ async def fetch_and_build(
                 review_text=review_text,
                 address=address,
                 primary_type=str(place.get("primaryType", "")),
+                outskirts_markers=cfg.address_outskirts_markers,
             )
             district = pick_district(address=address, manual=manual_entry, cfg=cfg)
             fact = await compress_fact(
@@ -425,7 +430,7 @@ def build_manual_only_rows(
     rows: list[FetchedPlace] = []
     for index, entry in enumerate(manual):
         logger.info(
-            "places_fill: manual-only row (данные ручные, rating/reviews не настоящие): %s",
+            "places_fill: manual-only row (manual data, rating/reviews are not real): %s",
             entry.name,
         )
         rows.append(
@@ -447,17 +452,19 @@ def build_manual_only_rows(
 
 
 def render_report(rows: list[FetchedPlace]) -> str:
-    lines = ["name | district | category | rating/reviews | quiet | fact | статус"]
+    lines = ["name | district | category | rating/reviews | quiet | fact | status"]
     for row in rows:
         status = "manual" if row.manual_override else "operational" if row.operational else "closed"
         lines.append(
             f"{row.name} | {row.district} | {row.category} | "
-            f"{row.rating:.1f}/{row.reviews} | {'да' if row.quiet else 'нет'} | "
+            f"{row.rating:.1f}/{row.reviews} | {'yes' if row.quiet else 'no'} | "
             f"{row.fact or '-'} | {status}"
         )
     lines.append("")
-    lines.append(f"Всего: {len(rows)}. Проверьте fact руками перед выкатом — отзывы Google")
-    lines.append("в базу не попадают, только это сжатое поле.")
+    lines.append(
+        f"Total: {len(rows)}. Check the fact column by hand before rollout; Google reviews"
+    )
+    lines.append("are not stored in the database, only this condensed field.")
     return "\n".join(lines)
 
 
@@ -512,25 +519,28 @@ def _split_queries(raw: str) -> list[str]:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m sotto.places_fill",
-        description="Офлайн-наполнение кэша заведений (PLAN.md, этап 5).",
+        description="Offline fill of the venue cache (PLAN.md, stage 5).",
     )
-    parser.add_argument("--dry-run", action="store_true", help="ничего не писать в БД")
+    parser.add_argument("--dry-run", action="store_true", help="do not write to the database")
     parser.add_argument(
-        "--no-llm", action="store_true", help="fact всегда пустой, модель не вызывается"
+        "--no-llm", action="store_true", help="fact is always empty, the model is not called"
     )
     parser.add_argument(
-        "--queries", type=str, default=None, help="запросы через ';' вместо cfg.places.queries"
+        "--queries",
+        type=str,
+        default=None,
+        help="queries separated by ';' instead of cfg.places.queries",
     )
     parser.add_argument(
         "--manual",
         type=Path,
         default=None,
-        help="ручные поля (quiet/category/district); по умолчанию places_manual.yaml пакета",
+        help="manual fields (quiet/category/district); default: the pack's places_manual.yaml",
     )
     parser.add_argument(
         "--manual-only",
         action="store_true",
-        help="не ходить в Google — записать только ручной список (без ключа)",
+        help="do not call Google; write only the manual list (no key needed)",
     )
     return parser.parse_args(argv)
 
@@ -562,9 +572,9 @@ async def run(
     else:
         if settings.google_places_key is None:
             raise SystemExit(
-                "GOOGLE_PLACES_KEY не задан в .env. Задайте ключ Google Places (New) "
-                "или запустите с --manual-only, чтобы наполнить кэш только ручным "
-                "списком из places_manual.yaml."
+                "GOOGLE_PLACES_KEY is not set in .env. Set a Google Places (New) key "
+                "or run with --manual-only to fill the cache from the manual "
+                "list in places_manual.yaml only."
             )
         api_key = settings.google_places_key.get_secret_value()
         queries = _split_queries(args.queries) if args.queries else cfg.places.queries
@@ -585,8 +595,8 @@ async def run(
         else:
             use_llm = None
             logger.warning(
-                "places_fill: LLM недоступен (нет OPENROUTER_API_KEY или llm.main_model "
-                "не задан) — fact будет пустым для всех мест"
+                "places_fill: LLM unavailable (no OPENROUTER_API_KEY or llm.main_model "
+                "is not set); fact will be empty for all places"
             )
 
         owns_http = http is None

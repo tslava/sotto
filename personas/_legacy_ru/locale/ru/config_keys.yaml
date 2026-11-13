@@ -3,7 +3,6 @@ config_keys:
   persona.display_name: Имя профиля бота в Telegram
   persona.name_triggers: Слова-обращения к персонажу без @, по границам слов
   persona.birth_date: Дата рождения; возраст считается на лету
-  persona.arrived_wolsan: Год переезда в Волсань
   persona.district: Родной район, который персонаж защищает
   persona.timezone: Таймзона персонажа для суток и окон времени
   behaviour.quiet_window: Окно полной тишины, включая прямые обращения
@@ -154,6 +153,7 @@ config_keys:
   places.default_district: Район по умолчанию, если в адресе района не нашлось
   places.quiet_keywords: Слова в просьбе, после которых выбираются только тихие места
   places.outskirts_keywords: Слова в просьбе, после которых выбираются места за городом
+  places.address_outskirts_markers: Фрагменты адреса, по которым место считается загородным (places_fill.py)
   filters.shadow: true = фильтры логируют, но не режут ответ (щадящий старт)
   filters.places_whitelist: Бытовые бренды, не заведения из CHARACTER.md раздел 7
   filters.allowed_emoji: Разрешённые эмодзи персонажа, небольшой набор, редко и к месту

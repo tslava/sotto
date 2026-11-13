@@ -3,3 +3,10 @@ errors:
   set_persona: persona can only be changed in config.yaml
   set_unknown_section: 'unknown section: {key!r}'
   ex_rm_range: 'index {index} is out of range: there are {total} examples'
+  vocab_yaml: 'cannot read the YAML: {error}'
+  vocab_shape: expected a YAML object with the fields name and words
+  vocab_no_letters: the word has no letters
+  vocab_bad_form: 'bad form "{form}"'
+  vocab_duplicate: 'the word "{word}" is repeated'
+  vocab_word_loc: 'word #{n}'
+  vocab_more: 'and {more} more'

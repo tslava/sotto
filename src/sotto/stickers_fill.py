@@ -191,7 +191,7 @@ async def recognize_sticker(
 async def _download_bytes(bot: BotLike, file_id: str) -> bytes:
     downloaded = await bot.download(file_id)
     if downloaded is None:
-        raise RuntimeError(f"stickers_fill: bot.download({file_id!r}) вернул пусто")
+        raise RuntimeError(f"stickers_fill: bot.download({file_id!r}) returned nothing")
     return downloaded.read()
 
 
@@ -218,8 +218,8 @@ async def build_catalog(
     for raw in sticker_set.stickers:
         if raw.is_animated or raw.is_video:
             logger.warning(
-                "stickers_fill: пропускаю анимированный/видео стикер file_id=%s "
-                "(tgs/webm не распознаём)",
+                "stickers_fill: skipping animated/video sticker file_id=%s "
+                "(tgs/webm cannot be recognised)",
                 raw.file_id,
             )
             continue
@@ -260,7 +260,7 @@ async def build_catalog(
         if old.file_id in seen_file_ids:
             continue
         logger.warning(
-            "stickers_fill: стикер id=%s (file_id=%s) пропал из набора %r, выключаю",
+            "stickers_fill: sticker id=%s (file_id=%s) is gone from the set %r, disabling it",
             old.id,
             old.file_id,
             set_name,
@@ -285,7 +285,7 @@ def render_report(catalog: StickerCatalog) -> str:
     for sticker in catalog.stickers:
         lines.append(
             f"{sticker.id} | {sticker.emoji or '-'} | {sticker.text or '-'} | "
-            f"{sticker.when or '-'} | {'да' if sticker.enabled else 'нет'}"
+            f"{sticker.when or '-'} | {'yes' if sticker.enabled else 'no'}"
         )
     return "\n".join(lines)
 
@@ -301,23 +301,23 @@ def render_yaml(catalog: StickerCatalog) -> str:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m sotto.stickers_fill",
-        description='Офлайн-наполнение каталога стикеров (PLAN.md, раздел "Стикеры").',
+        description='Offline fill of the sticker catalog (PLAN.md, section "Stickers").',
     )
-    parser.add_argument("set_name", help="имя набора из t.me/addstickers/<имя>")
+    parser.add_argument("set_name", help="set name from t.me/addstickers/<name>")
     parser.add_argument(
         "--out",
         type=Path,
         default=None,
-        help="путь к каталогу (читается и мержится); по умолчанию stickers.yaml пакета",
+        help="catalog path (read and merged); default: the pack's stickers.yaml",
     )
     parser.add_argument(
-        "--dry-run", action="store_true", help="только напечатать таблицу, не писать файл"
+        "--dry-run", action="store_true", help="only print the table, do not write the file"
     )
     parser.add_argument(
-        "--no-llm", action="store_true", help="text/when всегда пустые, модель не вызывается"
+        "--no-llm", action="store_true", help="text/when are always empty, the model is not called"
     )
     parser.add_argument(
-        "--model", type=str, default=None, help="модель со зрением; по умолчанию cfg.llm.main_model"
+        "--model", type=str, default=None, help="vision model; default: cfg.llm.main_model"
     )
     return parser.parse_args(argv)
 
@@ -375,8 +375,8 @@ async def run(
         else:
             use_llm = None
             logger.warning(
-                "stickers_fill: LLM недоступен (нет OPENROUTER_API_KEY или модель со "
-                "зрением не задана) — text/when будут пустыми для новых стикеров"
+                "stickers_fill: LLM unavailable (no OPENROUTER_API_KEY or no vision model "
+                "set); text/when will be empty for new stickers"
             )
 
     try:
@@ -400,7 +400,7 @@ async def run(
 
     for line in render_report(catalog).splitlines():
         logger.info(line)
-    logger.info("Проверьте text/when руками перед выкатом в %s.", args.out)
+    logger.info("Check text/when by hand before rollout in %s.", args.out)
 
     if not args.dry_run:
         args.out.write_text(render_yaml(catalog), encoding="utf-8")

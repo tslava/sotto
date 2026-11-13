@@ -61,3 +61,26 @@ def test_owner_error_renders_through_the_legacy_ru_catalog() -> None:
     error = OwnerError("ex_rm_range", index=4, total=2)
     ru = load_persona(LEGACY_PACK).catalog
     assert error.render(ru) == "индекс 4 вне диапазона: всего примеров 2"
+
+
+def test_vocab_errors_render_through_the_legacy_ru_catalog() -> None:
+    from sotto.vocab import parse_vocab
+
+    ru = load_persona(LEGACY_PACK).catalog
+    lang = get_language("ru")
+    raw = "name: x\nwords:\n  - word: '!!!'\n    meaning: b\n  - {word: Сырюка}"
+    try:
+        parse_vocab(raw, lang)
+    except OwnerError as exc:
+        assert exc.render(ru) == (
+            "words → слово #1 → word: Value error, в слове нет букв; "
+            "words → слово #2 → meaning: Field required"
+        )
+    else:  # pragma: no cover
+        raise AssertionError("expected an error")
+    try:
+        parse_vocab("- список", lang)
+    except OwnerError as exc:
+        assert exc.render(ru) == "ожидался YAML-объект с полями name и words"
+    else:  # pragma: no cover
+        raise AssertionError("expected an error")

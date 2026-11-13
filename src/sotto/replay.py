@@ -294,8 +294,7 @@ def _build_generate_context(cfg: Config, use_judge: bool, persona: Persona) -> _
     settings = Settings()
     if settings.openrouter_api_key is None:
         raise RuntimeError(
-            "--generate требует OPENROUTER_API_KEY: задайте его в .env "
-            "(см. README, раздел «Реплей»)"
+            '--generate needs OPENROUTER_API_KEY: set it in .env (see the README, section "Replay")'
         )
 
     prompt_template = persona.prompts["system"]
@@ -389,17 +388,17 @@ async def _generate_one(
         )
     except LLMError as exc:
         stats.record_cut(exc.reason)
-        return _line("(нет ответа)", f"cut: {exc.reason}")
+        return _line("(no reply)", f"cut: {exc.reason}")
 
     stats.cost_usd += result.cost_usd
 
     reply = parse_reply(result.text)
     if reply is None:
         stats.record_cut("llm:invalid_json")
-        return _line("(нет ответа)", "cut: llm:invalid_json")
+        return _line("(no reply)", "cut: llm:invalid_json")
     if not reply.speak:
         stats.record_cut("llm:silent")
-        return _line("(молчание)", "cut: llm:silent")
+        return _line("(silent)", "cut: llm:silent")
 
     participant_names = _unique_participant_names(context_rows)
     bot_names = [cfg.persona.name, cfg.persona.display_name, *cfg.persona.name_triggers]
@@ -469,7 +468,7 @@ def _read_db_messages(db_path: Path, chat_id: int | None) -> tuple[list[ExportMe
     ``ValueError`` с подсказкой использовать ``--chat-id``.
     """
     if not db_path.exists():
-        raise FileNotFoundError(f"{db_path}: файл базы не найден")
+        raise FileNotFoundError(f"{db_path}: database file not found")
 
     uri = f"{db_path.resolve().as_uri()}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
@@ -479,11 +478,11 @@ def _read_db_messages(db_path: Path, chat_id: int | None) -> tuple[list[ExportMe
             id_rows = conn.execute("SELECT DISTINCT chat_id FROM messages").fetchall()
             chat_ids = sorted({row[0] for row in id_rows if row[0] is not None})
             if not chat_ids:
-                raise ValueError(f"{db_path}: таблица messages пуста")
+                raise ValueError(f"{db_path}: the messages table is empty")
             if len(chat_ids) > 1:
                 raise ValueError(
-                    f"{db_path}: в messages несколько chat_id {chat_ids} — "
-                    "укажите, какой чат реплеить, через --chat-id <id>"
+                    f"{db_path}: messages holds several chat_ids {chat_ids}; "
+                    "pick the chat to replay with --chat-id <id>"
                 )
             chat_id = chat_ids[0]
 
@@ -514,7 +513,7 @@ def _parse_date_arg(value: str) -> date:
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"invalid date {value!r}, ожидается YYYY-MM-DD") from exc
+        raise argparse.ArgumentTypeError(f"invalid date {value!r}, expected YYYY-MM-DD") from exc
 
 
 def _filter_by_date_range(
@@ -566,89 +565,87 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m sotto.replay",
         description=(
-            "Прогоняет гейт (и, с --generate, полный пайплайн генерации и выходного "
-            "фильтра) по истории чата — экспорту Telegram Desktop (result.json) либо "
-            "базе самого бота (bot.db/*.sqlite/*.sqlite3, или любой путь с --from-db). "
-            "Ничего не отправляет и не пишет в БД."
+            "Runs the gate (and, with --generate, the full generation pipeline and the "
+            "output filter) over a chat history: a Telegram Desktop export (result.json) "
+            "or the bot's own database (bot.db/*.sqlite/*.sqlite3, or any path with "
+            "--from-db). Sends nothing and writes nothing to the database."
         ),
     )
     parser.add_argument(
         "source",
         type=Path,
-        help="Путь к result.json (экспорт) либо к bot.db/*.sqlite(3) (база бота)",
+        help="Path to result.json (an export) or to bot.db/*.sqlite(3) (the bot database)",
     )
     parser.add_argument(
         "--persona",
         type=Path,
         default=None,
-        help="Каталог пакета персоны (по умолчанию PERSONA_DIR из окружения/.env)",
+        help="Persona pack directory (default: PERSONA_DIR from the environment/.env)",
     )
     parser.add_argument(
         "--config",
         type=Path,
         default=None,
-        help="Явный config.yaml вместо конфига пакета персоны",
+        help="Explicit config.yaml instead of the persona pack's config",
     )
-    parser.add_argument("--seed", type=int, default=1, help="Seed для random.Random (шаг 11 гейта)")
+    parser.add_argument("--seed", type=int, default=1, help="Seed for random.Random (gate step 11)")
     parser.add_argument(
-        "--bot-username", default="", help="Username бота без @ — для детекта упоминаний"
+        "--bot-username", default="", help="Bot username without @, used to detect mentions"
     )
     parser.add_argument(
         "--bot-user-id",
         type=int,
         default=0,
         help=(
-            "user_id бота в источнике, 0 = неизвестен/автоопределение. Для базы бота, "
-            "если не задан, берётся автоматически из строк is_bot=1"
+            "The bot's user_id in the source; 0 = unknown/auto-detect. For a bot "
+            "database, when unset, it is detected from the is_bot=1 rows"
         ),
     )
     parser.add_argument(
         "--from-db",
         action="store_true",
         dest="from_db",
-        help="Трактовать source как базу бота, даже если расширение не .db/.sqlite/.sqlite3",
+        help="Treat source as a bot database even if the extension is not .db/.sqlite/.sqlite3",
     )
     parser.add_argument(
         "--chat-id",
         type=int,
         default=None,
         dest="chat_id",
-        help="chat_id при чтении из базы бота — обязателен, если в messages несколько чатов",
+        help="chat_id when reading a bot database; required if messages holds several chats",
     )
     parser.add_argument(
         "--since",
         type=_parse_date_arg,
         default=None,
-        help="Не раньше этой локальной даты включительно (YYYY-MM-DD, persona.timezone)",
+        help="Not before this local date, inclusive (YYYY-MM-DD, persona.timezone)",
     )
     parser.add_argument(
         "--until",
         type=_parse_date_arg,
         default=None,
-        help="Не позже этой локальной даты включительно (YYYY-MM-DD, persona.timezone)",
+        help="Not after this local date, inclusive (YYYY-MM-DD, persona.timezone)",
     )
-    parser.add_argument(
-        "--verbose", action="store_true", help="Печатать каждую PASS-строку отдельно"
-    )
+    parser.add_argument("--verbose", action="store_true", help="Print every PASS line separately")
     parser.add_argument(
         "--generate",
         action="store_true",
         help=(
-            "На каждом PASS реально сгенерировать реплику и прогнать её через выходной "
-            "фильтр (нужен OPENROUTER_API_KEY в .env). Ничего не отправляется."
+            "On every PASS, really generate a reply and run it through the output "
+            "filter (needs OPENROUTER_API_KEY in .env). Nothing is sent."
         ),
     )
     parser.add_argument(
         "--judge",
         action="store_true",
-        help="Включить LLM-судью (слой 3 выходного фильтра) при --generate",
+        help="Enable the LLM judge (layer 3 of the output filter) with --generate",
     )
     parser.add_argument(
         "--max-calls",
         type=int,
         default=20,
         dest="max_calls",
-        help="Потолок реальных сетевых вызовов LLM за прогон --generate (по умолчанию 20)",
+        help="Cap on real network LLM calls per --generate run (default 20)",
     )
     return parser.parse_args(argv)
 
@@ -826,7 +823,7 @@ def _format_report(
     lines: list[str] = []
 
     if generate_lines:
-        lines.append("Генерация:")
+        lines.append("Generation:")
         lines.extend(generate_lines)
         lines.append("")
     elif verbose and verbose_lines:
@@ -834,7 +831,7 @@ def _format_report(
         lines.extend(verbose_lines)
         lines.append("")
 
-    lines.append("дата       | msgs | pass mention/reply/name/ambient | night | drop (top-5)")
+    lines.append("date       | msgs | pass mention/reply/name/ambient | night | drop (top-5)")
     for date_str in sorted(day_stats):
         stats = day_stats[date_str]
         top_drops = sorted(stats.drop_reasons.items(), key=lambda kv: (-kv[1], kv[0]))[
@@ -857,10 +854,10 @@ def _format_report(
 
     lines.append("")
     lines.append(
-        f"Итого: дней={days}, сообщений={total_messages}, "
-        f"pass={total_pass} (в среднем {avg_pass:.2f}/день), "
-        f"ambient={total_ambient} (в среднем {avg_ambient:.2f}/день), "
-        f"дней без единого pass={days_without_pass}"
+        f"Total: days={days}, messages={total_messages}, "
+        f"pass={total_pass} (avg {avg_pass:.2f}/day), "
+        f"ambient={total_ambient} (avg {avg_ambient:.2f}/day), "
+        f"days without any pass={days_without_pass}"
     )
 
     if gen_stats is not None:
@@ -869,8 +866,8 @@ def _format_report(
         ]
         cuts_str = ", ".join(f"{reason}={count}" for reason, count in top_cuts) or "-"
         lines.append(
-            f"Генерация: вызовов={gen_stats.calls}, отправлено бы={gen_stats.would_send}, "
-            f"срезано (топ-5): {cuts_str}, потрачено $={gen_stats.cost_usd:.4f}"
+            f"Generation: calls={gen_stats.calls}, would send={gen_stats.would_send}, "
+            f"cut (top 5): {cuts_str}, spent $={gen_stats.cost_usd:.4f}"
         )
 
     return "\n".join(lines)

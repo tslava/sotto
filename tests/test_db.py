@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.resources
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -1696,105 +1697,82 @@ async def test_mark_places_not_seen_already_not_operational_not_recounted(tmp_pa
 # --- life_events (/life) --------------------------
 
 
+def _schema_sql() -> str:
+    return importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
+
+
+def _without_tables(schema_sql: str, *names: str) -> str:
+    """schema.sql with the given tables removed: each ``CREATE TABLE`` statement with the comment
+    lines right above it, and the indexes on it. Independent of what the comments say."""
+    for name in names:
+        table = re.compile(rf"(?:--[^\n]*\n)*CREATE TABLE {name} \(.*?\n\);\n\n?", re.DOTALL)
+        assert table.search(schema_sql), name
+        schema_sql = table.sub("", schema_sql, count=1)
+        schema_sql = re.sub(
+            rf"^CREATE INDEX \S+ ON {name} .*\n", "", schema_sql, flags=re.MULTILINE
+        )
+        assert f"TABLE {name} " not in schema_sql
+    return schema_sql
+
+
+def _as_version(schema_sql: str, version: int) -> str:
+    assert "PRAGMA user_version = 6;" in schema_sql
+    return schema_sql.replace("PRAGMA user_version = 6;", f"PRAGMA user_version = {version};")
+
+
 def _schema_sql_v1() -> str:
     """schema.sql, but as if there were neither life_events nor chat_memory yet (a real
     server database, user_version == 1): for the 1 -> 3 migration test."""
-    schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
-    # PR-8: the life_events/chat_memory blocks must match the Russian comments still in schema.sql
-    life_events_block = (
-        '-- События жизни персонажа (/life, CLAUDE.md "события жизни") — память, не\n'  # PR-8: schema.sql  # noqa: E501
-        "-- переписка: retention.py её не трогает, чистит только /life rm.\n"  # PR-8: schema.sql  # noqa: E501
-        "CREATE TABLE life_events (\n"
-        "    id INTEGER PRIMARY KEY,\n"
-        "    text TEXT NOT NULL,\n"
-        "    created_at INTEGER NOT NULL,\n"
-        "    announced_at INTEGER,\n"
-        "    announced_tg_message_id INTEGER\n"
-        ");\n\n"
+    old_schema_sql = _without_tables(
+        _schema_sql(),
+        "life_events",
+        "chat_memory",
+        "self_facts",
+        "chat_jokes",
+        "people_threads",
+        "vocab_dicts",
     )
-    assert life_events_block in schema_sql
-    old_schema_sql = schema_sql.replace(life_events_block, "")
-    old_schema_sql = _strip_self_facts(_strip_chat_memory(old_schema_sql))
-    old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 1;")
     assert "life_events" not in old_schema_sql
-    return old_schema_sql
+    return _as_version(old_schema_sql, 1)
 
 
 def _schema_sql_v2() -> str:
     """schema.sql, but as if there were no chat_memory yet (user_version == 2): for the
     2 -> 3 migration test."""
-    schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
-    old_schema_sql = _strip_self_facts(_strip_chat_memory(schema_sql))
-    old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 2;")
+    old_schema_sql = _without_tables(
+        _schema_sql(), "chat_memory", "self_facts", "chat_jokes", "people_threads", "vocab_dicts"
+    )
     assert "chat_memory" not in old_schema_sql
-    return old_schema_sql
+    return _as_version(old_schema_sql, 2)
 
 
 def _schema_sql_v3() -> str:
     """schema.sql, but as if there were no self_facts yet (user_version == 3): for the
     3 -> 4 migration test."""
-    schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
-    old_schema_sql = _strip_self_facts(schema_sql)
-    old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 3;")
+    old_schema_sql = _without_tables(
+        _schema_sql(), "self_facts", "chat_jokes", "people_threads", "vocab_dicts"
+    )
     assert "self_facts" not in old_schema_sql
-    return old_schema_sql
+    return _as_version(old_schema_sql, 3)
 
 
 def _schema_sql_v4() -> str:
     """schema.sql, but as if there were no chat_jokes/people_threads yet (user_version == 4):
     for the 4 -> 5 migration test."""
-    schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
-    start = schema_sql.index(
-        "-- Шутки чата и истории людей"  # PR-8: schema.sql
-    )  # PR-8: schema.sql comments are still Russian
-    end = schema_sql.index("CREATE INDEX idx_messages_chat_created")
-    old_schema_sql = schema_sql[:start] + schema_sql[end:]
-    old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 4;")
+    old_schema_sql = _without_tables(_schema_sql(), "chat_jokes", "people_threads", "vocab_dicts")
     assert "chat_jokes" not in old_schema_sql
     assert "people_threads" not in old_schema_sql
     assert "self_facts" in old_schema_sql
-    return old_schema_sql
+    return _as_version(old_schema_sql, 4)
 
 
 def _schema_sql_v5() -> str:
     """schema.sql, but as if there were no vocab_dicts yet (user_version == 5): for the
     5 -> 6 migration test."""
-    schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
-    start = schema_sql.index("-- Словари словечек")  # PR-8: schema.sql comments are still Russian
-    end = schema_sql.index("CREATE INDEX idx_messages_chat_created")
-    old_schema_sql = schema_sql[:start] + schema_sql[end:]
-    old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 5;")
+    old_schema_sql = _without_tables(_schema_sql(), "vocab_dicts")
     assert "vocab_dicts" not in old_schema_sql
     assert "chat_jokes" in old_schema_sql
-    return old_schema_sql
-
-
-def _strip_self_facts(schema_sql: str) -> str:
-    start = schema_sql.index("-- Дневник дня")  # PR-8: schema.sql comments are still Russian
-    end = schema_sql.index("CREATE INDEX idx_messages_chat_created")
-    index_line = "CREATE INDEX idx_self_facts_created ON self_facts (created_at);\n"
-    assert index_line in schema_sql
-    return (schema_sql[:start] + schema_sql[end:]).replace(index_line, "")
-
-
-def _strip_chat_memory(schema_sql: str) -> str:
-    # PR-8: must match the Russian comments still in schema.sql
-    chat_memory_block = (
-        '-- Долгая память чата (CLAUDE.md, "долгая память чата") — пересказ прошедших\n'  # PR-8: schema.sql  # noqa: E501
-        "-- разговоров по периодам. Живёт дольше самих сообщений: retention.py чистит её\n"  # PR-8: schema.sql  # noqa: E501
-        "-- по своему сроку (behaviour.chat_memory.keep_days), а не по message_retention_days.\n"  # PR-8: schema.sql  # noqa: E501
-        "CREATE TABLE chat_memory (\n"
-        "    id INTEGER PRIMARY KEY,\n"
-        "    period_start INTEGER NOT NULL,   -- unix, включительно\n"  # PR-8: schema.sql  # noqa: E501
-        "    period_end INTEGER NOT NULL,     -- unix, исключительно\n"  # PR-8: schema.sql  # noqa: E501
-        "    text TEXT NOT NULL,              -- пересказ, несколько строк\n"  # PR-8: schema.sql  # noqa: E501
-        "    created_at INTEGER NOT NULL\n"
-        ");\n\n"
-    )
-    index_line = "CREATE INDEX idx_chat_memory_period_end ON chat_memory (period_end);\n"
-    assert chat_memory_block in schema_sql
-    assert index_line in schema_sql
-    return schema_sql.replace(chat_memory_block, "").replace(index_line, "")
+    return _as_version(old_schema_sql, 5)
 
 
 async def test_migrate_v1_to_v3_adds_new_tables_and_keeps_existing_data(

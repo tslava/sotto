@@ -115,7 +115,7 @@ def _catalog_calls() -> tuple[list[tuple[str, set[str], str]], set[str]]:
     calls: list[tuple[str, set[str], str]] = []
     mentioned: set[str] = set()
     pattern = re.compile(r"^(help|status|commands|alerts|errors|validation)\.[a-z_0-9]+$")
-    for name in ("commands.py", "alerts.py", "stores.py", "config_models.py"):
+    for name in ("commands.py", "alerts.py", "stores.py", "config_models.py", "vocab.py"):
         tree = ast.parse((SRC / name).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if (

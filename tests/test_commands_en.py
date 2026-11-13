@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from aiogram.types import Message
 
+from sotto import changelog
 from sotto.config_models import Config
 from sotto.i18n import engine_catalog
 from sotto.responder import PreviewOutcome, SendOutcome
@@ -30,8 +32,8 @@ from tests.test_commands import (
 )
 
 _CYRILLIC = re.compile("[\u0400-\u04ff]")
-_CHAT = "### Для чата"  # PR-8: changelog.py keys on the Russian block headers
-_OWNER = "### Для владельца"  # PR-8: same
+_CHAT = "### For the chat"
+_OWNER = "### For the owner"
 
 
 @pytest.fixture
@@ -232,7 +234,10 @@ async def test_a_config_validator_error_renders_through_the_validation_area(
     assert sent == ["Error: behaviour.quiet_window: invalid time '25:00', expected HH:MM"]
 
 
-async def test_changelog_in_english(setup, sent: list[str]) -> None:  # type: ignore[no-untyped-def]
+async def test_changelog_in_english(  # type: ignore[no-untyped-def]
+    setup, sent: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(changelog, "ENGINE_CHANGELOG_PATH", tmp_path / "none.md")
     deps, _, _, _, handler = setup()
     deps.persona = replace(
         deps.persona,
@@ -257,6 +262,20 @@ async def test_changelog_in_english(setup, sent: list[str]) -> None:  # type: ig
     await _run(handler, "/changelog", message_id=14)
     await _run(handler, "/changelog owner", message_id=15)
     assert sent[4:] == ["CHANGELOG.md not found or empty."] * 2
+
+
+async def test_owner_changelog_falls_back_to_the_engine_changelog(  # type: ignore[no-untyped-def]
+    setup, sent: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    engine_log = tmp_path / "CHANGELOG.md"
+    engine_log.write_text(
+        f"## [3.0.0] - 2026-03-03\n\n{_OWNER}\n\nEngine owner text\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(changelog, "ENGINE_CHANGELOG_PATH", engine_log)
+    deps, _, _, _, handler = setup()
+    deps.persona = replace(deps.persona, chat_notes="", legacy_changelog="")
+    await _run(handler, "/changelog owner")
+    assert sent == ["v3.0.0 (2026-03-03)\nEngine owner text"]
 
 
 async def test_words_in_english(setup, sent: list[str]) -> None:  # type: ignore[no-untyped-def]
@@ -320,4 +339,26 @@ async def test_words_in_english(setup, sent: list[str]) -> None:  # type: ignore
         'Dictionary "demo" disabled.',
         'Dictionary "demo" enabled.',
         'Dictionary "demo" deleted.',
+    ]
+
+
+async def test_owner_changelog_reads_the_notes_format_and_a_version(  # type: ignore[no-untyped-def]
+    setup, sent: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    engine_log = tmp_path / "CHANGELOG.md"
+    engine_log.write_text(
+        "## [0.9.1] — 2026-11-05\n\n### Notes\n\n- New.\n\n## [0.9.0] — 2026-11-01\n\n"
+        "### Notes\n\n- Old.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(changelog, "ENGINE_CHANGELOG_PATH", engine_log)
+    deps, _, _, _, handler = setup()
+    deps.persona = replace(deps.persona, chat_notes="", legacy_changelog="")
+    await _run(handler, "/changelog owner")
+    await _run(handler, "/changelog owner 0.9.0", message_id=11)
+    await _run(handler, "/changelog owner 1.0.0", message_id=12)
+    assert sent == [
+        "v0.9.1 (2026-11-05)\n- New.",
+        "v0.9.0 (2026-11-01)\n- Old.",
+        "No version 1.0.0.",
     ]

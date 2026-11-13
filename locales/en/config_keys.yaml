@@ -3,7 +3,6 @@ config_keys:
   persona.display_name: Bot profile name in Telegram
   persona.name_triggers: Words that address the character without @, matched on word boundaries
   persona.birth_date: Date of birth; the age is computed on the fly
-  persona.arrived_wolsan: Year the character moved to the city
   persona.district: Home district the character stands up for
   persona.timezone: Character's timezone for days and time windows
   behaviour.quiet_window: Window of full silence, direct addresses included
@@ -154,6 +153,7 @@ config_keys:
   places.default_district: Default district when no district is found in the address
   places.quiet_keywords: Words in a request that select only quiet places
   places.outskirts_keywords: Words in a request that select places outside the city
+  places.address_outskirts_markers: Address fragments that mark a place as outside the city (places_fill.py)
   filters.shadow: true = filters log but do not cut the reply (gentle start)
   filters.places_whitelist: Everyday brands that are not venues from the character card
   filters.allowed_emoji: 'Emoji the character may use: a small set, rarely and to the point'

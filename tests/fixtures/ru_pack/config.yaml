@@ -20,6 +20,7 @@ places:
     Посад: [посад, posad]
   quiet_keywords: [тихо, спокойно, поговорить, посидеть]
   outskirts_keywords: [за город, съездить, природа, озеро, лес]
+  address_outskirts_markers: [bórnik]
 
 behaviour:
   vocab:

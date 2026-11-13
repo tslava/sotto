@@ -10,6 +10,8 @@ import pytest
 
 from sotto.config_models import VocabConfig
 from sotto.db import Database
+from sotto.errors import OwnerError
+from sotto.i18n import engine_catalog
 from sotto.vocab import (
     Vocab,
     VocabStore,
@@ -72,21 +74,24 @@ def test_parse_vocab_strips_accents_for_matching_but_keeps_text() -> None:
     ("raw", "needle"),
     [
         ("name: [", "YAML"),
-        ("- просто список", "name и words"),
+        ("- просто список", "fields name and words"),
         ("name: x\nwords: []", "words"),
         ("words:\n  - word: a\n    meaning: b", "name"),
-        ("name: x\nwords:\n  - word: сырюка", "слово #1 → meaning"),
-        ("name: x\nwords:\n  - word: '!!!'\n    meaning: b", "нет букв"),
+        ("name: x\nwords:\n  - word: сырюка", "word #1 → meaning"),
+        ("name: x\nwords:\n  - word: '!!!'\n    meaning: b", "has no letters"),
         (
             "name: x\nwords:\n  - {word: Сырюка, meaning: a}\n  - {word: сырю́ка, meaning: b}",
-            "повторяется",
+            "is repeated",
         ),
         ("name: x\nwords:\n  - {word: a, meaning: b, meanning: c}", "meanning"),
     ],
 )
 def test_parse_vocab_errors_are_readable(raw: str, needle: str) -> None:
-    with pytest.raises(ValueError, match=needle):
+    with pytest.raises(ValueError) as info:
         parse_ru_vocab(raw)
+    exc = info.value
+    text = exc.render(engine_catalog()) if isinstance(exc, OwnerError) else str(exc)
+    assert needle in text
 
 
 # --- поиск слов в тексте ----------------------------------------------------------

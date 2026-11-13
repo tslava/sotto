@@ -3,3 +3,10 @@ errors:
   set_persona: persona меняется только в config.yaml
   set_unknown_section: 'неизвестный раздел: {key!r}'
   ex_rm_range: 'индекс {index} вне диапазона: всего примеров {total}'
+  vocab_yaml: 'YAML не читается: {error}'
+  vocab_shape: ожидался YAML-объект с полями name и words
+  vocab_no_letters: в слове нет букв
+  vocab_bad_form: 'кривая форма «{form}»'
+  vocab_duplicate: 'слово «{word}» повторяется'
+  vocab_word_loc: 'слово #{n}'
+  vocab_more: 'и ещё {more}'

@@ -134,9 +134,6 @@ class PersonaConfig(BaseModel):
     birth_date: date = Field(
         default=date(1970, 1, 1), description="Date of birth; the age is computed on the fly"
     )
-    arrived_wolsan: int = Field(
-        default=2000, ge=1950, le=2100, description="Year the character moved to the city"
-    )
     district: str = Field(default="", description="Home district the character stands up for")
     timezone: str = Field(
         default="UTC", description="Character's timezone for days and time windows"
@@ -1099,6 +1096,10 @@ class PlacesConfig(BaseModel):
     outskirts_keywords: list[str] = Field(
         default_factory=list,
         description="Words in a request that select places outside the city",
+    )
+    address_outskirts_markers: list[str] = Field(
+        default_factory=list,
+        description="Address fragments that mark a place as outside the city (places_fill.py)",
     )
 
     @field_validator("search_center")

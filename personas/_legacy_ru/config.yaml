@@ -3,7 +3,6 @@ persona:
   display_name: Отец Фёдор     # имя профиля в Telegram
   name_triggers: [фёдор, федор, федя, федь, отец, отче, батюшка, дед]  # обращение без @
   birth_date: 1974-04-12      # возраст считается на лету, стареет вместе с чатом
-  arrived_wolsan: 2006
   district: Dolna             # уточнить, он будет его защищать
   timezone: Europe/Warsaw
 
@@ -274,6 +273,7 @@ places:
     Strzechyn: [strzechyn, стшехин, стржехин]
   quiet_keywords: [тихо, спокойно, поговорить, посидеть, не орать]
   outskirts_keywords: [за город, съездить, природа, озеро, лес]
+  address_outskirts_markers: [bórnik, bornik, leszczykowo, strzechyn]   # адрес за городом (places_fill.py)
 
 filters:
   shadow: true              # true = фильтры логируют, но не режут ответ (щадящий старт)

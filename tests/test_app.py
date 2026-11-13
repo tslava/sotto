@@ -102,7 +102,7 @@ def test_startup_warns_about_deprecated_path_variables(
     with caplog.at_level(logging.WARNING, logger="sotto.app"):
         load_startup_persona(settings)
 
-    ignored_word = "игнорируется"  # PR-8: Russian log text in src/
+    ignored_word = "ignored"
     warned = [r.message for r in caplog.records if ignored_word in r.message]
     assert [m.split()[0] for m in warned] == ["CONFIG_PATH", "STICKERS_PATH"]
 

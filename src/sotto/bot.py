@@ -209,13 +209,17 @@ async def _describe_photo(
         try:
             downloaded = await bot.download(size.file_id)
             if downloaded is None:
-                logger.warning("vision: bot.download вернул пусто для сообщения %s", tg_message_id)
+                logger.warning(
+                    "vision: bot.download returned nothing for message %s", tg_message_id
+                )
             else:
                 image = downloaded.read()
         except (AiogramError, OSError) as exc:
             # Фото удалено, файл слишком большой, сеть отвалилась — не повод ронять
             # хендлер: сообщение всё равно запишется как "[фото]".
-            logger.warning("vision: не удалось скачать фото сообщения %s: %s", tg_message_id, exc)
+            logger.warning(
+                "vision: could not download the photo of message %s: %s", tg_message_id, exc
+            )
         if image is not None:
             # mime фиксирован: телеграм отдаёт превью message.photo всегда как JPEG.
             description = await describer.describe(

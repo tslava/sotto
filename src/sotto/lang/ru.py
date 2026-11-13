@@ -361,3 +361,9 @@ class RussianLanguage:
             "assistant_markers": list(_ASSISTANT_MARKERS_DEFAULT),
             "self_markers": list(_SELF_MARKERS_DEFAULT),
         }
+
+
+# --- CHANGELOG.md block headers of a pre-split Russian pack (read by changelog.py) ---------------
+
+LEGACY_FOR_CHAT_HEADER = "Для чата"
+LEGACY_FOR_OWNER_HEADER = "Для владельца"

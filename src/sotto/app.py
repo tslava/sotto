@@ -47,7 +47,9 @@ def load_startup_persona(settings: Settings) -> Persona:
     останавливают процесс до подключения к БД и к Telegram.
     """
     for name in settings.deprecated_fields_set():
-        logger.warning("%s задан в окружении, но игнорируется: файлы берутся из PERSONA_DIR", name)
+        logger.warning(
+            "%s is set in the environment but ignored: files come from PERSONA_DIR", name
+        )
     try:
         persona = load_persona(
             resolve_persona_dir(settings.persona_dir, settings.allow_demo_persona)
@@ -108,7 +110,7 @@ async def main() -> None:
         rng = random.Random()
 
         if settings.admin_user_id == 0:
-            logger.warning("команды владельца отключены: admin_user_id не задан")
+            logger.warning("owner commands disabled: admin_user_id is not set")
 
         # Погода (CLAUDE.md, "Интерфейсы: погода"): ключ API не нужен, клиент
         # создаётся всегда. Домашняя точка — из .env, а не из конфига: репозиторий
@@ -123,9 +125,7 @@ async def main() -> None:
                 longitude=settings.weather_longitude,
             )
         else:
-            logger.warning(
-                "погода за окном выключена: WEATHER_LATITUDE/WEATHER_LONGITUDE не заданы"
-            )
+            logger.warning("weather disabled: WEATHER_LATITUDE/WEATHER_LONGITUDE are not set")
         weather = WeatherClient(config_store.get, home=home)
 
         deps = Deps(
@@ -155,7 +155,7 @@ async def main() -> None:
         api_key = settings.openrouter_api_key
         reaction_chooser: ReactionChooser | None = None
         if api_key is None:
-            logger.warning("LLM отключён, ответы не генерируются: openrouter_api_key не задан")
+            logger.warning("LLM disabled, no replies are generated: openrouter_api_key is not set")
         else:
             # LLMClient/Judge/Responder создаются, как только есть ключ, независимо
             # от того, заданы ли llm.main_model/llm.judge_model сейчас — оба меняются
@@ -163,9 +163,9 @@ async def main() -> None:
             # на каждом вызове (llm:no_model, judge.check -> []), а не один раз при
             # старте процесса.
             if not cfg.llm.main_model:
-                logger.warning("llm.main_model не задан: ответы не генерируются до /set")
+                logger.warning("llm.main_model is not set: no replies are generated until /set")
             if not cfg.llm.judge_model:
-                logger.warning("судья отключён: llm.judge_model не задан")
+                logger.warning("judge disabled: llm.judge_model is not set")
 
             http = httpx.AsyncClient(timeout=cfg.llm.timeout_sec)
             stack = build_llm_stack(
@@ -197,7 +197,7 @@ async def main() -> None:
         # Без чузера (ключ не задан) он бросает кубик, как до семантических реакций —
         # предупреждаем один раз на старте, чтобы semantic: true не выглядел рабочим.
         if reaction_chooser is None and cfg.behaviour.reactions.semantic:
-            logger.warning("реакции выбираются кубиком: openrouter_api_key не задан")
+            logger.warning("reactions are picked by dice: openrouter_api_key is not set")
         reaction_scheduler = ReactionScheduler(
             bot=bot,
             db=db,

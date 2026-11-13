@@ -207,7 +207,7 @@ def test_run_replay_produces_day_line_and_summary(tmp_path: Path) -> None:
 
     report = run_replay(args)
 
-    assert "Итого:" in report  # PR-8: hardcoded Russian label in src/sotto/replay.py
+    assert "Total:" in report
     assert "2026-09-10" in report
 
 
@@ -344,15 +344,13 @@ def test_run_replay_generate_prints_reply_and_verdict(
 
     report = run_replay(args)
 
-    assert "Генерация:" in report  # PR-8: hardcoded Russian label in src/sotto/replay.py
+    assert "Generation:" in report
     assert "gus hello how are you" in report
     assert "Happens, pal." in report
     assert "| pass" in report
-    calls_line = (
-        "вызовов=1, отправлено бы=1"  # PR-8: hardcoded Russian label in src/sotto/replay.py
-    )
+    calls_line = "calls=1, would send=1"
     assert calls_line in report
-    assert "потрачено $=0.0007" in report  # PR-8: hardcoded Russian label in src/sotto/replay.py
+    assert "spent $=0.0007" in report
 
 
 def test_run_replay_generate_without_api_key_raises_clear_error(
@@ -483,8 +481,8 @@ def test_run_replay_generate_max_calls_counts_real_network_calls(
     report = run_replay(args)
 
     assert call_count <= 4
-    assert "вызовов=" in report  # PR-8: hardcoded Russian label in src/sotto/replay.py
-    calls_label = "вызовов="  # PR-8: hardcoded Russian label in src/sotto/replay.py
+    assert "calls=" in report
+    calls_label = "calls="
     reported_calls = int(report.split(calls_label)[1].split(",")[0])
     assert reported_calls == call_count
     assert reported_calls <= 4
@@ -583,7 +581,7 @@ def test_run_replay_from_bot_db_produces_day_line_and_summary(tmp_path: Path) ->
 
     report = run_replay(_db_args(db_path))
 
-    assert "Итого:" in report  # PR-8: hardcoded Russian label in src/sotto/replay.py
+    assert "Total:" in report
     assert "2026-09-08" in report
     assert "2026-09-10" in report
 

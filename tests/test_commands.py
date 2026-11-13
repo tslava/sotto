@@ -2389,8 +2389,8 @@ async def test_status_shows_chat_memory_total_and_last_period_end(
 
 
 # The legacy CHANGELOG.md format: Russian block headers.
-_CHAT = "### Для чата"  # PR-8: changelog.py keys on the Russian block headers
-_OWNER = "### Для владельца"  # PR-8: same
+_CHAT = "### For the chat"
+_OWNER = "### For the owner"
 _CHANGELOG_SAMPLE = f"""# Changelog
 
 ## [Unreleased]
@@ -2898,7 +2898,7 @@ async def test_words_upload_document_loads_dict(
 @pytest.mark.parametrize(
     ("data", "size", "expected"),
     [
-        (b"name: [", 10, "Could not parse the file: YAML"),
+        (b"name: [", 10, "Could not parse the file: cannot read the YAML"),
         (b"name: x\nwords: []", 10, "Could not parse the file: words"),
         (b"\xff\xfe\x00", 3, "The file is not UTF-8"),
         (VOCAB_YAML.encode(), 10**7, "The file is larger than 512 KB"),

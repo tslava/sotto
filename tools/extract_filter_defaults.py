@@ -62,7 +62,6 @@ MOVED_KEYS: tuple[tuple[str, str], ...] = (
     ("filters", "districts"),
     ("filters", "latin_extra_letters"),
     ("persona", "birth_date"),
-    ("persona", "arrived_wolsan"),
     ("persona", "district"),
     ("behaviour.reactions", "emoji"),
     ("behaviour.vocab", "request_markers"),

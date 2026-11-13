@@ -195,7 +195,7 @@ async def test_missing_sticker_is_disabled_not_removed(caplog: pytest.LogCapture
     assert sticker.id == 3
     assert sticker.file_id == "GONE"
     assert sticker.enabled is False
-    gone_word = "пропал"  # PR-8: warning text is hard-coded Russian in src/
+    gone_word = "is gone from the set"
     assert any(gone_word in record.message for record in caplog.records)
 
 
@@ -357,7 +357,7 @@ def test_render_report_lists_all_columns() -> None:
     )
     report = render_report(catalog)
     assert "id | emoji | text | when | enabled" in report
-    assert "1 | 😂 | t | w | да" in report  # PR-8: report text is hard-coded Russian in src/
+    assert "1 | 😂 | t | w | yes" in report
 
 
 def test_render_yaml_round_trips_through_load_catalog(tmp_path: Path) -> None:

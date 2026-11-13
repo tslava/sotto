@@ -8,7 +8,7 @@
 
 Словарь — данные владельца (как ``{life}``), а не ввод участников, поэтому живёт в
 system. В публичный репозиторий словари не коммитятся: это чужой авторский текст, они
-лежат в БД (``vocab_dicts``), в репо только ``vocab.example.yaml``.
+лежат в БД (``vocab_dicts``), в репо только ``personas/demo/vocab.example.yaml``.
 
 Чистая часть (разбор, матчинг, рендер) — без I/O; ``VocabStore`` — тонкая обёртка над
 БД по образцу ``stores.PromptStore``.
@@ -37,7 +37,9 @@ from pydantic import (
 )
 
 from sotto.config_models import VocabConfig
+from sotto.errors import OwnerError
 from sotto.fragments import Fragments
+from sotto.i18n import Catalog
 from sotto.lang import Language, get_language
 
 if TYPE_CHECKING:
@@ -110,7 +112,7 @@ class VocabWord(BaseModel):
     @classmethod
     def _has_letters(cls, value: str, info: ValidationInfo) -> str:
         if not _tokens(value, _context_lang(info)):
-            raise ValueError("в слове нет букв")
+            raise OwnerError("vocab_no_letters")
         return value
 
     @field_validator("forms")
@@ -120,7 +122,7 @@ class VocabWord(BaseModel):
         cleaned = [form.strip() for form in value if form.strip()]
         for form in cleaned:
             if len(form) > _WORD_MAX or not _tokens(form, lang):
-                raise ValueError(f"кривая форма «{form[:_WORD_MAX]}»")
+                raise OwnerError("vocab_bad_form", form=form[:_WORD_MAX])
         return cleaned
 
 
@@ -143,16 +145,44 @@ class VocabDict(BaseModel):
         for item in self.words:
             key = normalize(item.word, lang)
             if key in seen:
-                raise ValueError(f"слово «{_display(item.word)}» повторяется")
+                raise OwnerError("vocab_duplicate", word=_display(item.word))
             seen.add(key)
         return self
 
 
-def _format_loc(loc: tuple[int | str, ...]) -> str:
+_LocPart = int | str
+_Issue = tuple[tuple[_LocPart, ...], "str | OwnerError"]
+
+
+class VocabError(OwnerError):
+    """A vocabulary file that does not validate; ``render`` composes the owner text.
+
+    ``issues`` holds the pydantic error locations with either pydantic's own message (kept as is)
+    or the ``OwnerError`` raised by a validator here (rendered through the catalog); ``more`` is
+    how many further errors were not listed.
+    """
+
+    def __init__(self, issues: list[_Issue], more: int) -> None:
+        super().__init__("vocab_invalid", issues=issues, more=more)
+        self.issues = issues
+        self.more = more
+
+    def render(self, catalog: Catalog) -> str:
+        lines = []
+        for loc, msg in self.issues:
+            text = f"Value error, {msg.render(catalog)}" if isinstance(msg, OwnerError) else msg
+            where = _format_loc(loc, catalog)
+            lines.append(f"{where}: {text}" if where else text)
+        if self.more > 0:
+            lines.append(catalog.t("errors.vocab_more", more=self.more))
+        return "; ".join(lines)
+
+
+def _format_loc(loc: tuple[_LocPart, ...], catalog: Catalog) -> str:
     parts: list[str] = []
     for i, part in enumerate(loc):
         if isinstance(part, int) and i > 0 and loc[i - 1] == "words":
-            parts.append(f"слово #{part + 1}")
+            parts.append(catalog.t("errors.vocab_word_loc", n=part + 1))
         elif isinstance(part, int):
             parts.append(f"#{part + 1}")
         else:
@@ -161,24 +191,24 @@ def _format_loc(loc: tuple[int | str, ...]) -> str:
 
 
 def parse_vocab(raw: str, lang: Language) -> VocabDict:
-    """YAML -> VocabDict. Любая ошибка — ``ValueError`` с текстом для владельца."""
+    """YAML -> VocabDict. Any error is an ``OwnerError`` (a ``ValueError``) the owner UI renders."""
     try:
         data = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
-        raise ValueError(f"YAML не читается: {exc}") from exc
+        raise OwnerError("vocab_yaml", error=exc) from exc
     if not isinstance(data, dict):
-        raise ValueError("ожидался YAML-объект с полями name и words")
+        raise OwnerError("vocab_shape")
     try:
         return VocabDict.model_validate(data, context={"lang": lang})
     except ValidationError as exc:
-        lines = []
+        issues: list[_Issue] = []
         for error in exc.errors()[:_ERRORS_SHOWN]:
-            loc = _format_loc(tuple(error["loc"]))
-            lines.append(f"{loc}: {error['msg']}" if loc else str(error["msg"]))
-        more = len(exc.errors()) - _ERRORS_SHOWN
-        if more > 0:
-            lines.append(f"и ещё {more}")
-        raise ValueError("; ".join(lines)) from exc
+            original = (error.get("ctx") or {}).get("error")
+            message: str | OwnerError = (
+                original if isinstance(original, OwnerError) else str(error["msg"])
+            )
+            issues.append((tuple(error["loc"]), message))
+        raise VocabError(issues, len(exc.errors()) - _ERRORS_SHOWN) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -458,7 +488,7 @@ class VocabStore:
             try:
                 dicts.append(parse_vocab(row.body, self._lang))
             except ValueError as exc:
-                logger.warning("словарь %r не разобрался, пропущен: %s", row.name, exc)
+                logger.warning("vocab dict %r did not parse, skipped: %s", row.name, exc)
         self._vocab = Vocab(dicts, lang=self._lang)
         logger.info("vocab: %d dicts, %d words", len(dicts), len(self._vocab.entries))
 

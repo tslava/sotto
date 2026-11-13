@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
+
+from sotto.lang.ru import LEGACY_FOR_CHAT_HEADER, LEGACY_FOR_OWNER_HEADER
 
 # Заголовок версии: "## [0.5.0] — 2026-09-16" — тире может быть длинным ("—") или
 # обычным дефисом ("-"), с пробелами вокруг или без. "## [Unreleased]" не совпадает —
@@ -23,8 +26,17 @@ _VERSION_HEADER_RE = re.compile(
 _ANY_H2_RE = re.compile(r"^##\s", re.MULTILINE)
 # Заголовок третьего уровня ("### ...") — им ограничивается тело блока внутри версии.
 _ANY_H3_RE = re.compile(r"^###\s", re.MULTILINE)
-_FOR_CHAT_RE = re.compile(r"^###\s*Для чата\s*$", re.MULTILINE)
-_FOR_OWNER_RE = re.compile(r"^###\s*Для владельца\s*$", re.MULTILINE)
+# Block headers: "### Notes" is the single block of the engine's own CHANGELOG.md (read as the
+# owner block); "For the chat"/"For the owner" and the legacy Russian ones a pack's
+# CHANGELOG.md may still use.
+_FOR_CHAT_RE = re.compile(
+    rf"^###\s*(?:For the chat|{re.escape(LEGACY_FOR_CHAT_HEADER)})\s*$", re.MULTILINE
+)
+_FOR_OWNER_RE = re.compile(
+    rf"^###\s*(?:For the owner|Notes|{re.escape(LEGACY_FOR_OWNER_HEADER)})\s*$", re.MULTILINE
+)
+# The engine's own CHANGELOG.md (next to ``src``; copied into the image).
+ENGINE_CHANGELOG_PATH = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
 # Ссылки-сноски внизу файла ("[0.5.0]: https://..."). Они идут после последней
 # версии, без заголовка "##"/"###" между ними и последним блоком, поэтому их нужно
 # отрезать отдельно, а не полагаться на границу следующего заголовка.
@@ -113,9 +125,15 @@ def chat_releases(chat_notes: str, legacy_changelog: str) -> list[Release]:
     return parse_chat_notes(chat_notes) or parse_changelog(legacy_changelog)
 
 
-def owner_releases(legacy_changelog: str) -> list[Release]:
-    """What ``/changelog owner`` shows: the owner blocks of the pack's legacy ``CHANGELOG.md``.
+def engine_changelog_text() -> str:
+    """The engine's own ``CHANGELOG.md`` ("" when the file is not there)."""
+    try:
+        return ENGINE_CHANGELOG_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return ""
 
-    Until the engine's own English ``CHANGELOG.md`` takes over (PR-8) this is the only source.
-    """
-    return parse_changelog(legacy_changelog)
+
+def owner_releases(legacy_changelog: str, engine_changelog: str = "") -> list[Release]:
+    """What ``/changelog owner`` shows: the owner blocks of the pack's own ``CHANGELOG.md`` when it
+    has releases, otherwise those of the engine's ``CHANGELOG.md`` (a pack without a changelog)."""
+    return parse_changelog(legacy_changelog) or parse_changelog(engine_changelog)

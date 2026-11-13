@@ -13,6 +13,8 @@ import pytest
 
 from sotto.config_models import VocabConfig
 from sotto.db import Database
+from sotto.errors import OwnerError
+from sotto.i18n import engine_catalog
 from sotto.vocab import (
     Vocab,
     VocabStore,
@@ -53,11 +55,11 @@ words:
 """
 
 
-# The validation messages are Russian in src/sotto/vocab.py.
-_ERR_SHAPE = "name и words"  # PR-8: Russian validation message in src/
-_ERR_MEANING = "слово #1 → meaning"  # PR-8: Russian validation message in src/
-_ERR_NO_LETTERS = "нет букв"  # PR-8: Russian validation message in src/
-_ERR_REPEATED = "повторяется"  # PR-8: Russian validation message in src/
+# Validation errors are OwnerErrors; the owner text comes from the English catalog.
+_ERR_SHAPE = "fields name and words"
+_ERR_MEANING = "word #1 → meaning"
+_ERR_NO_LETTERS = "has no letters"
+_ERR_REPEATED = "is repeated"
 
 
 def _vocab() -> Vocab:
@@ -95,8 +97,11 @@ def test_parse_vocab_keeps_text_and_folds_for_matching() -> None:
     ],
 )
 def test_parse_vocab_errors_are_readable(raw: str, needle: str) -> None:
-    with pytest.raises(ValueError, match=needle):
+    with pytest.raises(ValueError) as info:
         parse_en_vocab(raw)
+    exc = info.value
+    text = exc.render(engine_catalog()) if isinstance(exc, OwnerError) else str(exc)
+    assert needle in text
 
 
 # --- finding words in a text ---

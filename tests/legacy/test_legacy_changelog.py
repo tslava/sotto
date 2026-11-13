@@ -73,7 +73,6 @@ def test_latest_release_none_for_empty_text() -> None:
     assert latest_release("") is None
 
 
-# PR-8: the legacy parser still keys on the Russian block headers.
 def test_parse_changelog_accepts_em_dash_and_hyphen() -> None:
     text = (
         "## [Unreleased]\n\n"
