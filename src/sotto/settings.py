@@ -1,11 +1,11 @@
-"""Настройки процесса, читаются из .env / переменных окружения."""
+"""Process settings, read from .env / environment variables."""
 
 from pathlib import Path
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Поля, заменённые пакетом персоны (PERSONA_DIR). Порядок — как раньше в Settings.
+# Fields replaced by the persona pack (PERSONA_DIR). Order as before in Settings.
 DEPRECATED_PATH_FIELDS: tuple[str, ...] = (
     "config_path",
     "few_shot_path",
@@ -28,7 +28,7 @@ DEPRECATED_PATH_FIELDS: tuple[str, ...] = (
 
 
 class Settings(BaseSettings):
-    """Секреты и пути. env_prefix нет — имена переменных совпадают с полями."""
+    """Secrets and paths. No env_prefix: variable names match the field names."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
@@ -38,21 +38,21 @@ class Settings(BaseSettings):
     openrouter_api_key: SecretStr | None = None
     google_places_key: SecretStr | None = None
     db_path: Path = Path("data/bot.db")
-    # Каталог пакета персоны (CLAUDE.md, "Интерфейсы: пакет персоны"): конфиг, промпты,
-    # few-shot, стикеры, заведения. Не задан и allow_demo_persona=false -> процесс не
-    # стартует: потерянный монтаж на проде не должен молча запускать демо-персону.
+    # Persona pack directory: config, prompts, few-shot, stickers, places. If unset and
+    # allow_demo_persona=false the process refuses to start: a lost mount in production
+    # must not silently launch the demo persona.
     persona_dir: Path | None = None
     allow_demo_persona: bool = False
-    # Домашняя точка погоды (CLAUDE.md, "Интерфейсы: погода"). Координаты — личные
-    # данные владельца, а репозиторий публичный: в config.yaml и в коде их нет,
-    # только здесь, в .env. Не заданы обе -> блок погоды пуст (WARNING на старте),
-    # погода по месту из вопроса при этом работает.
+    # Weather home point. Coordinates are personal data of the owner and the repository
+    # is public: they are not in config.yaml or in code, only here in .env. If both are
+    # not set the weather block is empty (WARNING at startup); weather for a place named
+    # in a question still works.
     weather_latitude: float | None = None
     weather_longitude: float | None = None
     weather_home_name: str = ""
-    # Устаревшие пути к файлам персоны (до PR-2 каждый файл задавался своей переменной).
-    # Оставлены на один релиз, чтобы старый .env не ломал загрузку: значение игнорируется,
-    # на старте один WARNING (deprecated_fields_set). Удаляются после публикации.
+    # Deprecated persona file paths (before PR-2 each file had its own variable).
+    # Kept for one release so an old .env does not break loading: the value is ignored
+    # and one WARNING is logged at startup (deprecated_fields_set). Removed after publication.
     config_path: Path | None = None
     few_shot_path: Path | None = None
     prompt_path: Path | None = None
@@ -73,12 +73,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     def deprecated_fields_set(self) -> list[str]:
-        """Имена переменных окружения устаревших путей, которые заданы в окружении/.env."""
+        """Names of deprecated path variables that are set in the environment/.env."""
         return [name.upper() for name in DEPRECATED_PATH_FIELDS if getattr(self, name) is not None]
 
 
 class PersonaSelector(BaseSettings):
-    """Только выбор пакета персоны: для CLI, которым не нужен BOT_TOKEN (replay, places_fill)."""
+    """Only the persona pack choice: for CLIs that do not need BOT_TOKEN (replay, places_fill)."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 

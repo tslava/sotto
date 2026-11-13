@@ -1,8 +1,8 @@
-"""aiogram Router и хендлер сообщений одного чата (PLAN.md, этапы 1-2).
+"""aiogram Router and the message handler for a single chat.
 
-Хендлер пишет сообщение в БД, затем прогоняет его через гейт (should_consider) и
-логирует вердикт. Ничего не отвечает в чат — это принципиально до этапа 3, см.
-CLAUDE.md, раздел "Чего не делать".
+The handler writes the message to the DB, runs it through the gate (should_consider)
+and logs the verdict. Replies to the chat are produced elsewhere (responder.py), never
+directly from here.
 """
 
 from __future__ import annotations
@@ -53,29 +53,29 @@ from sotto.weather import WeatherClient
 
 logger = logging.getLogger(__name__)
 
-# Обрезка текста в INFO-логе (PLAN.md: лог "Имя: текст").
+# Truncation of text in the INFO log (the "Name: text" line).
 _LOG_TEXT_MAX_LEN = 200
 
-# Причины DROP, на которых имеет смысл дешёвая проверка followup (CLAUDE.md,
-# "внимание как у живого человека") — все они означают "сообщение без обращения,
-# которое обычный гейт не признал ambient-репликой". gate:dice здесь — тот же
-# кубик, что и без горячего окна (шаг 11/10h), не оставлять без шанса на followup
-# только потому, что кубик выпал не в пользу ambient-ответа.
+# DROP reasons for which the cheap followup check makes sense: all of them mean "a
+# message without an address that the ordinary gate did not accept as an ambient
+# reply". gate:dice is the same dice as without the hot window (step 11/10h); do not
+# leave it without a chance at followup just because the dice fell against an ambient
+# reply.
 FOLLOWUP_REASONS: frozenset[str] = frozenset(
     {"gate:dice", "gate:not_live", "gate:ambient_cap", "gate:ambient_cooldown", "gate:hot_cap"}
 )
 
 
 class BotLike(ReactionBotLike, Protocol):
-    """Узкий протокол вместо ``aiogram.Bot`` для всего, что хендлер делает с ботом:
-    реакции (``set_message_reaction``, унаследован от ``ReactionBotLike``) и скачивание
-    фото для зрения (``download``). Тесты подделывают его без aiogram.
+    """Narrow protocol instead of ``aiogram.Bot`` for everything the handler does with the bot:
+    reactions (``set_message_reaction``, inherited from ``ReactionBotLike``) and
+    downloading photos for vision (``download``). Tests fake it without aiogram.
 
-    Сигнатура ``download`` — подмножество ``aiogram.Bot.download``
+    The ``download`` signature is a subset of ``aiogram.Bot.download``
     (``file: str | Downloadable``, ``destination: BinaryIO | Path | str | None``,
-    плюс ``timeout``/``chunk_size``/``seek`` со значениями по умолчанию): протоколу
-    достаточно того, что нужно здесь (file_id строкой, ответ в память), а настоящий
-    ``Bot`` принимает больше и потому структурно подходит.
+    plus ``timeout``/``chunk_size``/``seek`` with defaults): the protocol only needs
+    what is used here (file_id as a string, the result in memory), while the real
+    ``Bot`` accepts more and therefore matches structurally.
     """
 
     async def download(self, file: str, destination: BinaryIO | None = None) -> BinaryIO | None: ...
@@ -83,16 +83,16 @@ class BotLike(ReactionBotLike, Protocol):
 
 @dataclass(slots=True)
 class Deps:
-    """Зависимости хендлера и командного роутера (commands.py, этап 6).
+    """Dependencies of the handler and the commands router (commands.py).
 
-    config_getter/patterns_getter — геттеры, а не замороженные снимки, снятые
-    один раз при сборке Deps в app.py: Patterns пересобирается ConfigStore при
-    каждом /set (новые regex из filters.*), и без геттера handle_message держал
-    бы устаревший объект до перезапуска процесса. patterns_getter = config_store.patterns
-    вызывается на каждом сообщении, как и config_getter = config_store.get.
-    config_store/prompt_store — полноценные хранилища этапа 6, добавлены для
-    commands.py (build_commands_router ждёт их через структурный протокол
-    _CommandsDeps — этот Deps ему структурно соответствует без явного наследования).
+    config_getter/patterns_getter are getters, not frozen snapshots taken once when Deps
+    is built in app.py: ConfigStore rebuilds Patterns on every /set (new regexes from
+    filters.*), and without a getter handle_message would keep a stale object until the
+    process restarts. patterns_getter = config_store.patterns is called on every message,
+    like config_getter = config_store.get.
+    config_store/prompt_store are the full stores, added for commands.py
+    (build_commands_router expects them via the structural protocol _CommandsDeps; this
+    Deps matches it structurally without explicit inheritance).
     """
 
     settings: Settings
@@ -106,48 +106,47 @@ class Deps:
     prompt_store: PromptStore
     frag: Fragments
     bot_username: str = ""
-    # Пакет персоны: /changelog читает из него; None — тесты хендлера без пакета.
+    # Persona pack: /changelog reads from it; None in handler tests without a pack.
     persona: Persona | None = None
     responder: Responder | None = None
-    # Дешёвая проверка «это мне?» для сообщений без обращения в горячем окне
-    # (CLAUDE.md, "внимание как у живого человека"). None — LLM не настроен, PASS
-    # по FOLLOWUP_REASONS не проверяется вовсе, поведение как без followup.
+    # Cheap "is this for me?" check for messages without an address in the hot window.
+    # None means no LLM is configured: PASS is not checked for FOLLOWUP_REASONS at all,
+    # behaviour as without followup.
     followup: FollowupChecker | None = None
-    # Узкий протокол (set_message_reaction + download) вместо aiogram.Bot — для
-    # реакций (reactions.py) и для скачивания фото зрением (vision.py). None в
-    # discovery/тестах без реального бота — тогда реакция просто не ставится, фото
-    # не описывается, а сообщение всё равно пишется и гейтится как обычно.
+    # Narrow protocol (set_message_reaction + download) instead of aiogram.Bot, for
+    # reactions (reactions.py) and for downloading photos for vision (vision.py). None in
+    # discovery/tests without a real bot: then no reaction is set and the photo is not
+    # described, but the message is still recorded and gated as usual.
     bot: BotLike | None = None
-    # Описание фото моделью со зрением (CLAUDE.md, "зрение на фото"). None — LLM не
-    # настроен, фото остаётся плейсхолдером "[фото]", как до этой фичи.
+    # Photo description by a vision model. None means no LLM is configured: the photo
+    # stays the "[photo]" placeholder, as before this feature.
     vision: VisionDescriber | None = None
-    # Отложенная реакция (CLAUDE.md, "реакции с задержкой и смыслом"): пауза перед
-    # реакцией и выбор эмодзи моделью. None — прежнее поведение: реакция ставится
-    # прямо в хендлере, сразу и тем эмодзи, что выбрал pick_reaction.
+    # Delayed reaction: a pause before the reaction and the emoji chosen by a model. None
+    # means the old behaviour: the reaction is set right in the handler, immediately and
+    # with the emoji pick_reaction chose.
     reaction_scheduler: ReactionScheduler | None = None
-    # Сколько enabled-стикеров в каталоге (stickers.yaml) — считается один раз в
-    # app.py при старте, только для /status ("(N в каталоге)"). Каталог не меняется
-    # на горячую (в отличие от config_overrides), поэтому фиксированное число, а не
-    # геттер, достаточно.
+    # How many enabled stickers are in the catalog (stickers.yaml): counted once in
+    # app.py at startup, only for /status ("(N in catalog)"). The catalog does not change
+    # hot (unlike config_overrides), so a fixed number is enough, not a getter.
     sticker_catalog_enabled: int = 0
-    # Долгая память чата (CLAUDE.md, "долгая память чата") — нужна только команде
-    # /memory run; сам пересказ крутит фоновый таск. None — LLM не настроен.
+    # Long-term chat memory: needed only by the /memory run command; the summarizing
+    # itself is done by a background task. None means no LLM is configured.
     memorizer: ChatMemorizer | None = None
-    # Погода (CLAUDE.md, "Интерфейсы: погода") — хендлеру сообщений не нужна вовсе,
-    # её читает Responder; здесь она только ради строки в /status. None — клиента
-    # нет (тесты хендлера), /status покажет «погода: нет».
+    # Weather: the message handler does not need it at all, Responder reads it; here it
+    # is only for a line in /status. None means there is no client (handler tests),
+    # /status will show "weather: none".
     weather: WeatherClient | None = None
-    # Словари словечек (CLAUDE.md, "словечки из словаря") — для /words и /status;
-    # Responder получает свой getter. None — тесты хендлера без словарей.
+    # Vocabulary dictionaries: for /words and /status; Responder gets its own getter.
+    # None in handler tests without dictionaries.
     vocab_store: VocabStore | None = None
-    # user_id, для которых уже залогирован WARNING про display_name-инъекцию —
-    # не спамить лог на каждое следующее сообщение того же участника.
+    # user_ids for which the display_name-injection WARNING has already been logged:
+    # do not spam the log on every following message from the same participant.
     warned_user_ids: set[int] = field(default_factory=set)
     clock: Callable[[], int] = field(default_factory=lambda: lambda: int(time.time()))
 
 
 def _int_state(raw: str | None) -> int | None:
-    """int(raw) с дефолтом None; мусор в значении -> WARNING, не падать."""
+    """int(raw) defaulting to None; garbage in the value -> WARNING, do not crash."""
     if raw is None:
         return None
     try:
@@ -168,12 +167,12 @@ async def _describe_photo(
     tg_message_id: int,
     now: int,
 ) -> str:
-    """Текст, который ляжет в ``messages.text`` вместо фото (CLAUDE.md, "зрение на фото").
+    """Text that goes into ``messages.text`` instead of the photo.
 
-    Зовётся ДО ``insert_message``, чтобы описание попало и в БД, и в контекст, и в
-    гейт — дальше фото ничем не отличается от обычного текста. Любой отказ (кубик,
-    потолок, ошибка скачивания, ошибка модели) заканчивается привычным «[фото]»:
-    фото не должно ломать обработку сообщения.
+    Called BEFORE ``insert_message`` so the description reaches the DB, the context and
+    the gate; from then on the photo is no different from ordinary text. Any refusal
+    (dice, cap, download error, model error) ends in the usual "[photo]": a photo must
+    not break message handling.
     """
     cfg = deps.config_getter()
     vision_cfg = cfg.behaviour.vision
@@ -215,13 +214,13 @@ async def _describe_photo(
             else:
                 image = downloaded.read()
         except (AiogramError, OSError) as exc:
-            # Фото удалено, файл слишком большой, сеть отвалилась — не повод ронять
-            # хендлер: сообщение всё равно запишется как "[фото]".
+            # Photo deleted, file too large, network dropped: no reason to crash the
+            # handler, the message is still recorded as "[photo]".
             logger.warning(
                 "vision: could not download the photo of message %s: %s", tg_message_id, exc
             )
         if image is not None:
-            # mime фиксирован: телеграм отдаёт превью message.photo всегда как JPEG.
+            # mime is fixed: Telegram always serves the message.photo preview as JPEG.
             description = await describer.describe(
                 image, mime="image/jpeg", caption=caption, now=now
             )
@@ -238,9 +237,9 @@ async def _describe_photo(
         )
         return photo_text(None, caption, frag=deps.frag)
 
-    # Счётчик /status (статистика описаний). Потолок вызовов держит LLMClient по
-    # своему счётчику vision_calls — неудачная попытка тратит его, но не эту
-    # статистику, небольшое расхождение допустимо и заложено контрактом.
+    # /status counter (description statistics). The call cap is held by LLMClient via
+    # its own vision_calls counter: a failed attempt spends that but not this statistic;
+    # a small discrepancy is acceptable and part of the contract.
     await deps.db.increment_state(count_key)
     await deps.db.insert_filter_log(
         trigger_tg_message_id=tg_message_id,
@@ -258,10 +257,10 @@ async def _describe_photo(
 async def _vocab_explain_asked(
     deps: Deps, cfg: Config, gate_message: GateMessage, *, reply_to_other: bool, now: int
 ) -> bool:
-    """«Не понял», «что это значит» (``vocab.explain_markers``) в течение
-    ``explain_window_min`` после его реплики со словечком из словаря. Не ему, если это
-    реплай на другого человека или после его реплики люди написали больше
-    ``explain_max_between`` сообщений — разговор ушёл дальше (ревью Codex 18.10)."""
+    """ "I did not understand", "what does it mean" (``vocab.explain_markers``) within
+    ``explain_window_min`` after its reply with a dictionary word. Not addressed to it if
+    this is a reply to another person or more than ``explain_max_between`` messages from
+    people came after its reply: the conversation has moved on."""
     vocab_cfg = cfg.behaviour.vocab
     if (
         deps.vocab_store is None
@@ -274,7 +273,7 @@ async def _vocab_explain_asked(
     last = await deps.db.last_bot_replies(1)
     if not last or now - last[0].created_at > vocab_cfg.explain_window_min * 60:
         return False
-    # Текущее сообщение уже записано — оно тоже «после», его не считаем.
+    # The current message is already recorded; it also counts as "after", so skip it.
     between = await deps.db.messages_after(deps.settings.allowed_chat_id, last[0].tg_message_id)
     if between - 1 > vocab_cfg.explain_max_between:
         return False
@@ -284,9 +283,9 @@ async def _vocab_explain_asked(
 async def _followup_inputs(
     deps: Deps, cfg: Config, gate_message: GateMessage
 ) -> tuple[list[MessageRow], list[str]]:
-    """Контекст для дешёвой проверки: последние сообщения чата БЕЗ текущего (оно
-    уже записано insert_message) и последние реплики бота. Общее для проверки
-    «это мне?» в горячем окне и проверки обращения по имени."""
+    """Context for the cheap check: the last chat messages WITHOUT the current one (it
+    is already recorded by insert_message) and the bot's last replies. Shared by the
+    "is this for me?" check in the hot window and the address-by-name check."""
     followup_cfg = cfg.behaviour.followup
     rows = await deps.db.recent_messages(gate_message.chat_id, followup_cfg.context_messages + 1)
     context_rows = [row for row in rows if row.tg_message_id != gate_message.tg_message_id]
@@ -305,11 +304,10 @@ async def _maybe_react(
     reason: str,
     now: int,
 ) -> None:
-    """Реакция вместо полного молчания (CLAUDE.md, "Интерфейсы: реакции") — только
-    на недетерминированные причины из ``REACT_REASONS`` (кости, кулдаун ambient,
-    отказ модели считать упоминание имени обращением) и только в разрешённом чате
-    (вызывается уже после проверок chat_id в хендлере). Решение живёт снаружи
-    гейта, ``gate.py`` не меняется."""
+    """A reaction instead of complete silence: only for the non-deterministic reasons in
+    ``REACT_REASONS`` (dice, ambient cooldown, the model refusing to count a name mention
+    as an address) and only in the allowed chat (called after the chat_id checks in the
+    handler). The decision lives outside the gate, ``gate.py`` is unchanged."""
     if reason not in REACT_REASONS or deps.bot is None:
         return
     tz = cfg.persona.timezone
@@ -325,9 +323,9 @@ async def _maybe_react(
     if emoji is None:
         return
     if deps.reaction_scheduler is not None:
-        # Реакция уходит в фон: пауза "прочитал и хмыкнул", после неё —
-        # перепроверка условий и выбор эмодзи моделью. Хендлер при этом не ждёт
-        # (иначе чат стоял бы минуту).
+        # The reaction goes to the background: a "read it and hummed" pause, then a
+        # recheck of conditions and the model's emoji choice. The handler does not wait
+        # (the chat would stall for a minute otherwise).
         deps.reaction_scheduler.schedule(
             chat_id=gate_message.chat_id,
             tg_message_id=gate_message.tg_message_id,
@@ -349,10 +347,10 @@ async def _maybe_react(
 
 
 def build_router(deps: Deps) -> Router:
-    """Собирает Router с единственным хендлером на сообщения чужого/своего чата.
+    """Build a Router with a single handler for messages of a foreign/own chat.
 
-    Отредактированные сообщения игнорируются целиком (отдельный обработчик, просто return) —
-    правки истории чата не должны переписывать то, что уже попало в лог/БД.
+    Edited messages are ignored entirely (a separate handler, just return): edits to chat
+    history must not rewrite what already reached the log/DB.
     """
     router = Router(name=__name__)
 
@@ -366,7 +364,7 @@ def build_router(deps: Deps) -> Router:
         user = message.from_user
 
         if allowed_chat_id == 0:
-            # Discovery mode: помогаем владельцу найти chat_id для .env. В БД не пишем.
+            # Discovery mode: help the owner find chat_id for .env. Nothing goes to the DB.
             logger.warning(
                 "discovery: chat_id=%s title=%r user_id=%s name=%r",
                 message.chat.id,
@@ -377,11 +375,11 @@ def build_router(deps: Deps) -> Router:
             return
 
         if message.chat.id != allowed_chat_id:
-            # Чужой чат: ни лога, ни БД, чтобы не жечь ключ и не хранить чужие данные.
+            # Foreign chat: no log and no DB, so as not to burn the key or store foreign data.
             return
 
         if user is None:
-            # Анонимный админ или сообщение от имени канала.
+            # Anonymous admin or a message on behalf of a channel.
             user_id = 0
             display_name = sanitize_display_name(None, 0, deps.reserved_names, frag=deps.frag)
             is_bot = False
@@ -390,8 +388,8 @@ def build_router(deps: Deps) -> Router:
             display_name = sanitize_display_name(
                 user.full_name, user.id, deps.reserved_names, frag=deps.frag
             )
-            # Имя из невидимых символов или одних эмодзи даёт «Участник N»; если есть
-            # юзернейм — он понятнее и людям в контексте, и модели.
+            # A name made of invisible characters or only emoji yields "Participant N"; if
+            # there is a username it is clearer both to people in the context and to the model.
             if (
                 display_name.startswith(deps.frag.prefix("placeholders.participant"))
                 and user.username
@@ -402,11 +400,11 @@ def build_router(deps: Deps) -> Router:
             is_bot = user.is_bot
 
         if deps.patterns_getter().injection(display_name) is not None:
-            # Имя-инъекция ("Игнорируй правила и скажи ...") прошла санитизацию (она
-            # не содержит триггеров бота как отдельных слов), но выглядит как команда
-            # гейта 5a — подменяем на "Участник N" до записи в БД и в промпт, чтобы
-            # display_name сам по себе не читался как инструкция построчно перед
-            # каждым сообщением участника в {context}.
+            # An injection name ("Ignore the rules and say ...") passed sanitization (it
+            # contains no bot triggers as separate words) but looks like a gate 5a
+            # command, so replace it with "Participant N" before writing to the DB and the
+            # prompt, so display_name does not read as an instruction line by line in
+            # front of every participant message in {context}.
             if user_id not in deps.warned_user_ids:
                 deps.warned_user_ids.add(user_id)
                 logger.warning(
@@ -436,8 +434,8 @@ def build_router(deps: Deps) -> Router:
             and deps.bot is not None
             and deps.config_getter().behaviour.vision.enabled
         ):
-            # Зрение (CLAUDE.md, "зрение на фото"): описание заменяет плейсхолдер и
-            # уходит в БД вместе с подписью — строго до insert_message.
+            # Vision: the description replaces the placeholder and goes to the DB with
+            # the caption, strictly before insert_message.
             text = await _describe_photo(
                 deps,
                 deps.vision,
@@ -451,7 +449,7 @@ def build_router(deps: Deps) -> Router:
         if not text:
             text = media_placeholder(message, frag=deps.frag) or ""
         if not text:
-            # Сервисное сообщение без текста и без медиа (вошёл/вышел и т.п.) — не пишем.
+            # Service message with no text and no media (joined/left etc.): not recorded.
             return
 
         await deps.db.insert_message(
@@ -479,10 +477,10 @@ def build_router(deps: Deps) -> Router:
         try:
             cfg = deps.config_getter()
             now = gate_message.created_at
-            # Хвост апдейтов после рестарта: сообщение старше порога поздней реплики
-            # уходит в контекст, но не в гейт. Человек, у которого сел телефон,
-            # не отвечает задним числом. Иначе трёхчасовой меншн получит ответ
-            # по свежему контексту.
+            # Tail of updates after a restart: a message older than the late-reply
+            # threshold goes into the context but not into the gate. A person whose phone
+            # died does not reply retroactively. Otherwise a three-hour-old mention would
+            # get a reply based on fresh context.
             age = deps.clock() - created_at
             if age > cfg.behaviour.late_reply_threshold_sec:
                 await deps.db.insert_filter_log(
@@ -506,8 +504,8 @@ def build_router(deps: Deps) -> Router:
                 if decision.reason in FOLLOWUP_REASONS and await _vocab_explain_asked(
                     deps, cfg, gate_message, reply_to_other=reply_to_other, now=now
                 ):
-                    # «Не понял» сразу после его словечка (CLAUDE.md, "словечки из
-                    # словаря") — вопрос ему, даже без имени и реплая: объяснит.
+                    # "I did not understand" right after its dictionary word: the question is
+                    # for it, even without a name or reply: it will explain.
                     await deps.db.insert_filter_log(
                         trigger_tg_message_id=gate_message.tg_message_id,
                         candidate_text=text,
@@ -530,11 +528,11 @@ def build_router(deps: Deps) -> Router:
                     and state.hot_until is not None
                     and now < state.hot_until
                 ):
-                    # Телефон в руках (CLAUDE.md, "внимание как у живого человека"):
-                    # горячее окно ещё открыто, а сообщение без обращения гейт не
-                    # признал ambient-репликой — дешёвая проверка решает, не
-                    # адресовано ли оно боту всё же. context_rows без текущего
-                    # сообщения (оно уже записано insert_message выше).
+                    # Phone in hand: the hot window is still open and the gate did not
+                    # accept the message without an address as an ambient reply, so the
+                    # cheap check decides whether it is addressed to the bot after all.
+                    # context_rows excludes the current message (already recorded by
+                    # insert_message above).
                     context_rows, recent_replies = await _followup_inputs(deps, cfg, gate_message)
                     addressed = await deps.followup.check(
                         text=text,
@@ -618,9 +616,9 @@ def build_router(deps: Deps) -> Router:
                     created_at=now,
                 )
                 if decision.trigger is None:
-                    # Инвариант гейта: PASS всегда несёт trigger (see gate.py). Если
-                    # он всё же None — конфигурация гейта сломана, а не повод уронить
-                    # хендлер: логируем и просто не зовём responder на этом сообщении.
+                    # Gate invariant: PASS always carries a trigger (see gate.py). If it
+                    # is None anyway, the gate configuration is broken, which is no reason
+                    # to crash the handler: log and just do not call the responder here.
                     logger.error(
                         "gate pass without trigger: message %s reason=%s",
                         gate_message.tg_message_id,
@@ -632,11 +630,11 @@ def build_router(deps: Deps) -> Router:
                     and cfg.behaviour.followup.name_check
                     and deps.followup is not None
                 ):
-                    # Имя ловится во всех падежах (CLAUDE.md, "имя в падежах"), но
-                    # регулярка не отличает обращение от разговора о нём в третьем
-                    # лице («отец вчера поставил смайлик под сообщением»). Решает дешёвая
-                    # модель; она же — единственная проверка, которой подвергается
-                    # имя: реплай на бота и @username не проверяются никогда.
+                    # The name is caught in all case forms, but the regex cannot tell an
+                    # address from talk about the bot in the third person ("the father put
+                    # a smiley under the message yesterday"). The cheap model decides; it is
+                    # also the only check a name goes through: a reply to the bot and
+                    # @username are never checked.
                     context_rows, recent_replies = await _followup_inputs(deps, cfg, gate_message)
                     addressed = await deps.followup.check_name(
                         text=text,
@@ -656,8 +654,8 @@ def build_router(deps: Deps) -> Router:
                             created_at=now,
                         )
                         logger.info("name check: not addressed, %s", text[:_LOG_TEXT_MAX_LEN])
-                        # Дальше — та же ветка, что у DROP по кубику: ответа нет, но
-                        # хмыкнуть реакцией можно (причина есть в REACT_REASONS).
+                        # From here the same branch as DROP by dice: no reply, but a
+                        # reaction is possible (the reason is in REACT_REASONS).
                         await _maybe_react(
                             deps,
                             cfg,
@@ -682,9 +680,9 @@ def build_router(deps: Deps) -> Router:
                 if trigger is Trigger.AMBIENT and await _vocab_explain_asked(
                     deps, cfg, gate_message, reply_to_other=reply_to_other, now=now
                 ):
-                    # Кубик ambient выпал, но это «не понял» после его словечка: тот же
-                    # followup, что и на DROP, — иначе объяснение срезал бы dedup:vocab
-                    # (ревью Codex 18.10).
+                    # The ambient dice came up, but this is an "I did not understand" after
+                    # its word: the same followup as on DROP, otherwise dedup:vocab would
+                    # cut the explanation.
                     await deps.db.insert_filter_log(
                         trigger_tg_message_id=gate_message.tg_message_id,
                         candidate_text=text,
@@ -700,7 +698,7 @@ def build_router(deps: Deps) -> Router:
                 else:
                     logger.info("gate pass: %s (%s)", decision.trigger, text[:_LOG_TEXT_MAX_LEN])
         except Exception:
-            # Ошибка гейта не должна ронять хендлер: сообщение уже записано в messages.
+            # A gate error must not crash the handler: the message is already in messages.
             logger.exception("gate failed for message %s", gate_message.tg_message_id)
 
     return router

@@ -1,21 +1,20 @@
-"""Router с командами управления ботом из телеграма (PLAN.md, этап 6).
+"""Router with commands for managing the bot from Telegram.
 
-`build_commands_router` возвращает Router с одним хендлером на все сообщения,
-начинающиеся с "/". Интегратор (app.py) обязан включить этот роутер в Dispatcher
-ПЕРВЫМ, перед основным роутером сообщений (sotto.bot.build_router) — иначе
-команды в разрешённом чате попадут в гейт и запишутся в messages как обычный текст.
-aiogram останавливает propagation на первом хендлере, вернувшем не-None/не
-skip_this_handler, так что второй раз то же сообщение до основного роутера не дойдёт.
+`build_commands_router` returns a Router with a single handler for all messages that
+start with "/". The integrator (app.py) must include this router in the Dispatcher
+FIRST, before the main message router (sotto.bot.build_router), otherwise commands in
+the allowed chat would reach the gate and be recorded in messages as ordinary text.
+aiogram stops propagation at the first handler that returns something other than None
+or skip_this_handler, so the same message will not reach the main router a second time.
 
-Хендлер сам решает, кому что можно — гейт "чужой чат" из bot.py сюда не
-распространяется, роутер команд стоит раньше него.
+The handler decides itself who may do what: the "foreign chat" gate from bot.py does
+not apply here, the commands router comes before it.
 
-stores.py (ConfigStore/PromptStore) пишет параллельно другой агент по контракту
-CLAUDE.md ("Интерфейсы этапа 6"). Чтобы не зависеть от его файла до готовности,
-здесь определены структурные Protocol'ы (`_ConfigStoreLike`, `_PromptStoreLike`,
-`_DbLike` и вспомогательные row-протоколы) с ровно теми методами, которые нужны
-командам. Реальные классы (ConfigStore/PromptStore/Database) подойдут под них
-структурно, без явного наследования.
+To avoid depending on the concrete store classes (ConfigStore/PromptStore), structural
+Protocols are defined here (`_ConfigStoreLike`, `_PromptStoreLike`, `_DbLike` and the
+helper row protocols) with exactly the methods the commands need. The real classes
+(ConfigStore/PromptStore/Database) satisfy them structurally, without explicit
+inheritance.
 """
 
 from __future__ import annotations
@@ -54,47 +53,47 @@ from sotto.timeutil import day_key, day_start, local_dt
 from sotto.weather import Place, Weather, describe, format_temp
 
 if TYPE_CHECKING:
-    # Только для аннотаций: "from __future__ import annotations" делает их строками,
-    # так что этот импорт не исполняется в рантайме. Прямой (не TYPE_CHECKING) импорт
-    # sotto.responder сюда нежелателен — тянет aiogram-цепочку в commands.py и
-    # рискует циклическим импортом (bot.py и так импортирует и responder, и commands).
+    # For annotations only: "from __future__ import annotations" makes them strings, so
+    # this import does not run at runtime. A direct (non-TYPE_CHECKING) import of
+    # sotto.responder is undesirable here: it drags the aiogram chain into commands.py
+    # and risks a circular import (bot.py already imports both responder and commands).
     from sotto.db import VocabDictRow
     from sotto.responder import PreviewOutcome, SendOutcome
     from sotto.vocab import Vocab, VocabDict
 
 logger = logging.getLogger(__name__)
 
-# Ограничение длины ответа владельцу (PLAN.md, этап 6: "не длиннее 3500 символов").
+# Length cap for replies to the owner ("no longer than 3500 characters").
 _MAX_REPLY_LEN = 3500
-# Превью тела промпта в /prompt без "full" (CLAUDE.md, "Интерфейсы этапа 6").
+# Prompt body preview in /prompt without "full".
 _PROMPT_PREVIEW_LEN = 1500
-# Сколько пересказов показывать в /memory list (ответ всё равно режется до 3500 символов).
+# How many summaries /memory list shows (the reply is still cut to 3500 characters).
 _MEMORY_LIST_LIMIT = 20
-# Сколько символов свежесозданных пересказов показать в ответе на /memory run.
+# How many characters of freshly created summaries to show in the /memory run reply.
 _MEMORY_RUN_PREVIEW_LEN = 1500
 
-# /status: окно метрики «про себя» в сутках (CLAUDE.md, "про себя через раз").
+# /status: window of the "about itself" metric, in days.
 _SELF_SHARE_DAYS = 3
 
-# /diary: окно списка (CLAUDE.md, "дневник дня": «за неделю»).
+# /diary: list window ("for the week").
 _DIARY_LIST_DAYS = 7
 
-# /jokes и /people (CLAUDE.md, "шутки чата и истории людей"): потолок списка шуток
-# (ответ всё равно режется до 3500 символов).
+# /jokes and /people: cap on the jokes list
+# (the reply is still cut to 3500 characters).
 _JOKES_LIST_LIMIT = 1000
 
-# /words (CLAUDE.md, "словечки из словаря"): потолок файла словаря.
+# /words: cap on the dictionary file size.
 _WORDS_MAX_FILE_BYTES = 512 * 1024
 
 
 class _MessageRowLike(Protocol):
-    """Подмножество db.MessageRow, нужное /ex add.
+    """The subset of db.MessageRow needed by /ex add.
 
-    Члены объявлены через ``@property`` (а не как обычные атрибуты), потому что
-    db.MessageRow — frozen dataclass: его поля read-only, а обычный атрибут в
-    Protocol требует settable-совместимости (инвариантно в обе стороны) и не
-    матчится на read-only поле. ``@property`` в Protocol — это ровно read-only
-    член, который frozen dataclass удовлетворяет структурно.
+    Members are declared with ``@property`` (not as plain attributes) because
+    db.MessageRow is a frozen dataclass: its fields are read-only, while a plain
+    attribute in a Protocol requires settable compatibility (invariant both ways) and
+    does not match a read-only field. ``@property`` in a Protocol is exactly a read-only
+    member, which a frozen dataclass satisfies structurally.
     """
 
     @property
@@ -104,7 +103,7 @@ class _MessageRowLike(Protocol):
 
 
 class _BotReplyRowLike(Protocol):
-    """Подмножество db.BotReplyRow, нужное /ex add и /last. См. _MessageRowLike про @property."""
+    """The subset of db.BotReplyRow needed by /ex add and /last. See _MessageRowLike."""
 
     @property
     def trigger(self) -> str: ...
@@ -123,18 +122,18 @@ class _BotReplyRowLike(Protocol):
 
 
 class _VersionRowLike(Protocol):
-    """Подмножество db.VersionRow, нужное /prompt (посчитать "всего M"). См. _MessageRowLike."""
+    """The subset of db.VersionRow needed by /prompt (to count "total M"). See _MessageRowLike."""
 
     @property
     def version(self) -> int: ...
 
 
 class _DbLike(Protocol):
-    """Методы Database, которые использует commands.py.
+    """Database methods used by commands.py.
 
-    Часть из них (add_mute/remove_mute/last_bot_replies/audit_stop/
-    message_by_tg_id/bot_reply_by_tg_id и версии промпта) пишет параллельно
-    другой агент — здесь только сигнатуры из контракта CLAUDE.md, без импорта db.py.
+    Only signatures per the contract are declared here, without importing db.py (some
+    of the methods, e.g. add_mute/remove_mute/last_bot_replies/audit_stop/
+    message_by_tg_id/bot_reply_by_tg_id and the prompt versions, live elsewhere).
     """
 
     async def get_state(self, key: str) -> str | None: ...
@@ -145,53 +144,53 @@ class _DbLike(Protocol):
     ) -> None: ...
     async def add_mute(self, user_id: int, display_name: str, muted_by: int, now: int) -> None: ...
     async def remove_mute(self, user_id: int) -> bool: ...
-    # Sequence (не list) в возвращаемом типе: list инвариантен по своему параметру,
-    # так что list[_BotReplyRowLike] не принял бы Database.last_bot_replies(), чей
-    # реальный тип — list[BotReplyRow] (BotReplyRow — подтип _BotReplyRowLike, но
-    # List[BotReplyRow] всё равно не подтип List[_BotReplyRowLike]). Sequence
-    # объявлен ковариантным по элементу — этой проблемы не создаёт.
+    # Sequence (not list) in the return type: list is invariant in its parameter, so
+    # list[_BotReplyRowLike] would not accept Database.last_bot_replies(), whose real
+    # type is list[BotReplyRow] (BotReplyRow is a subtype of _BotReplyRowLike, but
+    # List[BotReplyRow] is still not a subtype of List[_BotReplyRowLike]). Sequence
+    # is declared covariant in its element, so it does not have this problem.
     async def last_bot_replies(self, n: int) -> Sequence[_BotReplyRowLike]: ...
     async def message_by_tg_id(
         self, chat_id: int, tg_message_id: int
     ) -> _MessageRowLike | None: ...
     async def bot_reply_by_tg_id(self, tg_message_id: int) -> _BotReplyRowLike | None: ...
     async def filter_log_summary(self, since: int) -> list[tuple[str, int]]: ...
-    # -- потолок присутствия (CLAUDE.md, "меньше и разнообразнее") -----------
+    # -- presence cap ----------------------------------------------------------
     async def count_messages_today(self, chat_id: int, day_start: int) -> int: ...
     async def count_bot_replies_today(self, day_start: int) -> int: ...
     async def load_pending(self) -> Sequence[object]: ...
     async def night_unanswered(self) -> Sequence[object]: ...
     async def prompt_versions(self) -> Sequence[_VersionRowLike]: ...
-    # -- события жизни (/life, CLAUDE.md "события жизни и /say") -------------
+    # -- life events (/life, /say) ---------------------------------------------
     async def insert_life_event(self, *, text: str, created_at: int) -> int: ...
     async def life_events(self) -> Sequence[LifeEventRow]: ...
     async def life_event(self, event_id: int) -> LifeEventRow | None: ...
     async def delete_life_event(self, event_id: int) -> bool: ...
-    # -- долгая память чата (/memory, CLAUDE.md "долгая память чата") --------
+    # -- long-term chat memory (/memory) ---------------------------------------
     async def chat_memories(self, limit: int) -> Sequence[ChatMemoryRow]: ...
     async def chat_memory(self, memory_id: int) -> ChatMemoryRow | None: ...
     async def chat_memory_count(self) -> int: ...
     async def delete_chat_memory(self, memory_id: int) -> bool: ...
     async def last_chat_memory_end(self) -> int | None: ...
-    # -- дневник дня (/diary, CLAUDE.md "дневник дня") -----------------------
+    # -- daily diary (/diary) --------------------------------------------------
     async def self_facts_since(self, since: int) -> Sequence[SelfFactRow]: ...
     async def bot_replies_between(self, start: int, end: int) -> Sequence[_BotReplyRowLike]: ...
     async def delete_self_fact(self, fact_id: int) -> bool: ...
-    # -- шутки чата и истории людей (/jokes, /people) ------------------------
+    # -- chat jokes and people's stories (/jokes, /people) ---------------------
     async def jokes(self, limit: int) -> Sequence[JokeRow]: ...
     async def delete_joke(self, joke_id: int) -> bool: ...
     async def people_threads_all(self) -> Sequence[PeopleThreadRow]: ...
     async def delete_people_thread(self, thread_id: int) -> bool: ...
-    # -- /ask: имя владельца, каким его видит контекст чата ---------------------
+    # -- /ask: the owner's name as the chat context sees it ---------------------
     async def display_names(self, user_ids: Sequence[int]) -> dict[int, str]: ...
 
 
 class _ResponderLike(Protocol):
-    """Подмножество Responder, нужное /life и /say (CLAUDE.md, «события жизни»).
+    """The subset of Responder needed by /life and /say.
 
-    Только эти два метода — не полный Responder. SendOutcome в аннотациях
-    приходит из TYPE_CHECKING-импорта выше (см. его комментарий про то, почему
-    commands.py не импортирует sotto.responder напрямую)."""
+    Only these two methods, not the full Responder. SendOutcome in annotations comes
+    from the TYPE_CHECKING import above (see its comment on why commands.py does not
+    import sotto.responder directly)."""
 
     async def announce_life(self, event: LifeEventRow) -> SendOutcome: ...
     async def say(self, text: str) -> SendOutcome: ...
@@ -199,17 +198,16 @@ class _ResponderLike(Protocol):
 
 
 class _ChatMemorizerLike(Protocol):
-    """Подмножество chat_memory.ChatMemorizer, нужное /memory run.
+    """The subset of chat_memory.ChatMemorizer needed by /memory run.
 
-    Только ``run_due`` — список и удаление идут прямо через БД. None означает,
-    что LLM-часть выключена (нет ключа): тогда /memory run отвечает об этом и
-    ничего не запускает."""
+    Only ``run_due``: listing and deletion go straight through the DB. None means the
+    LLM part is off (no key): then /memory run says so and starts nothing."""
 
     async def run_due(self, *, now: int) -> Sequence[ChatMemoryRow]: ...
 
 
 class _VocabStoreLike(Protocol):
-    """Подмножество vocab.VocabStore, нужное /words и /status."""
+    """The subset of vocab.VocabStore needed by /words and /status."""
 
     def get(self) -> Vocab: ...
     async def put(self, raw: str, now: int) -> VocabDict: ...
@@ -219,13 +217,13 @@ class _VocabStoreLike(Protocol):
 
 
 class _DownloaderLike(Protocol):
-    """Скачивание файла по file_id — подмножество aiogram.Bot.download (как bot.BotLike)."""
+    """Download a file by file_id: a subset of aiogram.Bot.download (like bot.BotLike)."""
 
     async def download(self, file: str, destination: BinaryIO | None = None) -> BinaryIO | None: ...
 
 
 class _ConfigStoreLike(Protocol):
-    """Методы stores.ConfigStore, которые использует commands.py."""
+    """The stores.ConfigStore methods used by commands.py."""
 
     def get(self) -> Config: ...
     async def set(
@@ -238,7 +236,7 @@ class _ConfigStoreLike(Protocol):
 
 
 class _PromptStoreLike(Protocol):
-    """Методы stores.PromptStore, которые использует commands.py."""
+    """The stores.PromptStore methods used by commands.py."""
 
     def system_prompt(self) -> str: ...
     def prompt_version(self) -> int: ...
@@ -250,28 +248,27 @@ class _PromptStoreLike(Protocol):
 
 
 class _WeatherLike(Protocol):
-    """Подмножество WeatherClient, нужное /status: один снимок погоды. Как и
-    остальные протоколы здесь — структурный, чтобы тестам не собирать настоящий
-    клиент с httpx."""
+    """The subset of WeatherClient needed by /status: one weather snapshot. Like the
+    other protocols here it is structural, so tests do not have to build a real httpx
+    client."""
 
     async def get(self, place: Place | None = None) -> Weather | None: ...
 
 
 class _CommandsDeps(Protocol):
-    """Зависимости build_commands_router. bot.Deps потом дополнят этими полями.
+    """Dependencies of build_commands_router. bot.Deps is later extended with these fields.
 
-    responder используется /life и /say (announce_life/say) через _ResponderLike —
-    структурный протокол, а не прямой тип Responder, чтобы commands.py не тянул
-    responder.py (и вместе с ним aiogram-цепочку) в рантайме. responder может быть
-    None (LLM-часть выключена, CLAUDE.md "Settings.openrouter_api_key None").
+    responder is used by /life and /say (announce_life/say) through _ResponderLike, a
+    structural protocol rather than the concrete Responder type, so commands.py does not
+    pull responder.py (and with it the aiogram chain) in at runtime. responder may be
+    None (LLM part off: Settings.openrouter_api_key is None).
 
-    Члены объявлены через ``@property``, а не как обычные атрибуты: commands.py
-    только читает deps.* и никогда не присваивает — по PEP 544 обычный (settable)
-    атрибут Protocol требует инвариантного совпадения типа в обе стороны, а
-    ``@property`` — только совместимости на чтение (ковариантно). bot.Deps —
-    обычный (не frozen) dataclass с более конкретными типами полей (ConfigStore,
-    PromptStore, Database, Responder | None), и без ``@property`` он не матчился
-    бы структурно на эти протокольные типы.
+    Members are declared with ``@property``, not as plain attributes: commands.py only
+    reads deps.* and never assigns; per PEP 544 a plain (settable) Protocol attribute
+    requires the type to match invariantly both ways, while ``@property`` only requires
+    read compatibility (covariant). bot.Deps is a plain (non-frozen) dataclass with more
+    specific field types (ConfigStore, PromptStore, Database, Responder | None), and
+    without ``@property`` it would not match these protocol types structurally.
     """
 
     @property
@@ -332,10 +329,10 @@ def _is_owner(user: User | None, deps: _CommandsDeps) -> bool:
 
 
 def _resolve_mention_target(message: Message) -> tuple[int, str] | None:
-    """Цель /mute или /unmute: реплай или text_mention-упоминание в entities.
+    """Target of /mute or /unmute: a reply or a text_mention entity.
 
-    Обычный @username (entity type "mention") не поддерживается — username
-    в БД не хранится, найти по нему пользователя нечем, игнорируем молча.
+    A plain @username (entity type "mention") is not supported: the username is not
+    stored in the DB, so there is nothing to look the user up by; ignored silently.
     """
     reply = message.reply_to_message
     if reply is not None and reply.from_user is not None:
@@ -354,10 +351,10 @@ async def _cmd_stop(message: Message, deps: _CommandsDeps, now: int, user: User 
 
 
 async def _cmd_mute(message: Message, deps: _CommandsDeps, now: int, user: User | None) -> None:
-    """Без реплая/упоминания — мьютит самого отправителя, доступно всем. Реплаем
-    или упоминанием на ЧУЖОЕ сообщение — только владелец (иначе это готовый
-    инструмент травли: «тебя теперь бот не видит»). Цель-владелец или цель-бот —
-    молча ничего, кем бы ни была вызвана команда."""
+    """Without a reply/mention, mutes the sender himself, allowed to everyone. By reply
+    or mention on SOMEONE ELSE's message, owner only (otherwise it is a ready-made
+    harassment tool: "the bot no longer sees you"). Owner target or bot target:
+    silently nothing, whoever invoked the command."""
     if user is None:
         return
     target = _resolve_mention_target(message)
@@ -376,8 +373,8 @@ async def _cmd_mute(message: Message, deps: _CommandsDeps, now: int, user: User 
 
 
 async def _cmd_unmute(message: Message, deps: _CommandsDeps, now: int, user: User | None) -> None:
-    """Без реплая/упоминания — снимает мьют с самого отправителя, доступно всем.
-    Реплаем или упоминанием на чужого — только владелец."""
+    """Without a reply/mention, unmutes the sender himself, allowed to everyone.
+    By reply or mention on someone else, owner only."""
     if user is None:
         return
     target = _resolve_mention_target(message)
@@ -422,10 +419,10 @@ async def _cmd_panic(message: Message, deps: _CommandsDeps, now: int, user: User
 
 
 async def _cmd_resume(message: Message, deps: _CommandsDeps, now: int, user: User) -> None:
-    """Снимает panic, stop_until и предохранитель LLM (llm_circuit_until/
-    llm_error_streak). Действия безусловны (как раньше для panic/stop_until), но
-    в ответе перечисляется только то, что реально было выставлено — иначе
-    владелец решит, что бот стоял на паузе, которой не было."""
+    """Clear panic, stop_until and the LLM circuit breaker (llm_circuit_until/
+    llm_error_streak). The actions are unconditional (as before for panic/stop_until),
+    but the reply lists only what was actually set, otherwise the owner would think the
+    bot had been paused when it had not."""
     panic_was_set = await deps.db.get_state("panic") is not None
     stop_was_set = await deps.db.get_state("stop_until") is not None
     streak_before = await deps.db.get_state("llm_error_streak")
@@ -457,9 +454,9 @@ async def _cmd_resume(message: Message, deps: _CommandsDeps, now: int, user: Use
 
 
 def _llm_last_refusal(deps: _CommandsDeps, raw: str | None, now: int, tz: str) -> str:
-    """«402 в 13:28 26.10» за последние сутки, иначе «нет за сутки». «Ошибок подряд»
-    этого не покажет: 22–26.10 дешёвые модели проходили и сбрасывали серию, пока
-    основная получала 402 на каждый вызов."""
+    """ "402 at 13:28 26.10" for the last day, else "none in the last day". "Errors in a
+    row" would not show this: the cheap models kept passing and resetting the streak
+    while the main one got 402 on every call."""
     try:
         at_raw, status = (raw or "").split("|", 1)
         at = int(at_raw)
@@ -476,9 +473,9 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
 
     panic = await deps.db.get_state("panic") == "1"
     stop_until_raw = await deps.db.get_state("stop_until")
-    # Ключ stop_until после истечения никто не удаляет (гейт просто сравнивает его с now),
-    # поэтому показываем дату только пока стоп действует — иначе /status врал бы про стоп,
-    # которого уже нет (живой случай 16.09.2026).
+    # Nobody deletes the stop_until key after it expires (the gate just compares it with
+    # now), so show the date only while the stop is in force, otherwise /status would
+    # report a stop that no longer exists.
     stop_until = _t(deps, "status.none")
     if stop_until_raw is not None and int(stop_until_raw) > now:
         stop_until = local_dt(int(stop_until_raw), tz).strftime("%H:%M %d.%m")
@@ -507,8 +504,7 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
     vision_count = int(await deps.db.get_state(day_key("vision_count", now, tz)) or "0")
     vocab_line = await _vocab_status_line(deps, cfg, now)
 
-    # Потолок присутствия (CLAUDE.md, "меньше и разнообразнее", мера 1) — считается по
-    # таблицам, как в гейте, а не по state-счётчику.
+    # Presence cap: computed from the tables, as in the gate, not from a state counter.
     presence_cfg = cfg.behaviour.presence
     midnight = day_start(now, tz)
     human_today = await deps.db.count_messages_today(deps.settings.allowed_chat_id, midnight)
@@ -521,7 +517,7 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
         people=human_today,
     )
 
-    # Метрика «про себя» (CLAUDE.md, "про себя через раз") — только смотреть, ничего не режет.
+    # "About itself" metric: look only, nothing is cut.
     self_rows = await deps.db.bot_replies_between(now - _SELF_SHARE_DAYS * 86400, now + 1)
     self_line = render_self_share(
         self_share(
@@ -596,9 +592,9 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
         else _t(deps, "status.checkin_none")
     )
 
-    # Погода (CLAUDE.md, "Интерфейсы: погода"): get() может сходить в сеть, если
-    # кэш протух, — /status зовут редко, это нормально. Нет домашней точки
-    # (координаты не заданы в .env) или клиент выключен -> «погода: нет».
+    # Weather: get() may go to the network if the cache is stale; /status is called
+    # rarely, so this is fine. No home point (coordinates not set in .env) or the client
+    # is off -> "weather: none".
     weather_line = _t(deps, "status.weather_none")
     weather_client = deps.weather
     snapshot = await weather_client.get() if weather_client is not None else None
@@ -688,7 +684,7 @@ async def _cmd_status(message: Message, deps: _CommandsDeps, now: int) -> None:
 
 
 async def _vocab_status_line(deps: _CommandsDeps, cfg: Config, now: int) -> str:
-    """«словечки: 1/2 словарей (100 слов), сегодня 1/2, последнее сырюка 16.10»."""
+    """ "vocab: 1/2 dictionaries (100 words), today 1/2, last word 16.10"."""
     store = deps.vocab_store
     if store is None:
         return _t(deps, "status.vocab_none")
@@ -893,9 +889,9 @@ def _parse_int(raw: str) -> int | None:
 
 
 def _command_arg_text(raw_text: str, tokens: list[str]) -> str:
-    """Текст после команды, с исходными пробелами/переносами внутри (для /say —
-    "дословно"), только внешние пробелы срезаны. args (tokens.split()) для этого
-    не годится — схлопывает внутренние пробелы."""
+    """Text after the command, with its original inner spaces/newlines (for /say,
+    "verbatim"); only outer whitespace is stripped. args (tokens.split()) is no good
+    for this: it collapses inner whitespace."""
     if not tokens:
         return ""
     return raw_text[len(tokens[0]) :].strip()
@@ -906,7 +902,7 @@ def _is_blocked(outcome: SendOutcome) -> bool:
 
 
 def _life_outcome_text(deps: _CommandsDeps, outcome: SendOutcome) -> str:
-    """Общая часть ответа /life <текст> и /life post N после вызова announce_life."""
+    """Shared part of the reply of /life <text> and /life post N after announce_life."""
     if outcome.sent:
         return _t(deps, "commands.life_sent", text=outcome.text)
     if _is_blocked(outcome):
@@ -1030,10 +1026,10 @@ async def _cmd_memory(
     admin_user_id: int,
     args: list[str],
 ) -> None:
-    """/memory [list|rm N|run] — долгая память чата (CLAUDE.md, "долгая память чата").
+    """/memory [list|rm N|run]: long-term chat memory.
 
-    Голое /memory — это /memory list: смотреть, что бот о вас помнит, владелец
-    будет чаще, чем что-то менять.
+    A bare /memory is /memory list: the owner will look at what the bot remembers about
+    you more often than change anything.
     """
     sub = args[0].lower() if args else "list"
     if sub == "list":
@@ -1080,17 +1076,17 @@ async def _cmd_memory_rm(
         return
     await deps.db.delete_chat_memory(memory_id)
     await deps.db.audit_stop("memory:rm", admin_user_id, now, row.text)
-    logger.info("memory rm: #%s, символов %d", memory_id, len(row.text))
+    logger.info("memory rm: #%s, chars %d", memory_id, len(row.text))
     await _reply(message, _t(deps, "commands.memory_removed", id=memory_id))
 
 
 async def _cmd_diary(
     message: Message, deps: _CommandsDeps, now: int, admin_user_id: int, args: list[str]
 ) -> None:
-    """/diary [rm N] — факты о себе, достанные из реплик (CLAUDE.md, "дневник дня").
+    """/diary [rm N]: facts about itself extracted from replies.
 
-    Голое /diary — список за неделю «#N dd.mm HH:MM текст»; /diary rm N удаляет факт
-    (если модель вытащила не то, он перестаёт попадать в слот {diary})."""
+    A bare /diary lists the week as "#N dd.mm HH:MM text"; /diary rm N deletes a fact
+    (if the model pulled out the wrong thing, it stops reaching the {diary} slot)."""
     if not args:
         tz = deps.config_store.get().persona.timezone
         rows = await deps.db.self_facts_since(now - _DIARY_LIST_DAYS * 86400)
@@ -1130,8 +1126,8 @@ async def _cmd_diary(
 async def _cmd_jokes(
     message: Message, deps: _CommandsDeps, now: int, admin_user_id: int, args: list[str]
 ) -> None:
-    """/jokes [rm N] — шутки чата, которые он помнит (CLAUDE.md, "шутки чата и истории
-    людей"). /jokes rm N удаляет шутку из слота {jokes}."""
+    """/jokes [rm N]: chat jokes it remembers. /jokes rm N removes a joke from the
+    {jokes} slot."""
     rows = await deps.db.jokes(_JOKES_LIST_LIMIT)
     if not args:
         if not rows:
@@ -1171,9 +1167,9 @@ async def _cmd_jokes(
 async def _cmd_people(
     message: Message, deps: _CommandsDeps, now: int, admin_user_id: int, args: list[str]
 ) -> None:
-    """/people [rm N] — незакрытые истории людей для «ну как там?» (CLAUDE.md, "шутки
-    чата и истории людей"). Это заметки о конкретных людях: владелец видит их все и
-    может удалить любую."""
+    """/people [rm N]: unfinished people's stories for the "how did it go?" follow-up.
+    These are notes about specific people: the owner sees all of them and can delete
+    any."""
     rows = await deps.db.people_threads_all()
     if not args:
         if not rows:
@@ -1218,14 +1214,14 @@ async def _cmd_people(
 async def _cmd_memory_run(
     message: Message, deps: _CommandsDeps, now: int, admin_user_id: int
 ) -> None:
-    """Принудительный прогон, вне run_window — чтобы не ждать до ночи."""
+    """Forced run, outside run_window, so there is no waiting until night."""
     if deps.memorizer is None:
         await _reply(message, _t(deps, "commands.memory_run_off"))
         return
     await deps.db.audit_stop("memory:run", admin_user_id, now)
     tz = deps.config_store.get().persona.timezone
     created = await deps.memorizer.run_due(now=now)
-    logger.info("memory run: добавлено %d", len(created))
+    logger.info("memory run: added %d", len(created))
     if not created:
         await _reply(message, _t(deps, "commands.memory_run_none"))
         return
@@ -1271,7 +1267,7 @@ async def _cmd_say(
 
 
 def _preview_text(deps: _CommandsDeps, outcome: PreviewOutcome) -> str:
-    """Ответ на /ask: что ушло бы в чат, или почему промолчал бы."""
+    """Reply to /ask: what would go to the chat, or why it would stay silent."""
     if outcome.sent:
         lines = [_t(deps, "commands.ask_would_answer", text=outcome.text)]
         if outcome.reasons:
@@ -1301,8 +1297,8 @@ def _preview_text(deps: _CommandsDeps, outcome: PreviewOutcome) -> str:
 async def _cmd_ask(
     message: Message, deps: _CommandsDeps, user: User, raw_text: str, tokens: list[str]
 ) -> None:
-    """/ask <текст> (CLAUDE.md, "предпросмотр ответа") — что ответил бы Фёдор, если бы
-    владелец обратился к нему в чате. Ничего не отправляет и не пишет."""
+    """/ask <text>: what the persona would answer if the owner addressed it in the chat.
+    Sends and writes nothing."""
     text = normalize_text(_command_arg_text(raw_text, tokens))
     if not text:
         await _reply(message, _t(deps, "commands.ask_usage"))
@@ -1310,8 +1306,8 @@ async def _cmd_ask(
     if deps.responder is None:
         await _reply(message, _t(deps, "commands.ask_off"))
         return
-    # Имя — то, под которым владелец уже есть в контексте чата; не писал в чат —
-    # имя из Telegram через тот же sanitize, что и для сообщений.
+    # The name is the one the owner already has in the chat context; if he has not
+    # written in the chat, the Telegram name through the same sanitize as for messages.
     known = await deps.db.display_names([user.id])
     name = known.get(user.id) or sanitize_display_name(
         user.full_name, user.id, set(), frag=deps.frag
@@ -1332,9 +1328,9 @@ def _words_too_big(deps: _CommandsDeps) -> str:
 async def _cmd_words_upload(
     message: Message, deps: _CommandsDeps, store: _VocabStoreLike, now: int, admin_user_id: int
 ) -> None:
-    """Документ с подписью /words — загрузить словарь (тот же name — замена)."""
+    """A document captioned /words: upload a dictionary (the same name replaces it)."""
     document = message.document
-    assert document is not None  # гарантирует вызывающий
+    assert document is not None  # guaranteed by the caller
     if document.file_size is not None and document.file_size > _WORDS_MAX_FILE_BYTES:
         await _reply(message, _words_too_big(deps))
         return
@@ -1381,7 +1377,7 @@ def _words_usage(deps: _CommandsDeps) -> str:
 def _resolve_dict_name(
     dicts: Sequence[tuple[VocabDictRow, VocabDict | None]], name: str
 ) -> VocabDictRow | None:
-    """Имя словаря: точное совпадение, иначе единственное без учёта регистра."""
+    """Dictionary name: exact match, otherwise the only case-insensitive one."""
     exact = [row for row, _ in dicts if row.name == name]
     if exact:
         return exact[0]
@@ -1396,7 +1392,7 @@ async def _cmd_words(
     admin_user_id: int,
     args: list[str],
 ) -> None:
-    """/words — словари словечек (CLAUDE.md, "словечки из словаря")."""
+    """/words: vocabulary dictionaries."""
     store = deps.vocab_store
     if store is None:
         await _reply(message, _t(deps, "commands.words_unavailable"))
@@ -1476,11 +1472,11 @@ async def _cmd_words(
 
 
 async def _cmd_changelog(message: Message, deps: _CommandsDeps, args: list[str]) -> None:
-    """/changelog [owner|<версия>] — релиз-ноты (CLAUDE.md, "версии и changelog").
+    """/changelog [owner|<version>]: release notes.
 
-    Блок для чата — `chat_notes.md` пакета, а без него (переходное время) блок «Для чата» из
-    CHANGELOG.md пакета; блок для владельца — из CHANGELOG.md пакета. Файлы читаются при старте:
-    смена пакета это рестарт.
+    The chat block is the pack's `chat_notes.md`, or without it (transition period) the
+    "For chat" block from the pack's CHANGELOG.md; the owner block comes from the
+    pack's CHANGELOG.md. Files are read at startup: changing the pack means a restart.
     """
     persona = deps.persona
     chat_notes = persona.chat_notes if persona is not None else ""
@@ -1523,13 +1519,13 @@ async def _cmd_changelog(message: Message, deps: _CommandsDeps, args: list[str])
 
 
 def build_commands_router(deps: _CommandsDeps) -> Router:
-    """Собирает Router с одним хендлером-диспетчером команд.
+    """Build a Router with a single command-dispatcher handler.
 
-    Должен быть включён в Dispatcher ПЕРВЫМ, перед sotto.bot.build_router —
-    команды не должны попадать в гейт и в лог/БД основного хендлера. aiogram
-    сам останавливает распространение сообщения после первого хендлера, чья
-    функция вернулась без исключения, так что явного "cancel propagation" не
-    требуется — важен только порядок регистрации роутеров у интегратора.
+    Must be included in the Dispatcher FIRST, before sotto.bot.build_router: commands
+    must not reach the gate and the log/DB of the main handler. aiogram itself stops
+    propagation after the first handler whose function returned without an exception,
+    so an explicit "cancel propagation" is not needed; only the order in which the
+    integrator registers the routers matters.
     """
     router = Router(name=__name__)
 
@@ -1542,9 +1538,9 @@ def build_commands_router(deps: _CommandsDeps) -> Router:
         cmd_token = tokens[0][1:]
         if "@" in cmd_token:
             cmd_part, _, suffix = cmd_token.partition("@")
-            # Суффикс "@другой_бот" в групповых чатах Telegram рассылает команду
-            # всем ботам сразу — исполняем только адресованную нам (без учёта
-            # регистра); иначе, например, /stop@weatherbot остановил бы и нас.
+            # The "@other_bot" suffix: in Telegram group chats a command is delivered to
+            # all bots at once; execute only the one addressed to us (case-insensitive),
+            # otherwise e.g. /stop@weatherbot would stop us too.
             if suffix.lower() != deps.bot_username.lower():
                 return
             cmd = cmd_part.lower()
@@ -1575,9 +1571,9 @@ def build_commands_router(deps: _CommandsDeps) -> Router:
                     await _cmd_unmute(message, deps, now, user)
                 elif cmd == "ex" and args and args[0].lower() == "add" and _is_owner(user, deps):
                     await _cmd_ex_add(message, deps, now)
-                # Неизвестная/чужая команда в чате — молчание, без лога и без ответа.
+                # Unknown/foreign command in the chat: silence, no log and no reply.
             else:
-                assert user is not None  # гарантировано is_owner_private выше
+                assert user is not None  # guaranteed by is_owner_private above
                 admin_user_id = deps.settings.admin_user_id
                 if cmd == "panic":
                     await _cmd_panic(message, deps, now, user)

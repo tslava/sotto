@@ -60,8 +60,7 @@ def build_llm_stack(
     chat_id: int,
     bot_user_id: int,
 ) -> LlmStack:
-    # Отказ провайдера (кончились кредиты, ключ не принят) — сообщение владельцу
-    # в личку (CLAUDE.md, "Интерфейсы: тревога владельцу").
+    # Provider refusal (credits ran out, key rejected): message the owner in a DM.
     alerter = OwnerAlerter(
         bot=bot,
         db=db,
@@ -79,19 +78,16 @@ def build_llm_stack(
 
     judge = Judge(llm, config_store.get, persona.prompts["judge"], frag=persona.frag)
 
-    # Дешёвая проверка «это мне?» в горячем окне (CLAUDE.md, "внимание как
-    # у живого человека") — создаётся вместе с остальными LLM-зависимыми
-    # компонентами, как только есть ключ; enabled/model проверяются на
-    # каждом вызове, а не один раз при старте.
+    # Cheap "is this for me?" check in the hot window; created with the other
+    # LLM-dependent components as soon as there is a key; enabled/model are checked
+    # on every call, not once at startup.
     followup_prompt = persona.prompts["followup"]
-    # Дешёвый предфильтр "вернулся проверить" (CLAUDE.md, "Интерфейсы:
-    # дешёвый предфильтр для «вернулся проверить»") — тот же чекер, второй
-    # промпт: пачка сообщений вместо одного, перед основной моделью.
+    # Cheap prefilter for the "came back to check" pass: same checker, second
+    # prompt: a batch of messages instead of one, before the main model.
     checkin_prefilter_prompt = persona.prompts["checkin_prefilter"]
-    # Подтверждение обращения по имени (CLAUDE.md, "имя в падежах и
-    # проверка обращения по имени") — тот же чекер, третий промпт: имя
-    # в любом падеже нашла регулярка, а обращение это или разговор о
-    # нём в третьем лице, решает дешёвая модель.
+    # Confirmation of an address by name: same checker, third prompt. A regex finds the
+    # name in any case form; whether it is an address or talk about the bot in the
+    # third person is decided by the cheap model.
     name_check_prompt = persona.prompts["name_check"]
     followup_checker = FollowupChecker(
         llm,
@@ -102,22 +98,19 @@ def build_llm_stack(
         frag=persona.frag,
     )
 
-    # Зрение на фото (CLAUDE.md, "зрение на фото") — как и followup,
-    # создаётся вместе с остальными LLM-зависимыми компонентами; enabled и
-    # модель проверяются на каждом снимке, а не один раз при старте.
+    # Photo vision: like followup, created with the other LLM-dependent components;
+    # enabled and model are checked on every photo, not once at startup.
     vision_prompt = persona.prompts["vision"]
     vision = VisionDescriber(llm, config_store.get, vision_prompt, frag=persona.frag)
 
-    # Выбор реакции моделью (CLAUDE.md, "реакции с задержкой и смыслом") —
-    # как followup и зрение, создаётся при наличии ключа; модель и
-    # semantic проверяются на каждом вызове, а не один раз при старте.
+    # Model-based reaction choice: like followup and vision, created when there is a
+    # key; model and semantic are checked on every call, not once at startup.
     reaction_prompt = persona.prompts["reaction"]
     reaction_chooser = ReactionChooser(llm, config_store.get, reaction_prompt, frag=persona.frag)
 
-    # Каталог стикеров — офлайн-файл (CLAUDE.md, "Интерфейсы: стикеры"),
-    # правится stickers_fill.py и владельцем руками. Пустой/отсутствующий
-    # файл -> пустой каталог, чузер не создаётся, всё остальное работает
-    # как раньше (Responder.sticker_chooser=None).
+    # Sticker catalog is an offline file, edited by stickers_fill.py and by the owner
+    # by hand. An empty/missing file -> empty catalog, no chooser is created, everything
+    # else works as before (Responder.sticker_chooser=None).
     catalog = load_catalog(persona.stickers_path)
     sticker_catalog_enabled = sum(1 for sticker in catalog.stickers if sticker.enabled)
     sticker_chooser: StickerChooser | None = None
@@ -127,13 +120,11 @@ def build_llm_stack(
             llm, config_store.get, catalog, sticker_prompt, frag=persona.frag
         )
 
-    # Долгая память чата (CLAUDE.md, "долгая память чата"): фоновый таск
-    # раз в час смотрит, попало ли локальное время в run_window, и
-    # пересказывает завершённые периоды. enabled проверяется на каждом
-    # заходе, а не один раз при старте — /set включает без рестарта.
+    # Long-term chat memory: a background task checks once an hour whether local time
+    # is inside run_window and summarizes completed periods. enabled is checked on
+    # every pass, not once at startup, so /set enables it without a restart.
     memory_prompt = persona.prompts["memory"]
-    # Два дополнительных вызова недельного пересказа: шутки чата и незакрытые
-    # истории людей (CLAUDE.md, "шутки чата и истории людей").
+    # Two extra calls of the weekly summary: chat jokes and unfinished stories of people.
     jokes_prompt = persona.prompts["memory_jokes"]
     threads_prompt = persona.prompts["memory_threads"]
     memorizer = ChatMemorizer(
@@ -147,14 +138,13 @@ def build_llm_stack(
         patterns_getter=config_store.patterns,
     )
 
-    # Место из вопроса про погоду достаёт дешёвая модель (CLAUDE.md,
-    # "погода в другом месте") — как followup и зрение, создаётся при
-    # наличии ключа; модель и place_lookup проверяются на каждом вызове.
+    # The place from a weather question is extracted by the cheap model, like followup
+    # and vision; created when there is a key; model and place_lookup are checked per call.
     weather_place_prompt = persona.prompts["weather_place"]
     weather_places = WeatherPlaceExtractor(llm, config_store.get, weather_place_prompt)
 
-    # Дневник дня (CLAUDE.md, "дневник дня"): дешёвое извлечение факта о себе
-    # из каждой своей текстовой реплики; модель и enabled — на каждом вызове.
+    # Daily diary: cheap extraction of a fact about itself from each own text reply;
+    # model and enabled are checked on every call.
     diary_prompt = persona.prompts["diary"]
     diary = DiaryExtractor(llm, config_store.get, diary_prompt)
 
@@ -174,9 +164,8 @@ def build_llm_stack(
         rng=rng,
         chat_id=chat_id,
         bot_user_id=bot_user_id,
-        # Та же дешёвая проверка "это мне?", что и в горячем окне: Responder
-        # перепроверяет ею строку, которую выбрал checkin (CLAUDE.md, "меньше
-        # и разнообразнее", мера 3).
+        # The same cheap "is this for me?" check as in the hot window: Responder
+        # rechecks with it the line chosen by checkin.
         followup=followup_checker,
         persona=persona,
         frag=persona.frag,

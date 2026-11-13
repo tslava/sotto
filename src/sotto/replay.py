@@ -1,51 +1,51 @@
-"""Реплей гейта (и, с ``--generate``, полного пайплайна) на истории чата.
+"""Replay the gate (and, with ``--generate``, the full pipeline) on chat history.
 
 ``python -m sotto.replay <result.json|bot.db> [--config config.yaml] [--seed 1]
   [--bot-username example_persona_bot] [--bot-user-id 0] [--verbose]
   [--from-db] [--chat-id ID] [--since YYYY-MM-DD] [--until YYYY-MM-DD]
   [--generate [--judge] [--max-calls 20]]``
 
-``source`` — либо ``result.json`` (выгрузка Telegram Desktop), либо база самого бота
-(``bot.db``/``*.sqlite``/``*.sqlite3`` по расширению, либо любой путь с ``--from-db``) —
-для случаев, когда владелец не может выгрузить историю (в группе запрет на сохранение
-контента). Для базы читается таблица ``messages`` напрямую, одним read-only SELECT через
-sqlite3 URI ``mode=ro`` — без ``Database.connect()``/``migrate()``, живой файл и его WAL
-не трогаются. Чат выбирается ``--chat-id`` либо единственным ``chat_id`` в таблице
-(несколько — ошибка с подсказкой). Сообщения бота (``is_bot=1``) остаются в потоке;
-``--bot-user-id``, если не задан явно, берётся из их ``user_id`` автоматически.
-``--since``/``--until`` (локальная дата ``persona.timezone``) отсекают историю по обеим
-границам и работают для обоих источников.
+``source`` is either ``result.json`` (a Telegram Desktop export) or the bot's own
+database (``bot.db``/``*.sqlite``/``*.sqlite3`` by extension, or any path with
+``--from-db``), for cases where the owner cannot export the history (the group forbids
+saving content). For a database the ``messages`` table is read directly with a single
+read-only SELECT through a sqlite3 ``mode=ro`` URI, without ``Database.connect()``/
+``migrate()``, so the live file and its WAL are not touched. The chat is chosen by
+``--chat-id`` or by the only ``chat_id`` in the table (several is an error with a
+hint). Bot messages (``is_bot=1``) stay in the stream; ``--bot-user-id``, if not given
+explicitly, is taken from their ``user_id`` automatically.
+``--since``/``--until`` (a local date in ``persona.timezone``) cut the history at both
+ends and work for both sources.
 
-Без ``--generate`` прогоняет ``gate.should_consider`` по каждому сообщению истории
-с in-memory состоянием (без sqlite, ничего не отправляет и никуда не пишет). При PASS
-считает, что ответ отправлен — иначе дневные лимиты и кулдауны не проверить
-(см. PLAN.md, этап 2, "Реплей — здесь, а не в этапе 8").
+Without ``--generate`` it runs ``gate.should_consider`` over every history message
+with in-memory state (no sqlite, nothing is sent or written anywhere). On PASS it
+assumes the reply was sent, since otherwise daily limits and cooldowns cannot be checked.
 
-С ``--generate`` (PLAN.md/CLAUDE.md, этап 4) на каждом PASS дополнительно вызывается
-тот же путь генерации, что у ``Responder._generate_and_send``: свежий контекст —
-последние ``context_window`` сообщений экспорта до текущего, ``recent_replies`` —
-уже сгенерированные в этом прогоне реплики, ``build_messages`` -> ``LLMClient.call``
-(настоящий HTTP-вызов OpenRouter, ключ из ``Settings().openrouter_api_key``) ->
-``parse_reply`` -> ``filters.check_output`` с полным ``FilterContext`` (судья — только
-при ``--judge``). Ничего не отправляется и не пишется в постоянную БД: состояние
-LLM-бюджетов (``llm_calls``/``llm_spent_usd``/circuit) живёт в ``InMemoryStateStore``
-только на время прогона, но лимиты из конфига (``daily_calls_cap``, ``daily_budget_usd``,
-предохранитель) при этом действуют по-настоящему — плюс собственный жёсткий потолок
-``--max-calls`` на сам прогон, не тратить бюджет впустую при повторных запусках.
+With ``--generate`` every PASS additionally calls the same generation path as
+``Responder._generate_and_send``: fresh context is the last ``context_window``
+messages of the export before the current one, ``recent_replies`` are the replies
+already generated in this run, ``build_messages`` -> ``LLMClient.call`` (a real
+OpenRouter HTTP call, key from ``Settings().openrouter_api_key``) -> ``parse_reply``
+-> ``filters.check_output`` with a full ``FilterContext`` (the judge only with
+``--judge``). Nothing is sent or written to the persistent DB: LLM budget state
+(``llm_calls``/``llm_spent_usd``/circuit) lives in ``InMemoryStateStore`` only for the
+duration of the run, but the config limits (``daily_calls_cap``, ``daily_budget_usd``,
+the circuit breaker) apply for real, plus a hard cap of its own, ``--max-calls``, on
+the run itself so repeated runs do not waste budget.
 
-``--max-calls`` считается по РЕАЛЬНЫМ сетевым вызовам (основная модель + судья), а не
-по числу PASS с генерацией: перед каждым PASS-генерацией читаем ``llm_calls`` для
-текущего дня из ``InMemoryStateStore`` и, если он уже ``>= max_calls``, генерацию не
-запускаем (счёт по дням гейта при этом продолжается как обычно). Проверка идёт до
-вызова, поэтому сама срабатывающая генерация может увеличить счётчик ещё на основной
-вызов и, если слои 1-2 прошли или включён shadow, на вызов судьи — превышение
-``max_calls`` максимум на один судейский вызов допустимо и не является багом. В
-итоговой строке отчёта печатается фактическое число сетевых вызовов из стора
-(``InMemoryStateStore.total_llm_calls()``), не число попыток генерации.
+``--max-calls`` counts REAL network calls (main model + judge), not the number of
+PASSes with generation: before each PASS generation we read ``llm_calls`` for the
+current day from ``InMemoryStateStore`` and, if it is already ``>= max_calls``, skip
+generation (gate counting by day continues as usual). The check happens before the
+call, so the generation that triggers it can raise the counter by one more main call
+and, if layers 1-2 passed or shadow is on, by a judge call; exceeding ``max_calls`` by
+at most one judge call is allowed and is not a bug. The final report line prints the
+actual number of network calls from the store
+(``InMemoryStateStore.total_llm_calls()``), not the number of generation attempts.
 
-``gate.py`` и ``patterns.py`` изначально писались параллельно другими агентами — импорт
-внутри ``_run_replay_async()`` оставлен ленивым по той же причине (исторически, чтобы
-тесты парсера экспорта не падали до их появления).
+``gate.py`` and ``patterns.py`` were originally written in parallel by other agents;
+the import inside ``_run_replay_async()`` stays lazy for the same reason (historically,
+so the export parser tests did not fail before they existed).
 """
 
 from __future__ import annotations
@@ -95,17 +95,17 @@ _TEXT_TRUNCATE_LEN = 120
 _TOP_DROP_REASONS = 5
 _DB_EXTENSIONS = {".db", ".sqlite", ".sqlite3"}
 
-# FilterContext.recent_replies — последние 50 реплик (CLAUDE.md, "Интерфейсы этапа 4"),
-# независимо от cfg.behaviour.recent_replies_memory, которым ограничен {recent_replies}
-# в самом промпте генерации — см. тот же приём в responder.py.
+# FilterContext.recent_replies is the last 50 replies, regardless of
+# cfg.behaviour.recent_replies_memory, which limits {recent_replies} in the generation
+# prompt itself; see the same technique in responder.py.
 _FILTER_RECENT_REPLIES = 50
 
 
 class ReplayState:
-    """In-memory снимок состояния гейта для реплея — без sqlite, без gate/patterns.
+    """In-memory snapshot of gate state for replay, without sqlite, gate or patterns.
 
-    Отдельный класс, чтобы окно ``recent`` и инкремент счётчиков были
-    тестируемы без модулей gate.py/patterns.py.
+    A separate class so the ``recent`` window and counter increments are testable
+    without the gate.py/patterns.py modules.
     """
 
     def __init__(self, tz: str, window_min: int) -> None:
@@ -123,7 +123,7 @@ class ReplayState:
         self._recent: deque[RecentActivity] = deque()
 
     def push_recent(self, user_id: int, created_at: int) -> None:
-        """Добавить не-бот сообщение в окно live_talk и выкинуть устаревшие."""
+        """Add a non-bot message to the live_talk window and drop stale ones."""
         self._recent.append(RecentActivity(user_id=user_id, created_at=created_at))
         self._prune_recent(created_at)
 
@@ -153,13 +153,13 @@ class ReplayState:
         )
 
     def apply_state_changes(self, changes: Iterable[StateChange]) -> None:
-        """Единственный StateChange гейта этапа 2 — topic_cooldown_until."""
+        """The gate's only StateChange is topic_cooldown_until."""
         for change in changes:
             if change.key == "topic_cooldown_until":
                 self.topic_cooldown_until = None if change.value is None else int(change.value)
 
     def apply_pass(self, trigger: Trigger, msg: GateMessage, now: int) -> None:
-        """PASS => считаем ответ отправленным: инкремент счётчиков и last_*_at."""
+        """PASS => count the reply as sent: increment counters and last_*_at."""
         if trigger in (Trigger.MENTION, Trigger.REPLY, Trigger.NAME):
             key = day_key("mention_count", now, self.tz)
             self.mention_count[key] = self.mention_count.get(key, 0) + 1
@@ -202,11 +202,11 @@ class DayStats:
 
 @dataclass
 class GenerateStats:
-    """Счётчики прогона ``--generate``: вызовы, что было бы отправлено, срезы, цена.
+    """Counters of a ``--generate`` run: calls, what would be sent, cuts, cost.
 
-    ``calls`` заполняется в конце прогона из ``InMemoryStateStore.total_llm_calls()`` —
-    реальное число сетевых вызовов (основная модель + судья), а не число PASS, для
-    которых была запущена генерация (см. ``--max-calls`` в докстринге модуля).
+    ``calls`` is filled at the end of the run from ``InMemoryStateStore.total_llm_calls()``:
+    the real number of network calls (main model + judge), not the number of PASSes for
+    which generation was started (see ``--max-calls`` in the module docstring).
     """
 
     calls: int = 0
@@ -219,12 +219,12 @@ class GenerateStats:
 
 
 class InMemoryStateStore:
-    """In-memory реализация ``llm._StateStore`` для ``LLMClient`` в реплее.
+    """In-memory implementation of ``llm._StateStore`` for ``LLMClient`` in replay.
 
-    ``day_key()``-счётчики (llm_calls/llm_spent_usd, error streak, circuit) живут
-    только в памяти прогона, без sqlite — но бюджеты из конфига (daily_calls_cap,
-    daily_budget_usd, предохранитель) при этом действуют по-настоящему, ровно как
-    в реальном ``Database``.
+    ``day_key()`` counters (llm_calls/llm_spent_usd, error streak, circuit) live only in
+    the run's memory, without sqlite, but config budgets (daily_calls_cap,
+    daily_budget_usd, the circuit breaker) apply for real, exactly as in the real
+    ``Database``.
     """
 
     def __init__(self) -> None:
@@ -249,21 +249,21 @@ class InMemoryStateStore:
         return new_value
 
     async def llm_calls_for_day(self, now: int, tz: str) -> int:
-        """``llm_calls`` для суток ``now`` (по ``persona.timezone``) — используется
-        ``--max-calls`` перед каждой новой PASS-генерацией."""
+        """``llm_calls`` for the day of ``now`` (by ``persona.timezone``); used by
+        ``--max-calls`` before each new PASS generation."""
         raw = await self.get_state(day_key("llm_calls", now, tz))
         return int(raw) if raw is not None else 0
 
     def total_llm_calls(self) -> int:
-        """Сумма ``llm_calls:<день>`` по всем суткам прогона — реальное число сетевых
-        вызовов (основная модель + судья), независимо от того, сколько дней покрывает
-        экспорт. Используется для финальной строки отчёта."""
+        """Sum of ``llm_calls:<day>`` over all days of the run: the real number of network
+        calls (main model + judge), regardless of how many days the export covers.
+        Used for the final report line."""
         return sum(int(value) for key, value in self._state.items() if key.startswith("llm_calls:"))
 
 
 @dataclass
 class _GenerateContext:
-    """Всё, что нужно генерации на протяжении прогона: клиент, судья, шаблоны, стор."""
+    """Everything generation needs during the run: client, judge, templates, store."""
 
     llm: LLMClient
     judge: Judge | None
@@ -274,7 +274,7 @@ class _GenerateContext:
 
 
 def _unique_participant_names(context_rows: list[MessageRow]) -> list[str]:
-    """Уникальные display_name не-ботов из context_rows, в порядке первого появления."""
+    """Unique non-bot display_names from context_rows, in order of first appearance."""
     names: list[str] = []
     seen: set[str] = set()
     for row in context_rows:
@@ -286,10 +286,10 @@ def _unique_participant_names(context_rows: list[MessageRow]) -> list[str]:
 
 
 def _build_generate_context(cfg: Config, use_judge: bool, persona: Persona) -> _GenerateContext:
-    """Собирает LLMClient (+ судью, если ``--judge``) для прогона ``--generate``.
+    """Build an LLMClient (+ a judge with ``--judge``) for a ``--generate`` run.
 
-    Ключ — из ``Settings().openrouter_api_key`` (тот же .env, что у самого бота).
-    Нет ключа -> понятная ошибка вместо невнятного сбоя внутри LLMClient.
+    The key comes from ``Settings().openrouter_api_key`` (the same .env as the bot).
+    No key -> a clear error instead of an obscure failure inside LLMClient.
     """
     settings = Settings()
     if settings.openrouter_api_key is None:
@@ -325,11 +325,11 @@ def _build_generate_context(cfg: Config, use_judge: bool, persona: Persona) -> _
 
 
 def situation_for(trigger: Trigger, *, frag: Fragments) -> str:
-    """Ситуация для генерации в реплее — как у Responder для того же триггера.
+    """Situation for generation in replay, as in Responder for the same trigger.
 
-    Ambient получает ``situations.ambient`` (CLAUDE.md, "про себя через раз"), иначе
-    реплей проверял бы старую форму промпта. Обращения в реплее по-прежнему без
-    ``situation_addressed`` — известное упрощение реплея.
+    Ambient gets ``situations.ambient``, otherwise replay would test an old prompt
+    shape. Addresses in replay still go without ``situation_addressed``, a known
+    simplification of replay.
     """
     return frag.text("situations.ambient") if trigger is Trigger.AMBIENT else ""
 
@@ -346,14 +346,14 @@ async def _generate_one(
     stats: GenerateStats,
     patterns: Patterns,
 ) -> str:
-    """Один PASS с включённым ``--generate``: генерация + выходной фильтр.
+    """One PASS with ``--generate`` on: generation + output filter.
 
-    Возвращает готовую строку отчёта: "время | имя | триггер | сообщение → реплика | вердикт".
-    По тому же пути, что ``Responder._generate_and_send``: настоящий вызов LLM, затем
-    ``filters.check_output`` с полным ``FilterContext``. Ничего не отправляется — только
-    печатается и учитывается в ``stats``. Реальное число сетевых вызовов считается не
-    здесь, а из ``ctx.store.total_llm_calls()`` в конце прогона (``stats.calls``,
-    см. докстринг модуля про ``--max-calls``).
+    Returns the finished report line: "time | name | trigger | message -> reply | verdict".
+    By the same path as ``Responder._generate_and_send``: a real LLM call, then
+    ``filters.check_output`` with a full ``FilterContext``. Nothing is sent, only
+    printed and counted in ``stats``. The real number of network calls is counted not
+    here but from ``ctx.store.total_llm_calls()`` at the end of the run (``stats.calls``,
+    see the module docstring about ``--max-calls``).
     """
     when = local_dt(exported.created_at, tz).strftime("%Y-%m-%d %H:%M:%S")
     trigger_text = (
@@ -409,7 +409,7 @@ async def _generate_one(
         places_names=[],
         participant_names=participant_names,
         bot_names=bot_names,
-        muted_names=[],  # /mute не симулируется в реплее
+        muted_names=[],  # /mute is not simulated in replay
         patterns=patterns,
         system_prompt=ctx.prompt_template,
         trigger_text=trigger_text,
@@ -427,7 +427,7 @@ async def _generate_one(
     for reason in reasons:
         stats.record_cut(reason)
     if cfg.filters.shadow:
-        # shadow: считает и режет только в отчёте, реально отправил бы.
+        # shadow: counts and cuts only in the report; it would really have sent it.
         stats.would_send += 1
         generated_replies.append(reply.text)
     return _line(reply.text, ", ".join(reasons))
@@ -438,8 +438,8 @@ def _is_db_source(source: Path, from_db: bool) -> bool:
 
 
 def _row_to_export_message(row: sqlite3.Row) -> ExportMessage | None:
-    """``messages`` row -> ``ExportMessage``, либо ``None`` при отсутствии обязательных
-    полей (не должно случаться на боевой базе, но реплей — не место падать из-за этого)."""
+    """``messages`` row -> ``ExportMessage``, or ``None`` when required fields are
+    missing (should not happen on a production DB, but replay is no place to crash over it)."""
     tg_message_id, user_id, created_at = row["tg_message_id"], row["user_id"], row["created_at"]
     if tg_message_id is None or user_id is None or created_at is None:
         logger.warning("replay: skipping db message row missing a required field: %r", tuple(row))
@@ -456,16 +456,16 @@ def _row_to_export_message(row: sqlite3.Row) -> ExportMessage | None:
 
 
 def _read_db_messages(db_path: Path, chat_id: int | None) -> tuple[list[ExportMessage], int]:
-    """Читает историю из базы бота: один read-only SELECT по ``messages``, без
-    ``Database``/``connect()``/``migrate()`` — sqlite3 URI ``mode=ro`` гарантирует, что
-    живой файл (и его WAL) не тронут.
+    """Read history from the bot's database: one read-only SELECT over ``messages``,
+    without ``Database``/``connect()``/``migrate()``; the sqlite3 ``mode=ro`` URI
+    guarantees the live file (and its WAL) is untouched.
 
-    Возвращает (сообщения, bot_user_id) — ``bot_user_id`` вычислен из строк с
-    ``is_bot=1`` (самый частый ``user_id`` среди них), 0 если таких строк нет;
-    вызывающий код использует его, только если ``--bot-user-id`` не задан явно.
+    Returns (messages, bot_user_id): ``bot_user_id`` is derived from rows with
+    ``is_bot=1`` (the most frequent ``user_id`` among them), 0 if there are none;
+    the caller uses it only if ``--bot-user-id`` is not given explicitly.
 
-    ``chat_id=None`` -> берётся единственный ``chat_id`` из таблицы; несколько разных —
-    ``ValueError`` с подсказкой использовать ``--chat-id``.
+    ``chat_id=None`` -> the only ``chat_id`` in the table is used; several different
+    ones -> ``ValueError`` with a hint to use ``--chat-id``.
     """
     if not db_path.exists():
         raise FileNotFoundError(f"{db_path}: database file not found")
@@ -519,10 +519,10 @@ def _parse_date_arg(value: str) -> date:
 def _filter_by_date_range(
     messages: list[ExportMessage], tz: str, since: date | None, until: date | None
 ) -> list[ExportMessage]:
-    """Отсекает сообщения вне [--since, --until] по локальной дате (persona.timezone).
+    """Drop messages outside [--since, --until] by local date (persona.timezone).
 
-    ``since`` — с 00:00 этого дня включительно; ``until`` — по конец этого дня
-    включительно (до 00:00 следующего).
+    ``since`` is from 00:00 of that day inclusive; ``until`` is through the end of that
+    day inclusive (up to 00:00 of the next).
     """
     if since is not None:
         since_ts = int(datetime.combine(since, time.min, tzinfo=ZoneInfo(tz)).timestamp())
@@ -538,10 +538,10 @@ def _filter_by_date_range(
 def _load_messages(
     args: argparse.Namespace, cfg: Config, frag: Fragments
 ) -> tuple[list[ExportMessage], int]:
-    """Сообщения источника (``result.json`` либо база бота) + эффективный bot_user_id.
+    """Messages of the source (``result.json`` or the bot's database) + effective bot_user_id.
 
-    Для базы бота ``--bot-user-id``, если не задан (0), берётся автоматически из строк
-    ``is_bot=1``. ``--since``/``--until`` применяются к обоим источникам одинаково.
+    For the bot's database ``--bot-user-id``, if not given (0), is taken automatically
+    from the ``is_bot=1`` rows. ``--since``/``--until`` apply to both sources alike.
     """
     source = Path(args.source)
     from_db = bool(getattr(args, "from_db", False))
@@ -655,8 +655,9 @@ def _truncate(text: str, limit: int = _TEXT_TRUNCATE_LEN) -> str:
 
 
 async def _run_replay_async(args: argparse.Namespace) -> str:
-    # gate.py исторически писался параллельно — ленивый импорт (см. докстринг модуля).
-    # patterns.py импортируется на уровне модуля (нужен и для типа Patterns в _generate_one).
+    # gate.py was written in parallel historically, hence the lazy import (see the module
+    # docstring).
+    # patterns.py is imported at module level (also needed for the Patterns type in _generate_one).
     from sotto.gate import should_consider
 
     generate = bool(getattr(args, "generate", False))
@@ -665,7 +666,7 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
 
     persona_arg = getattr(args, "persona", None)
     config_arg = getattr(args, "config", None)
-    # Пакет нужен всегда: плейсхолдеры медиа и имя-заглушка берутся из его фрагментов.
+    # The pack is always needed: media placeholders and the stub name come from its fragments.
     persona = load_persona(Path(persona_arg)) if persona_arg is not None else persona_from_env()
     if config_arg is not None:
         cfg = load_config([default_config_layer(persona.lang), Path(config_arg)])
@@ -761,13 +762,12 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
                         f"{_truncate(exported.text)}"
                     )
                 if gen_ctx is not None:
-                    # Потолок --max-calls — по РЕАЛЬНЫМ сетевым вызовам (основная модель
-                    # + судья), не по числу PASS: читаем llm_calls для суток этого
-                    # сообщения из стора перед тем, как решить, генерировать ли ещё.
-                    # Проверка — до вызова, поэтому сама генерация ниже может увеличить
-                    # счётчик ещё на один (основной) или два (основной + судья) вызова —
-                    # допустимое превышение max_calls максимум на один судейский вызов,
-                    # см. докстринг модуля.
+                    # The --max-calls cap counts REAL network calls (main model + judge),
+                    # not the number of PASSes: read llm_calls for this message's day
+                    # from the store before deciding whether to generate more. The check
+                    # is before the call, so the generation below may raise the counter
+                    # by one (main) or two (main + judge) more calls: exceeding max_calls
+                    # by at most one judge call is allowed, see the module docstring.
                     calls_so_far = await gen_ctx.store.llm_calls_for_day(
                         exported.created_at, cfg.persona.timezone
                     )
@@ -794,8 +794,8 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
                 bot_message_ids.add(exported.tg_message_id)
     finally:
         if gen_ctx is not None:
-            # Реальное число сетевых вызовов за весь прогон (не число PASS-генераций) —
-            # печатается в итоговой строке отчёта.
+            # Real number of network calls for the whole run (not the number of PASS
+            # generations); printed in the report's final line.
             gen_stats.calls = gen_ctx.store.total_llm_calls()
             await gen_ctx.llm.aclose()
 
@@ -809,7 +809,7 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
 
 
 def run_replay(args: argparse.Namespace) -> str:
-    """Прогоняет гейт (и, с ``--generate``, генерацию) по экспорту, возвращает отчёт."""
+    """Run the gate (and, with ``--generate``, generation) over the export; return the report."""
     return asyncio.run(_run_replay_async(args))
 
 

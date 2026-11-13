@@ -1,9 +1,9 @@
-"""Состояние, которое меняется на горячую: конфиг (этап 6) и промпт/few-shot версии.
+"""State that changes hot: config and prompt/few-shot versions.
 
-ConfigStore держит текущий Config (yaml + config_overrides из БД) и пересобранный
-Patterns; PromptStore держит активную версию системного промпта и few-shot,
-подгружая их из БД, с сидом из файлов на первом старте. Оба переживают рестарт
-через БД — источник истины после сида всегда она, не файлы.
+ConfigStore holds the current Config (yaml + config_overrides from the DB) and the
+rebuilt Patterns; PromptStore holds the active system prompt and few-shot version,
+loading them from the DB and seeding from files on first start. Both survive a restart
+through the DB, which after seeding is always the source of truth, not the files.
 """
 
 from __future__ import annotations
@@ -33,11 +33,11 @@ def _rebuild_patterns(cfg: Config, bot_username: str, persona: Persona) -> Patte
 
 
 def _first_error_message(exc: ValueError, key: str) -> str:
-    """Понятный текст ошибки: убирает обёртку load_config и дублирование ключа.
+    """Readable error text: strips the load_config wrapper and key duplication.
 
-    load_config при ValidationError отдаёт "invalid config: loc1: msg1; loc2: msg2";
-    при неизвестном ключе/невалидном YAML — плоский текст без такой обёртки. В обоих
-    случаях берём первое сообщение и, если оно само начинается с key, не повторяем его.
+    On ValidationError load_config gives "invalid config: loc1: msg1; loc2: msg2";
+    for an unknown key/invalid YAML it gives plain text without the wrapper. In both
+    cases take the first message and, if it already starts with key, do not repeat it.
     """
     message = str(exc)
     prefix = "invalid config: "
@@ -50,7 +50,7 @@ def _first_error_message(exc: ValueError, key: str) -> str:
 
 
 def _parse_few_shot_yaml(body_yaml: str) -> list[FewShot]:
-    """Парсер few-shot из текста YAML — то же, что load_few_shot, но без чтения файла."""
+    """Few-shot parser from YAML text: like load_few_shot but without reading a file."""
     loaded = yaml.safe_load(body_yaml)
     if loaded is None:
         return []
@@ -60,7 +60,7 @@ def _parse_few_shot_yaml(body_yaml: str) -> list[FewShot]:
 
 
 class ConfigStore:
-    """Config.yaml + config_overrides из БД, с горячим /set и пересобираемым Patterns."""
+    """Config.yaml + config_overrides from the DB, with hot /set and a rebuilt Patterns."""
 
     def __init__(self, persona: Persona, db: Database) -> None:
         self._persona = persona
@@ -70,9 +70,9 @@ class ConfigStore:
         self.current: Config = Config()
         self._base: Config = Config()
         self._patterns = _rebuild_patterns(self.current, self._bot_username, self._persona)
-        # Сериализует load/set/unset: без лока два параллельных /set (или /set и
-        # рестарт-load) могли бы прочитать один и тот же снимок _overrides, оба
-        # пройти валидацию и один из override'ов потерять при записи self.current.
+        # Serializes load/set/unset: without the lock two parallel /set calls (or /set
+        # and a restart load) could read the same _overrides snapshot, both pass
+        # validation, and one override would be lost when writing self.current.
         self._lock = asyncio.Lock()
 
     async def load(self) -> Config:
@@ -80,9 +80,9 @@ class ConfigStore:
             return await self._load_locked()
 
     async def _load_locked(self) -> Config:
-        """Тело load() без захвата self._lock — для вызова из set()/unset(), уже
-        держащих его. asyncio.Lock не реентерабелен: повторный load() внутри
-        set() дедлокнул бы корутину."""
+        """Body of load() without taking self._lock, for set()/unset() which already
+        hold it. asyncio.Lock is not reentrant: a nested load() inside set() would
+        deadlock the coroutine."""
         overrides = await self._db.get_overrides()
         layers = self._persona.config_layers()
         cfg = load_config(layers, overrides)
@@ -193,7 +193,7 @@ def build_seed_plan(
 
 
 class PromptStore:
-    """Активные версии системного промпта и few-shot, с сидом из файлов при старте."""
+    """Active system prompt and few-shot versions, seeded from files at startup."""
 
     def __init__(self, persona: Persona, db: Database) -> None:
         self._persona = persona
@@ -202,26 +202,26 @@ class PromptStore:
         self._prompt_body = ""
         self._few_shot_version = 0
         self._few_shot_body_yaml = ""
-        # Сериализует load/rollback_prompt/add_example/remove_example: без лока два
-        # параллельных /ex add могли бы оба прочитать один и тот же self.examples()
-        # и один добавленный пример потерять при записи новой версии few-shot.
+        # Serializes load/rollback_prompt/add_example/remove_example: without the lock
+        # two parallel /ex add calls could both read the same self.examples() and one
+        # added example would be lost when writing the new few-shot version.
         self._lock = asyncio.Lock()
 
     async def load(self) -> None:
-        """Сид версии из файла, только если файл не совпадает ни с одной сохранённой версией.
+        """Seed a version from the file only if it matches no saved version.
 
-        Раньше тело файла сравнивалось только с активной версией в БД — после
-        `/rollback 1` файл на диске (тело v2) отличается от новой активной (v1),
-        и следующий `load()` (например, при рестарте) засеял бы v3 из файла и тем
-        самым отменил откат. Сравнение со ВСЕМИ сохранёнными версиями (после strip)
-        устраняет это: если тело файла совпадает с любой существующей версией,
-        новая не заводится, активной остаётся та, что активна в БД сейчас.
+        The file body used to be compared only with the active DB version: after
+        `/rollback 1` the file on disk (the v2 body) differs from the new active one (v1),
+        and the next `load()` (e.g. on restart) would seed v3 from the file and thereby
+        undo the rollback. Comparing against ALL saved versions (after strip) fixes this:
+        if the file body equals any existing version, no new one is created and the one
+        active in the DB stays active.
         """
         async with self._lock:
             await self._load_locked()
 
     async def plan_seed(self) -> SeedPlan:
-        """Решение сида без записи: то же, что сделает load() (read-only для БД)."""
+        """Seed decision without writing: what load() would do (read-only for the DB)."""
         prompt_active = await self._db.active_prompt()
         few_shot_active = await self._db.active_few_shot()
         return build_seed_plan(
@@ -247,7 +247,7 @@ class PromptStore:
             self._prompt_body = file_prompt
         else:
             active_prompt = await self._db.active_prompt()
-            assert active_prompt is not None  # есть версии -> есть активная
+            assert active_prompt is not None  # versions exist -> an active one exists
             self._prompt_version, self._prompt_body = active_prompt
 
         file_few_shot = self._few_shot_file_text()
@@ -257,7 +257,7 @@ class PromptStore:
             self._few_shot_body_yaml = file_few_shot
         else:
             active_few_shot = await self._db.active_few_shot()
-            assert active_few_shot is not None  # есть версии -> есть активная
+            assert active_few_shot is not None  # versions exist -> an active one exists
             self._few_shot_version, self._few_shot_body_yaml = active_few_shot
 
     def system_prompt(self) -> str:
@@ -276,11 +276,11 @@ class PromptStore:
         async with self._lock:
             ok = await self._db.activate_prompt(version)
             if ok:
-                # Перечитываем активную версию напрямую из БД, а не через полный
-                # load(): load() уже само по себе не заводит версию при откате
-                # (сравнивает файл со ВСЕМИ сохранёнными версиями, не только с
-                # активной), но незачем лишний раз читать файл с диска ради
-                # переключения на уже известное тело версии.
+                # Re-read the active version straight from the DB rather than through a
+                # full load(): load() already creates no version on a rollback (it
+                # compares the file with ALL saved versions, not only the active one),
+                # but there is no need to read the file from disk just to switch to an
+                # already known version body.
                 active_prompt = await self._db.active_prompt()
                 if active_prompt is not None:
                     self._prompt_version, self._prompt_body = active_prompt

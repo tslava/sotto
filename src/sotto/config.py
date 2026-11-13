@@ -1,4 +1,4 @@
-"""Загрузка config.yaml с применением плоских overrides из БД (config_overrides)."""
+"""Load config.yaml and apply flat overrides from the DB (config_overrides)."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -26,7 +26,7 @@ class ConfigError(ValueError):
 
 @dataclass(frozen=True)
 class KeyInfo:
-    """Карточка одного ключа конфига для /get <ключ> (CLAUDE.md, «справка по ключам»)."""
+    """Card of one config key for /get <key>."""
 
     key: str
     value: str
@@ -39,7 +39,7 @@ class KeyInfo:
 
 
 def _resolve_field_annotation(model: type[BaseModel], parts: list[str], full_key: str) -> Any:
-    """Проверяет, что путь parts существует в модели, и возвращает аннотацию листа."""
+    """Check that the path parts exists in the model and return the leaf annotation."""
     field_name = parts[0]
     fields = model.model_fields
     if field_name not in fields:
@@ -57,11 +57,11 @@ def _resolve_field_annotation(model: type[BaseModel], parts: list[str], full_key
 
 
 def _convert_override_value(annotation: Any, raw_value: str, key: str) -> Any:
-    """Строка -> питоновское значение. Списки/bool идут через yaml.safe_load,
-    остальное остаётся строкой и приводится типом самим pydantic."""
+    """String -> Python value. Lists/bool go through yaml.safe_load; anything else
+    stays a string and is coerced by pydantic itself."""
     origin = get_origin(annotation)
-    # dict — ради filters.motifs («метка -> список регулярок», CLAUDE.md, мера 5):
-    # /set filters.motifs принимает такой же YAML, как списки регулярок.
+    # dict is for filters.motifs ("label -> list of regexes"): /set filters.motifs
+    # accepts the same YAML as the regex lists.
     needs_yaml = annotation is bool or origin in (list, tuple, dict)
     if not needs_yaml:
         return raw_value
@@ -86,7 +86,7 @@ def _set_nested(data: dict[str, Any], parts: list[str], value: Any) -> None:
 
 
 def _deep_merge(base: dict[str, Any], top: Mapping[str, Any]) -> None:
-    """Накатывает top поверх base: словари сливаются по ключам, остальное заменяется целиком."""
+    """Apply top over base: dicts merge by key, everything else is replaced wholesale."""
     for key, value in top.items():
         current = base.get(key)
         if isinstance(current, dict) and isinstance(value, Mapping):
@@ -131,12 +131,12 @@ def load_config(
     layers: Path | Mapping[str, Any] | Sequence[Path | Mapping[str, Any]],
     overrides: dict[str, str] | None = None,
 ) -> Config:
-    """Читает слои конфига, накатывает плоские overrides ("section.key" -> "value") и валидирует.
+    """Read the config layers, apply flat overrides ("section.key" -> "value") and validate.
 
-    layers — один слой или последовательность от нижнего к верхнему (yaml-файл или готовый
-    словарь); слои сливаются вглубь, списки и скаляры верхнего слоя заменяют нижние.
-    Отсутствующий файл — пустой слой. Невалидный override или неизвестный ключ ->
-    ValueError с ключом в тексте.
+    layers is one layer or a sequence from lowest to highest (a yaml file or a ready
+    dict); layers merge deeply, lists and scalars of the upper layer replace the lower.
+    A missing file is an empty layer. An invalid override or unknown key ->
+    ValueError with the key in the message.
     """
     sequence: Sequence[Path | Mapping[str, Any]] = (
         [layers] if isinstance(layers, (Path, Mapping)) else layers
@@ -163,7 +163,7 @@ def load_config(
 
 
 def _format_value(value: object) -> str:
-    """Питоновское значение листового поля -> строка, единый формат для /get и /set."""
+    """Python value of a leaf field -> string, one format for /get and /set."""
     if isinstance(value, str):
         return value
     if isinstance(value, bool):
@@ -180,8 +180,8 @@ def _format_value(value: object) -> str:
             plain, default_flow_style=True, allow_unicode=True, width=10_000
         ).strip()
     if isinstance(value, dict):
-        # filters.motifs: тот же YAML-формат, что и списки, чтобы /get отдавал
-        # ровно то, что принимает /set.
+        # filters.motifs: the same YAML format as lists, so /get returns
+        # exactly what /set accepts.
         return yaml.safe_dump(
             value, default_flow_style=True, allow_unicode=True, width=10_000
         ).strip()
@@ -189,7 +189,7 @@ def _format_value(value: object) -> str:
 
 
 def flatten_config(cfg: Config) -> dict[str, str]:
-    """Config -> плоский словарь "section.key" -> строка, для будущей команды /get."""
+    """Config -> flat dict "section.key" -> string, for /get."""
     result: dict[str, str] = {}
 
     def _walk(prefix: str, obj: Any) -> None:
@@ -205,7 +205,7 @@ def flatten_config(cfg: Config) -> dict[str, str]:
 
 
 def _type_name(annotation: Any) -> str:
-    """Аннотация поля -> короткое имя типа для карточки /get <ключ>."""
+    """Field annotation -> short type name for the /get <key> card."""
     origin = get_origin(annotation)
     if origin is None:
         if isinstance(annotation, type):
@@ -231,9 +231,9 @@ def _format_bound(value: Any) -> str:
 
 
 def _bounds_str(field_info: FieldInfo) -> str:
-    """Границы поля из annotated_types-метаданных Field(ge=..., le=...).
+    """Field bounds from annotated_types metadata Field(ge=..., le=...).
 
-    "0..50" при заданных обеих границах, ">=1"/"<=5" при одной, "" без границ.
+    "0..50" when both bounds are set, ">=1"/"<=5" for one, "" for none.
     """
     ge = gt = le = lt = None
     for constraint in field_info.metadata:
@@ -270,13 +270,14 @@ def describe_key(
     key: str,
     catalog: Catalog | None = None,
 ) -> KeyInfo | None:
-    """Карточка одного ключа конфига: тип, границы, описание, текущее и дефолтное значение.
+    """Card of one config key: type, bounds, description, current and default value.
 
-    Описание берётся из каталога (``config_keys.<ключ>``, свой язык пака или английский
-    запасной), а при его отсутствии или без каталога — из ``Field.description`` модели.
+    The description comes from the catalog (``config_keys.<key>``, the pack's own
+    language or the English fallback), or from the model's ``Field.description`` when
+    it is missing or there is no catalog.
 
-    None, если такого ключа нет, либо key указывает на секцию (BaseModel), а не на лист
-    (обход по model_fields, как в flatten_config).
+    None if there is no such key, or key points at a section (BaseModel) rather than a
+    leaf (walks model_fields, like flatten_config).
     """
     parts = key.split(".")
     model_cls: type[BaseModel] = Config

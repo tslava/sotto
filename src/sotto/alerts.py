@@ -1,16 +1,15 @@
-"""Сообщение владельцу в личку, когда провайдер модели отказывает (CLAUDE.md,
-"Интерфейсы: тревога владельцу").
+"""Direct message to the owner when the model provider refuses requests.
 
-Решение владельца 26.10.2026: с 22.10 OpenRouter четыре дня отвечал 402 (кончились
-кредиты), бот молчал, а заметили это только по разбору логов. Отказ провайдера
-(4xx, кроме таймаута и rate limit) — не случайный сбой, сам он не пройдёт, поэтому
-бот пишет владельцу сам: не чаще раза в ``llm.alert_interval_hours`` на код ответа.
+A provider refusal (4xx other than timeout and rate limit, e.g. 402 when credits run
+out) will not clear by itself and would otherwise go unnoticed while the bot stays
+silent, so the bot messages the owner, at most once per ``llm.alert_interval_hours``
+per status code.
 
-Ревью Codex 26.10: отправка идёт фоновой задачей (вызов модели под локом ответов не
-ждёт Telegram), время — по своим часам (``now`` вызывающего бывает датой старого
-сообщения), а слот «следующая тревога не раньше» занимается ДО отправки: если Telegram
-доставил, но ответ потерялся, повтора не будет. Не отправилось — следующая попытка
-через час, а не через сутки.
+Design: sending runs as a background task (a model call holding the reply lock must not
+wait on Telegram); time comes from our own clock (the caller's ``now`` can be the date
+of an old message); the "next alert not before" slot is taken BEFORE sending, so a
+delivered message whose response got lost is not repeated. If sending fails, the next
+attempt comes in an hour, not a day.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ from sotto.persona import Persona
 
 logger = logging.getLogger(__name__)
 
-# Временные сбои: проходят сами, тревога по ним — шум.
+# Transient failures clear on their own; alerting on them is noise.
 _TRANSIENT_STATUSES = frozenset({408, 429})
 _MESSAGE_LIMIT = 200
 _RETRY_AFTER_FAILURE_SEC = 3600
@@ -37,7 +36,7 @@ _HINT_STATUSES = frozenset({401, 402})
 
 
 def is_refusal(status: int) -> bool:
-    """Отказ провайдера, который сам не пройдёт: 4xx, кроме таймаута и rate limit."""
+    """A provider refusal that will not clear by itself: 4xx except timeout and rate limit."""
     return 400 <= status < 500 and status not in _TRANSIENT_STATUSES
 
 
@@ -86,8 +85,8 @@ class OwnerAlerter:
         self._admin_user_id = admin_user_id
         self._cfg_getter = cfg_getter
         self._clock = clock
-        # Параллельные вызовы модели получают 402 одновременно — без лока слот заняли
-        # бы несколько и ушло бы несколько одинаковых сообщений.
+        # Parallel model calls get 402 at the same moment; without the lock several
+        # would take the slot and send several identical messages.
         self._lock = asyncio.Lock()
         self._tasks: set[asyncio.Task[None]] = set()
 
@@ -117,20 +116,20 @@ class OwnerAlerter:
         try:
             await self._bot.send_message(self._admin_user_id, text)
         except asyncio.CancelledError:
-            # Остановка процесса посреди отправки: слот занят на весь интервал, а тревога,
-            # возможно, не ушла — после рестарта повтор через час, не через сутки.
+            # Process stopped mid-send: the slot is held for the whole interval but the
+            # alert may not have gone out, so after a restart retry in an hour, not a day.
             await self._db.set_state(key, str(self._clock() + _RETRY_AFTER_FAILURE_SEC))
             raise
         except Exception as exc:
-            # Тревога не ушла (или неизвестно, ушла ли) — следующая попытка через час.
-            # Любое исключение: фоновая задача никому его не отдаст.
+            # The alert was not sent (or it is unknown whether it was): retry in an hour.
+            # Any exception: a background task has nobody to hand it to.
             logger.warning("owner alert not sent: %s", type(exc).__name__)
             await self._db.set_state(key, str(self._clock() + _RETRY_AFTER_FAILURE_SEC))
             return
         logger.info("owner alert sent: llm status=%s model=%s", status, model)
 
     async def shutdown(self) -> None:
-        """Отменить неотправленные тревоги: при остановке процесса они не нужны."""
+        """Cancel unsent alerts: they are not needed once the process stops."""
         tasks = [task for task in self._tasks if not task.done()]
         for task in tasks:
             task.cancel()

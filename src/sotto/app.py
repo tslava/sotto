@@ -1,7 +1,4 @@
-"""Сборка процесса: настройки, БД, конфиг/промпт-хранилища, бот, фоновые таски.
-
-PLAN.md, этапы 1 и 6.
-"""
+"""Process assembly: settings, DB, config/prompt stores, bot, background tasks."""
 
 from __future__ import annotations
 
@@ -35,16 +32,16 @@ _LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 
 
 def setup_logging(level: str) -> None:
-    """stdout, формат из CLAUDE.md. Секреты сюда никогда не попадают."""
+    """stdout, format from CLAUDE.md. Secrets never reach it."""
     logging.basicConfig(stream=sys.stdout, level=level, format=_LOG_FORMAT)
 
 
 def load_startup_persona(settings: Settings) -> Persona:
-    """Пакет персоны для процесса. Нет PERSONA_DIR и нет ALLOW_DEMO_PERSONA -> SystemExit.
+    """Persona pack for the process. No PERSONA_DIR and no ALLOW_DEMO_PERSONA -> SystemExit.
 
-    Fail-closed: потерянный монтаж на проде не должен молча запустить демо-персону в
-    настоящем чате. Ошибки пакета (нет файлов, кривой манифест, слоты промптов) тоже
-    останавливают процесс до подключения к БД и к Telegram.
+    Fail-closed: a lost mount in production must not silently start the demo persona in
+    the real chat. Pack errors (missing files, broken manifest, prompt slots) also stop
+    the process before connecting to the DB and Telegram.
     """
     for name in settings.deprecated_fields_set():
         logger.warning(
@@ -90,8 +87,8 @@ async def main() -> None:
         prompt_store = PromptStore(persona, db)
         await prompt_store.load()
 
-        # Словари словечек (CLAUDE.md, "словечки из словаря") живут в БД: владелец
-        # грузит их файлом в личку, в репозитории их нет.
+        # Vocabulary dictionaries live in the DB: the owner uploads them as a file in
+        # a DM; they are not in the repository.
         vocab_store = VocabStore(db, persona.lang)
         await vocab_store.load()
 
@@ -112,11 +109,11 @@ async def main() -> None:
         if settings.admin_user_id == 0:
             logger.warning("owner commands disabled: admin_user_id is not set")
 
-        # Погода (CLAUDE.md, "Интерфейсы: погода"): ключ API не нужен, клиент
-        # создаётся всегда. Домашняя точка — из .env, а не из конфига: репозиторий
-        # публичный, координаты владельца в нём не лежат. Заданы не обе — клиент
-        # живёт без домашней точки: блок «за окном» пуст, а погода по месту,
-        # про которое спросили в чате, работает.
+        # Weather: no API key needed, so the client is always created. The home point
+        # comes from .env, not from config: the repository is public and the owner's
+        # coordinates are not in it. If only one coordinate is set the client runs
+        # without a home point: the "outside the window" block is empty, but weather
+        # for a place asked about in the chat still works.
         home: Place | None = None
         if settings.weather_latitude is not None and settings.weather_longitude is not None:
             home = Place(
@@ -147,8 +144,8 @@ async def main() -> None:
         )
 
         dispatcher = Dispatcher()
-        # Роутер команд ПЕРВЫМ: иначе команды в разрешённом чате попали бы в гейт
-        # основного роутера и записались бы в messages как обычный текст.
+        # Commands router FIRST: otherwise commands in the allowed chat would reach the
+        # gate of the main router and be recorded in messages as ordinary text.
         dispatcher.include_router(build_commands_router(deps))
         dispatcher.include_router(build_router(deps))
 
@@ -157,11 +154,10 @@ async def main() -> None:
         if api_key is None:
             logger.warning("LLM disabled, no replies are generated: openrouter_api_key is not set")
         else:
-            # LLMClient/Judge/Responder создаются, как только есть ключ, независимо
-            # от того, заданы ли llm.main_model/llm.judge_model сейчас — оба меняются
-            # на горячую через /set, и Responder/Judge сами проверяют пустую модель
-            # на каждом вызове (llm:no_model, judge.check -> []), а не один раз при
-            # старте процесса.
+            # LLMClient/Judge/Responder are created as soon as there is a key,
+            # regardless of whether llm.main_model/llm.judge_model are set now: both
+            # change hot via /set, and Responder/Judge check for an empty model on every
+            # call (llm:no_model, judge.check -> []), not once at process start.
             if not cfg.llm.main_model:
                 logger.warning("llm.main_model is not set: no replies are generated until /set")
             if not cfg.llm.judge_model:
@@ -193,9 +189,9 @@ async def main() -> None:
             deps.memorizer = stack.memorizer
             deps.responder = responder
 
-        # Планировщик реакций нужен всегда: пауза перед реакцией не зависит от LLM.
-        # Без чузера (ключ не задан) он бросает кубик, как до семантических реакций —
-        # предупреждаем один раз на старте, чтобы semantic: true не выглядел рабочим.
+        # The reaction scheduler is always needed: the pause before a reaction does not
+        # depend on the LLM. Without a chooser (no key) it rolls dice, as before semantic
+        # reactions; warn once at startup so semantic: true does not look functional.
         if reaction_chooser is None and cfg.behaviour.reactions.semantic:
             logger.warning("reactions are picked by dice: openrouter_api_key is not set")
         reaction_scheduler = ReactionScheduler(
@@ -249,7 +245,7 @@ async def main() -> None:
         if weather is not None:
             await weather.aclose()
         if bot is not None:
-            # aiogram закрывает сессию сама при штатном выходе из start_polling; повторный
-            # вызов идемпотентен и здесь нужен на случай исключения до start_polling.
+            # aiogram closes the session itself on a normal exit from start_polling; a
+            # repeat call is idempotent and is needed here for an exception before start_polling.
             await bot.session.close()
         await db.close()

@@ -1,9 +1,8 @@
-"""Парсинг CHANGELOG.md (Keep a Changelog) для команды /changelog.
+"""Parse CHANGELOG.md (Keep a Changelog) for the /changelog command.
 
-CLAUDE.md, "Интерфейсы: версии и changelog": единственный источник release-notes —
-CHANGELOG.md в корне репозитория, две секции на версию ("### Для чата" и
-"### Для владельца"), "## [Unreleased]" в списке версий не участвует. Чистые
-функции без I/O — чтение файла делает вызывающий (commands.py).
+The only source of release notes is CHANGELOG.md at the repository root, with two
+sections per version ("### For chat" and "### For owner"); "## [Unreleased]" is not a
+version. Pure functions without I/O: the caller (commands.py) reads the file.
 """
 
 from __future__ import annotations
@@ -14,17 +13,17 @@ from pathlib import Path
 
 from sotto.lang.ru import LEGACY_FOR_CHAT_HEADER, LEGACY_FOR_OWNER_HEADER
 
-# Заголовок версии: "## [0.5.0] — 2026-09-16" — тире может быть длинным ("—") или
-# обычным дефисом ("-"), с пробелами вокруг или без. "## [Unreleased]" не совпадает —
-# у него нет номера версии и даты.
+# Version heading: "## [0.5.0] — 2026-09-16"; the dash may be long ("—") or a plain
+# hyphen ("-"), with or without spaces around it. "## [Unreleased]" does not match:
+# it has no version number and no date.
 _VERSION_HEADER_RE = re.compile(
     r"^##\s*\[(?P<version>\d+\.\d+\.\d+)\]\s*[—-]\s*(?P<date>\d{4}-\d{2}-\d{2})\s*$",
     re.MULTILINE,
 )
-# Любой заголовок второго уровня ("## ...") — им ограничивается тело версии, включая
-# "## [Unreleased]", если она вдруг не первая.
+# Any second-level heading ("## ..."): it ends a version body, including
+# "## [Unreleased]" if it is not first.
 _ANY_H2_RE = re.compile(r"^##\s", re.MULTILINE)
-# Заголовок третьего уровня ("### ...") — им ограничивается тело блока внутри версии.
+# Third-level heading ("### ..."): it ends a block body inside a version.
 _ANY_H3_RE = re.compile(r"^###\s", re.MULTILINE)
 # Block headers: "### Notes" is the single block of the engine's own CHANGELOG.md (read as the
 # owner block); "For the chat"/"For the owner" and the legacy Russian ones a pack's
@@ -37,15 +36,15 @@ _FOR_OWNER_RE = re.compile(
 )
 # The engine's own CHANGELOG.md (next to ``src``; copied into the image).
 ENGINE_CHANGELOG_PATH = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
-# Ссылки-сноски внизу файла ("[0.5.0]: https://..."). Они идут после последней
-# версии, без заголовка "##"/"###" между ними и последним блоком, поэтому их нужно
-# отрезать отдельно, а не полагаться на границу следующего заголовка.
+# Link footnotes at the bottom of the file ("[0.5.0]: https://..."). They follow the
+# last version with no "##"/"###" heading between them and the last block, so they
+# must be cut off explicitly rather than relying on the next heading as a boundary.
 _LINK_REF_RE = re.compile(r"^\[[^\]]+\]:\s", re.MULTILINE)
 
 
 @dataclass(frozen=True)
 class Release:
-    """Одна версия из CHANGELOG.md. Тексты блоков — без заголовков, strip()."""
+    """One version from CHANGELOG.md. Block texts have no headings and are stripped."""
 
     version: str
     date: str
@@ -64,9 +63,9 @@ def _section_text(body: str, header_re: re.Pattern[str]) -> str:
 
 
 def parse_changelog(text: str) -> list[Release]:
-    """Версии в порядке файла (новые первыми, как их пишет владелец).
+    """Versions in file order (newest first).
 
-    "## [Unreleased]" в списке версий не участвует.
+    "## [Unreleased]" is not a version.
     """
     h2_starts = [m.start() for m in _ANY_H2_RE.finditer(text)]
     releases: list[Release] = []

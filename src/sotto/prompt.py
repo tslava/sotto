@@ -1,29 +1,27 @@
-"""Сборка сообщений для LLM и разбор её ответа (этап 3).
+"""Build messages for the LLM and parse its reply.
 
-Чистые функции, без I/O и без aiogram. Ключевое правило — данные отдельно
-от инструкций (PLAN.md, этап 3, "Данные отдельно от инструкций"):
+Pure functions, no I/O, no aiogram. The key rule is data kept apart from
+instructions:
 
-- Системный промпт (``template``) уходит ролью ``system``, слоты ``{age}`` и
-  ``{few_shot}`` в нём подставляются реальными значениями, а ``{context}``,
-  ``{recent_replies}``, ``{places}``, ``{situation}`` — короткими маркерами
-  "см. ниже", потому что сами данные уезжают вторым сообщением ролью ``user``,
-  внутри разделителей ``<<<CHAT ... >>>``, с явной оговоркой, что это данные,
-  а не команды.
-- Подстановка слотов — один проход ``re.sub`` по известным именам слотов,
-  никогда ``str.format`` и никогда цепочка ``str.replace``: фигурная скобка в
-  сообщении участника («{context}», «{'a': 1}») либо уронила бы вызов
-  (``str.format``), либо, оказавшись внутри уже подставленного слота (например
-  «{context}» внутри few_shot), сама попала бы под следующую замену в цепочке
-  ``.replace()`` — один проход ``re.sub`` сканирует только исходный template и
-  такого не делает.
-- Разделители ``<<<``/``>>>`` вырезаются из данных ещё раз здесь, дублируя
-  ``sanitize.normalize_text`` — по счастливой случайности normalize_text уже
-  чистит текст отдельных сообщений, но собранные блоки (context, места,
-  ситуация) дополнительно проходят ту же чистку на всякий случай.
+- The system prompt (``template``) goes out with role ``system``. The ``{age}`` and
+  ``{few_shot}`` slots in it are filled with real values, while ``{context}``,
+  ``{recent_replies}``, ``{places}`` and ``{situation}`` get short "see below" markers,
+  because the data itself goes in a second message with role ``user``, inside
+  ``<<<CHAT ... >>>`` delimiters, with an explicit note that it is data, not commands.
+- Slots are filled in a single ``re.sub`` pass over the known slot names, never with
+  ``str.format`` and never with a chain of ``str.replace``: a curly brace in a
+  participant's message ("{context}", "{'a': 1}") would either crash the call
+  (``str.format``) or, landing inside an already substituted slot (e.g. "{context}"
+  inside few_shot), be hit by the next replacement in a ``.replace()`` chain. A single
+  ``re.sub`` pass scans only the original template and does neither.
+- The ``<<<``/``>>>`` delimiters are stripped from the data once more here, duplicating
+  ``sanitize.normalize_text``: normalize_text already cleans individual messages, but
+  the assembled blocks (context, places, situation) go through the same cleaning
+  again as a safeguard.
 
-``parse_reply`` разбирает ответ модели так же строго и терпимо к обёрткам
-(```json ... ```` и преамбулам вроде "Вот ответ: {...}"), но любой сбой —
-это ``None``, то есть молчание, а не исключение.
+``parse_reply`` parses the model's reply just as strictly and tolerates wrappers
+(```json ... ```` and preambles like "Here is the answer: {...}"), but any failure is
+``None``, that is silence, not an exception.
 """
 
 from __future__ import annotations
@@ -40,9 +38,9 @@ from sotto.timeutil import local_date
 CHAT_OPEN = "<<<CHAT"
 CHAT_CLOSE = ">>>"
 
-# Тексты ситуаций, каркаса сообщения и заголовков блоков живут в пакете персоны
-# (``fragments.yaml``, группы situations/prompt/render/placeholders) и приходят
-# аргументом ``frag``; здесь только сборка.
+# Situation texts, the message skeleton and block headings live in the persona pack
+# (``fragments.yaml``, groups situations/prompt/render/placeholders) and arrive as the
+# ``frag`` argument; only assembly happens here.
 
 _ADDRESSED_TEXT_MAX_LEN = 300
 _ADDRESSED_ITEMS_MAX = 5
@@ -50,9 +48,9 @@ _ADDRESSED_ITEMS_MAX = 5
 _LIFE_TEXT_MAX_LEN = 300
 _SITUATION_MARKER = ""
 
-# Дублирует вырезание разделителей из sanitize.normalize_text (см. докстринг модуля):
-# собранные блоки (context/recent_replies/places/situation) чистятся ещё раз здесь,
-# перед тем как сами стать обёрнутыми в <<<CHAT ... >>>.
+# Duplicates the delimiter stripping of sanitize.normalize_text (see the module docstring):
+# assembled blocks (context/recent_replies/places/situation) are cleaned once more here
+# before being wrapped in <<<CHAT ... >>>.
 _LT_RUN_RE = re.compile(r"<{3,}")
 _GT_RUN_RE = re.compile(r">{3,}")
 
@@ -73,23 +71,23 @@ def _clean_addressed_text(text: str) -> str:
 
 
 def situation_addressed(items: list[tuple[str, str]], *, frag: Fragments) -> str:
-    """Ситуация «к тебе обратился(-ись)» из накопленных обращений (display_name, text).
+    """Situation "someone addressed you" built from accumulated addresses (display_name, text).
 
-    ``items`` — все обращения, накопившиеся к моменту срабатывания отложенного
-    ответа (схлопывание дебаунс-буфера может собрать несколько обращений от
-    разных людей за время задержки), в хронологическом порядке. Только
-    последние ``_ADDRESSED_ITEMS_MAX`` используются — вызывающий (responder.py)
-    уже должен был обрезать список сам, но обрезаем и здесь на всякий случай.
+    ``items`` are all addresses accumulated by the time the delayed reply fires
+    (collapsing the debounce buffer can gather several addresses from different people
+    during the delay), in chronological order. Only the last ``_ADDRESSED_ITEMS_MAX``
+    are used: the caller (responder.py) should already have trimmed the list, but we
+    trim here too as a safeguard.
 
-    Одно обращение — короткая форма (``situations.addressed_single``, подстановка
-    через .replace, не re.sub/format: тут только два слота и они не могут
-    провоцировать повторную подстановку друг друга). Несколько — маркированный
-    список с общей инструкцией (``situations.addressed_multi_*``).
+    One address gives the short form (``situations.addressed_single``, filled with
+    .replace, not re.sub/format: there are only two slots and they cannot trigger a
+    repeated substitution of each other). Several give a bulleted list with a shared
+    instruction (``situations.addressed_multi_*``).
 
-    Имя и текст каждого обращения — недоверенный ввод участника: разделители
-    ``<<<``/``>>>`` вырезаются тем же способом, что и в build_messages, а текст
-    обрезается до 300 символов, чтобы не раздувать промпт длинной репликой.
-    Пустой ``items`` -> пустая строка (значит, ситуацию добавлять не нужно).
+    The name and text of each address are untrusted participant input: the
+    ``<<<``/``>>>`` delimiters are stripped the same way as in build_messages, and the
+    text is cut to 300 characters so a long message does not bloat the prompt.
+    Empty ``items`` -> empty string (meaning no situation is to be added).
     """
     trimmed = items[-_ADDRESSED_ITEMS_MAX:]
     cleaned = [
@@ -111,14 +109,14 @@ def situation_addressed(items: list[tuple[str, str]], *, frag: Fragments) -> str
 
 
 def situation_followup(items: list[tuple[str, str]], *, frag: Fragments) -> str:
-    """Ситуация для триггера ``followup`` (CLAUDE.md, "внимание как у живого
-    человека") — та же форма, что ``situation_addressed`` (может накопиться
-    несколько поводов за время дебаунс-схлопывания одного pending), но с явной
-    оговоркой, что адресность не точная, а вероятная: обычный гейт такое
-    сообщение обращением не признал, это решение дешёвой проверки.
+    """Situation for the ``followup`` trigger: the same shape as
+    ``situation_addressed`` (several reasons can accumulate while one pending item is
+    debounce-collapsed), but with an explicit note that the addressing is probable, not
+    certain: the ordinary gate did not treat the message as an address, this is the
+    verdict of the cheap check.
 
-    Потолок ``_ADDRESSED_ITEMS_MAX``, обрезка текста до ``_ADDRESSED_TEXT_MAX_LEN``,
-    вырезание поддельных разделителей — как у ``situation_addressed``.
+    The ``_ADDRESSED_ITEMS_MAX`` cap, the ``_ADDRESSED_TEXT_MAX_LEN`` truncation and the
+    stripping of fake delimiters are the same as in ``situation_addressed``.
     """
     trimmed = items[-_ADDRESSED_ITEMS_MAX:]
     cleaned = [
@@ -140,15 +138,14 @@ def situation_followup(items: list[tuple[str, str]], *, frag: Fragments) -> str:
 
 
 def render_numbered_messages(rows: Sequence[MessageRow]) -> str:
-    """ "1. Имя: текст" по строке, нумерация с 1, имя и текст чистятся от
-    поддельных разделителей и обрезаются тем же лимитом, что и
-    ``situation_addressed`` (``_ADDRESSED_TEXT_MAX_LEN`` символов).
+    """ "1. Name: text" per line, numbered from 1; name and text are cleaned of fake
+    delimiters and truncated to the same limit as ``situation_addressed``
+    (``_ADDRESSED_TEXT_MAX_LEN`` characters).
 
-    Общий хелпер для ``situation_checkin`` и дешёвого предфильтра "вернулся
-    проверить" (``followup.FollowupChecker.check_batch``, CLAUDE.md,
-    "Интерфейсы: дешёвый предфильтр для «вернулся проверить»") — оба показывают
-    модели одну и ту же пронумерованную пачку сообщений, форматирование не
-    дублируется. Пустой ``rows`` -> пустая строка.
+    Shared helper for ``situation_checkin`` and the cheap "came back to check"
+    prefilter (``followup.FollowupChecker.check_batch``): both show the model the same
+    numbered batch of messages, so the formatting is not duplicated. Empty ``rows`` ->
+    empty string.
     """
     lines = []
     for index, row in enumerate(rows, start=1):
@@ -159,13 +156,12 @@ def render_numbered_messages(rows: Sequence[MessageRow]) -> str:
 
 
 def situation_checkin(rows: Sequence[MessageRow], *, frag: Fragments) -> str:
-    """Ситуация для триггера ``checkin`` (CLAUDE.md, "внимание как у живого
-    человека: вернулся проверить") — пронумерованный список сообщений,
-    накопившихся после последней реплики персонажа, плюс инструкция ответить
-    одной фразой на выбранное (номер уходит в поле ``reply_to`` JSON-ответа)
-    либо промолчать. Пустой ``rows`` -> пустая строка — вызывающий
-    (responder.py) не должен звать генерацию без сообщений вовсе, но на всякий
-    случай это тоже "ничего не отвечать".
+    """Situation for the ``checkin`` trigger: a numbered list of messages accumulated
+    after the character's last reply, plus an instruction to answer the chosen one in a
+    single phrase (the number goes into the ``reply_to`` field of the JSON reply) or to
+    stay silent. Empty ``rows`` -> empty string: the caller (responder.py) must not
+    start generation without messages at all, but as a safeguard this also means
+    "answer nothing".
     """
     if not rows:
         return ""
@@ -178,25 +174,26 @@ def situation_checkin(rows: Sequence[MessageRow], *, frag: Fragments) -> str:
 
 
 def render_context(rows: list[MessageRow]) -> str:
-    """ "Имя: текст" по строке, в хронологическом порядке (rows уже отсортированы)."""
+    """ "Name: text" per line, in chronological order (rows are already sorted)."""
     return "\n".join(f"{row.display_name}: {row.text}" for row in rows)
 
 
 def render_life(rows: Sequence[LifeEventRow], tz: str, *, frag: Fragments) -> str:
-    """Блок памяти о событиях жизни персонажа (CLAUDE.md, "события жизни").
+    """Memory block of the character's life events.
 
-    Пусто -> "" (тогда весь абзац со слотом {life} в system.txt пропадает).
-    Иначе — заголовок и по строке на событие, дата локальная (timeutil.local_date,
-    tz), формат dd.mm.yyyy: "12.09.2026: продал тележку, взял Hyundai".
+    Empty -> "" (then the whole paragraph with the {life} slot in system.txt disappears).
+    Otherwise a heading and one line per event, local date (timeutil.local_date, tz),
+    format dd.mm.yyyy: "12.09.2026: sold the cart, bought a Hyundai".
 
-    Строки НЕ начинаются с "- " и не содержат слова JSON: filters.regex:prompt_leak
-    считает инструктивной частью системного промпта именно строки-буллеты «- …»
-    и блок про JSON, а пересказ события персонажем утечкой не является.
+    Lines do NOT start with "- " and do not contain the word JSON:
+    filters.regex:prompt_leak treats the bullet lines "- ..." and the JSON block as the
+    instructive part of the system prompt, and the character retelling an event is not
+    a leak.
 
-    Событие подставляется прямо в system (как few_shot, не как context/places) —
-    это память владельца о персонаже, а не недоверенный ввод участников чата, но
-    _strip_fake_delimiters всё равно применяется на всякий случай, чтобы поддельные
-    ``<<<``/``>>>`` внутри заметки не путали разметку user-сообщения.
+    The event goes straight into system (like few_shot, unlike context/places): it is
+    the owner's memory of the character, not untrusted participant input, but
+    _strip_fake_delimiters is still applied as a safeguard so fake ``<<<``/``>>>``
+    inside a note do not confuse the user message markup.
     """
     if not rows:
         return ""
@@ -208,13 +205,13 @@ def render_life(rows: Sequence[LifeEventRow], tz: str, *, frag: Fragments) -> st
 
 
 def situation_life(text: str, *, frag: Fragments) -> str:
-    """Ситуация для announce_life: подстановка в ``situations.life``.
+    """Situation for announce_life: substitution into ``situations.life``.
 
-    Один слот {text} — через .replace, не re.sub/format (как в situation_addressed):
-    единственная подстановка не может спровоцировать повторную замену самой себя.
-    Текст обрезается до 300 символов и чистится от поддельных разделителей — тот
-    же приём, что и для обращений (_clean_addressed_text), но со своей константой
-    длины, потому что источник другой (заметка владельца, не сообщение участника).
+    One {text} slot, via .replace, not re.sub/format (as in situation_addressed): a
+    single substitution cannot trigger a repeated replacement of itself. The text is
+    cut to 300 characters and cleaned of fake delimiters, the same technique as for
+    addresses (_clean_addressed_text) but with its own length constant, because the
+    source differs (an owner's note, not a participant message).
     """
     cleaned = _strip_fake_delimiters(text).strip()[:_LIFE_TEXT_MAX_LEN]
     life: str = frag.text("situations.life")
@@ -222,11 +219,11 @@ def situation_life(text: str, *, frag: Fragments) -> str:
 
 
 def situation_callback(name: str, text: str, *, frag: Fragments) -> str:
-    """Ситуация для триггера ``callback``: подстановка в ``situations.callback``.
+    """Situation for the ``callback`` trigger: substitution into ``situations.callback``.
 
-    Имя и текст чистятся от поддельных разделителей и режутся до 300 символов
-    (``_clean_addressed_text``); подстановка за один проход ``re.sub``, чтобы
-    ``{name}``/``{text}`` внутри чужих данных повторно не заменялись.
+    Name and text are cleaned of fake delimiters and cut to 300 characters
+    (``_clean_addressed_text``); substitution is a single ``re.sub`` pass so
+    ``{name}``/``{text}`` inside foreign data are not replaced again.
     """
     values = {"name": _clean_addressed_text(name), "text": _clean_addressed_text(text)}
     template: str = frag.text("situations.callback")
@@ -252,33 +249,33 @@ def build_messages(
     json_reminder: str | None = None,
     frag: Fragments,
 ) -> list[dict[str, str]]:
-    """Собирает [system, user] для LLMClient.call().
+    """Build [system, user] for LLMClient.call().
 
-    Слоты подставляются через один проход re.sub (не str.format и не цепочку
-    str.replace): цепочка последовательных .replace() сканирует уже подставленный
-    текст заново на каждом шаге, поэтому "{context}", случайно оказавшийся внутри
-    few_shot (или любого другого уже подставленного слота), тоже заменился бы на
-    следующем шаге. Один проход re.sub сканирует только исходный template — то,
-    что подставлено, повторно не трогается. Данные людей
-    (context/recent_replies/places/situation) в system не попадают — только
-    маркеры "см. ниже"; сами данные уходят вторым сообщением role=user,
-    context и recent_replies — внутри разделителей <<<CHAT ... >>>. {life} —
-    исключение: это память владельца о персонаже (как few_shot), а не ввод
-    участников чата, поэтому подставляется в system напрямую, реальным значением.
-    {diary} (CLAUDE.md, "дневник дня") — тоже в system: факты о собственных делах
-    персонажа, достанные из его же реплик (diary.render_diary), а не ввод участников.
-    {chat_memory} — такое же исключение: это уже сжатый моделью пересказ прошедших
-    недель (chat_memory.py), память персонажа, а не сырые сообщения участников.
-    {jokes} (CLAUDE.md, "шутки чата и истории людей") — тоже в system: общие шутки
-    чата, достанные недельным ChatMemorizer (jokes.render_jokes), память персонажа.
-    {avoid} (CLAUDE.md, "меньше и разнообразнее", мера 5) — тоже в system: это не
-    данные участников, а инструкция, собранная motifs.render_avoid из того, что
-    персонаж сам уже наговорил («жену и гараж ты уже поминал, сейчас без них»).
-    {weather} (CLAUDE.md, "Интерфейсы: погода") — тоже в system: это факт из
-    открытого API (weather.render_weather), фон жизни персонажа, а не сообщение
-    участника; название места внутри блока приходит от геокодера, не из чата.
-    {vocab} (CLAUDE.md, "словечки из словаря") — тоже в system: словари грузит
-    владелец (vocab.render_vocab), это его данные, как {life}, а не ввод участников.
+    Slots are filled in a single re.sub pass (not str.format and not a str.replace
+    chain): a chain of successive .replace() calls rescans the already substituted text
+    at every step, so a "{context}" that happens to sit inside few_shot (or any other
+    already substituted slot) would also be replaced at the next step. A single re.sub
+    pass scans only the original template, so what was substituted is not touched again.
+    People's data (context/recent_replies/places/situation) never goes into system, only
+    "see below" markers; the data goes in the second message with role=user, with
+    context and recent_replies inside <<<CHAT ... >>> delimiters. {life} is an
+    exception: it is the owner's memory of the character (like few_shot), not input
+    from chat participants, so it is substituted into system directly with its real value.
+    {diary} is also in system: facts about the character's own doings extracted from
+    its own replies (diary.render_diary), not participant input.
+    {chat_memory} is the same kind of exception: a summary of past weeks already
+    condensed by the model (chat_memory.py), the character's memory, not raw participant
+    messages.
+    {jokes} is also in system: shared chat jokes extracted by the weekly ChatMemorizer
+    (jokes.render_jokes), the character's memory.
+    {avoid} is also in system: not participant data but an instruction assembled by
+    motifs.render_avoid from what the character has already said ("you already mentioned
+    the wife and the garage, now without them").
+    {weather} is also in system: a fact from an open API (weather.render_weather), the
+    background of the character's life, not a participant message; the place name inside
+    the block comes from the geocoder, not from the chat.
+    {vocab} is also in system: dictionaries are uploaded by the owner
+    (vocab.render_vocab), it is his data, like {life}, not participant input.
     """
     slot_values = {
         "age": str(age),
@@ -331,9 +328,9 @@ def build_messages(
 class Reply:
     speak: bool
     text: str
-    # Номер сообщения (1-based, индекс в checkin_rows), на которое отвечает модель —
-    # только для триггера "checkin" (CLAUDE.md, "вернулся проверить"); для остальных
-    # триггеров модель это поле не заполняет, и оно остаётся None.
+    # Number of the message (1-based, index into checkin_rows) the model replies to;
+    # only for the "checkin" trigger; for other triggers the model does not fill this
+    # field and it stays None.
     reply_to: int | None = None
 
 
@@ -345,17 +342,17 @@ def _strip_code_fence(text: str) -> str:
 
 
 def parse_reply(raw: str) -> Reply | None:
-    """Разбирает ответ модели в Reply, либо None при любом сбое (значит — молчание).
+    """Parse the model reply into a Reply, or None on any failure (meaning silence).
 
-    Срезает ```json ... ``` / ``` ... ``` обёртки; ищет первую "{" и разбирает
-    JSON от неё через ``json.JSONDecoder().raw_decode`` вместо ``json.loads`` —
-    raw_decode останавливается сразу после первого валидного объекта и не требует,
-    чтобы после него ничего не было. Это терпимо к хвосту, который модели любят
-    дописывать после JSON (например "\\n\\nПояснение: не уверен" или второй JSON-объект)
-    — json.loads на таком хвосте упал бы, raw_decode его просто игнорирует.
-    speak обязан быть bool, text — строкой; при speak=true пустой text — сбой
-    (None), при speak=false отсутствующий/пустой text — это норма ("").
-    Лишние ключи в JSON игнорируются.
+    Strips ```json ... ``` / ``` ... ``` wrappers; finds the first "{" and parses JSON
+    from it with ``json.JSONDecoder().raw_decode`` instead of ``json.loads``:
+    raw_decode stops right after the first valid object and does not require that
+    nothing follows it. This tolerates the tail models like to append after the JSON
+    (for example "\\n\\nNote: not sure" or a second JSON object); json.loads would fail
+    on such a tail, raw_decode simply ignores it.
+    speak must be a bool and text a string; with speak=true an empty text is a failure
+    (None), with speak=false a missing/empty text is normal ("").
+    Extra keys in the JSON are ignored.
     """
     try:
         candidate = _strip_code_fence(raw.strip())
@@ -377,10 +374,9 @@ def parse_reply(raw: str) -> Reply | None:
             return None
         text = text_value.strip()
 
-        # "reply_to": int, null или отсутствует -> используется как есть/None;
-        # любой другой тип (строка, float, bool — bool исключён явно, т.к.
-        # isinstance(True, int) в Python истинно) -> None, это не срыв всего
-        # разбора, только этого необязательного поля (CLAUDE.md, "вернулся проверить").
+        # "reply_to": int, null or missing -> used as is/None; any other type (string,
+        # float, bool: bool is excluded explicitly because isinstance(True, int) is true
+        # in Python) -> None; this fails only this optional field, not the whole parse.
         reply_to_value = data.get("reply_to")
         reply_to: int | None
         if reply_to_value is None or isinstance(reply_to_value, bool):
@@ -396,6 +392,6 @@ def parse_reply(raw: str) -> Reply | None:
             return Reply(speak=True, text=text, reply_to=reply_to)
         return Reply(speak=False, text="", reply_to=reply_to)
     except Exception:
-        # Ответ модели — недоверенный внешний текст: любой сбой разбора (не JSON,
-        # оборванная обёртка, неожиданный тип) означает "молчание", а не падение.
+        # The model reply is untrusted external text: any parse failure (not JSON,
+        # truncated wrapper, unexpected type) means "silence", not a crash.
         return None
