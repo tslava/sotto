@@ -53,7 +53,7 @@ def test_legacy_pack_loads_with_expected_shape() -> None:
     assert persona.revision == "dev"
     assert persona.chat_notes == ""
     assert persona.legacy_changelog == (LEGACY_PACK / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert persona.frag.data == {}
+    assert persona.fragment_errors() == []
     assert persona.catalog.keys() == set()
 
 

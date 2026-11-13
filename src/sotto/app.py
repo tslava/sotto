@@ -52,7 +52,7 @@ def load_startup_persona(settings: Settings) -> Persona:
         persona = load_persona(
             resolve_persona_dir(settings.persona_dir, settings.allow_demo_persona)
         )
-        errors = persona.prompt_errors()
+        errors = persona.prompt_errors() + persona.fragment_errors()
     except PackError as exc:
         raise SystemExit(f"persona pack error: {exc}") from exc
     if errors:

@@ -28,6 +28,7 @@ NEW_MODULES: tuple[str, ...] = (
     "tools/golden/schema.py",
     "tools/coverage_gate.py",
     "tools/check_language.py",
+    "tools/extract_fragments.py",
     "tools/inventory.py",
     "tools/test_inventory.py",
     "src/sotto/persona.py",

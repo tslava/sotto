@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import random
-import re
 import sqlite3
 import sys
 import tempfile
@@ -29,7 +28,6 @@ from typing import Any
 import httpx
 
 from sotto.config import load_config
-from sotto.fragments import FRAGMENT_SPEC
 from sotto.persona import PackError, Persona, load_persona
 from sotto.stores import SeedPlan, build_seed_plan
 
@@ -74,23 +72,11 @@ def check_pack(persona: Persona) -> list[str]:
     except (ValueError, TypeError, KeyError) as exc:
         errors.append(f"places_manual.yaml: {exc}")
 
-    for key, placeholders in FRAGMENT_SPEC.items():
-        if not persona.frag.has(key):
-            errors.append(f"fragments.yaml: missing key {key!r}")
-            continue
-        value = persona.frag.get(key)
-        if isinstance(value, str):
-            found = set(_braced(value))
-            if found != set(placeholders):
-                errors.append(f"fragments.yaml: {key!r} has placeholders {sorted(found)}")
+    errors += persona.fragment_errors()
 
     if persona.catalog.missing:
         errors.append(f"catalog: missing keys {sorted(persona.catalog.missing)}")
     return errors
-
-
-def _braced(text: str) -> list[str]:
-    return re.findall(r"\{([a-z_]+)\}", text)
 
 
 def read_seed_plan(persona: Persona, db_path: Path) -> SeedPlan:

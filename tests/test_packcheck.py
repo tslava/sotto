@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from sotto.db import Database
+from sotto.fragments import ALL_FRAGMENT_KEYS
 from sotto.packcheck import (
     EXIT_INVALID,
     EXIT_OK,
@@ -122,20 +123,29 @@ def test_missing_catalog_keys_are_an_error(pack: Path) -> None:
     assert check_pack(persona) == ["catalog: missing keys ['never.defined']"]
 
 
-def test_fragment_spec_is_checked(pack: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from sotto import packcheck
-
-    monkeypatch.setattr(
-        packcheck, "FRAGMENT_SPEC", {"a.present": frozenset({"x"}), "a.absent": frozenset()}
-    )
-    (pack / "fragments.yaml").write_text("a:\n  present: 'no slot'\n", encoding="utf-8")
+def test_fragment_spec_is_checked(pack: Path) -> None:
+    data = yaml.safe_load((LEGACY_PACK / "fragments.yaml").read_text(encoding="utf-8"))
+    del data["vocab"]["offer_tail"]
+    data["situations"]["life"] = "no slot at all"
+    data["placeholders"]["extra"] = "unknown"
+    (pack / "fragments.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
 
     errors = check_pack(load_persona(pack))
 
     assert errors == [
-        "fragments.yaml: 'a.present' has placeholders []",
-        "fragments.yaml: missing key 'a.absent'",
+        "fragments.yaml: missing key vocab.offer_tail",
+        "fragments.yaml: unknown key placeholders.extra",
+        "fragments.yaml: situations.life placeholders are [none], expected [text]",
     ]
+
+
+def test_pack_without_fragments_reports_every_key(pack: Path) -> None:
+    (pack / "fragments.yaml").unlink()
+
+    errors = check_pack(load_persona(pack))
+
+    assert len(errors) == len(ALL_FRAGMENT_KEYS)
+    assert all(error.startswith("fragments.yaml: missing key ") for error in errors)
 
 
 # -- boot ------------------------------------------------------------------------

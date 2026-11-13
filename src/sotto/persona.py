@@ -20,7 +20,13 @@ from types import MappingProxyType
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from sotto.fragments import PROMPT_NAMES, Fragments, load_fragments, slot_errors
+from sotto.fragments import (
+    PROMPT_NAMES,
+    Fragments,
+    fragment_errors,
+    load_fragments,
+    slot_errors,
+)
 from sotto.i18n import Catalog, CatalogError, load_catalog_dir
 from sotto.lang import Language, UnknownLanguageError, get_language
 
@@ -78,6 +84,10 @@ class Persona:
         for name in PROMPT_NAMES:
             errors += slot_errors(name, self.prompts[name])
         return errors
+
+    def fragment_errors(self) -> list[str]:
+        """Schema problems of ``fragments.yaml`` against ``FRAGMENT_SPEC`` (empty list = fine)."""
+        return fragment_errors(self.frag.data)
 
 
 def resolve_persona_dir(persona_dir: Path | None, allow_demo: bool) -> Path:
