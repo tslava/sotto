@@ -2406,7 +2406,7 @@ def persona_from_env() -> Persona                   # для CLI без BOT_TOKE
 версию промпта или few-shot. Коды выхода: 0 ок, 1 пакет неверен, 2 использование/БД, 3 сид. Печатает
 имена файлов и числа, не тексты пакета.
 
-`Catalog` пока заглушка с итоговым API (пустой без `locale/`). `Fragments` настоящий: `fragments.yaml` в
+`Catalog` и `Fragments` настоящие (каталог — раздел ниже). `Fragments`: `fragments.yaml` в
 пакете держит тексты, которые движок кладёт в промпты моделей или пишет в БД (группы `placeholders`,
 `situations`, `prompt`, `render`, `weather`, `vocab`, `tools`; 70 листьев). Схема — `fragments.FRAGMENT_SPEC`
 (какие `{плейсхолдеры}` обязаны быть в каждом листе, `LITERAL_BRACES` — листья с JSON-скобками),
@@ -2439,6 +2439,47 @@ class Fragments: get(key) | text(key) -> str | items(key) -> list[str] | table(k
 не показывают эти ключи (`POST_BASELINE_CONFIG_KEYS` в `tools/golden/adapter.py`), чтобы baseline оставался
 нетронутым. Временный пакет тестов — `personas/_legacy_ru` (`tests/packs.py`: `LEGACY_PACK`, `LEGACY_FRAG`,
 `frag_with(группа__лист=значение)`; фикстуры `tests/conftest.py`).
+
+## Интерфейсы: каталог текстов для владельца
+
+Всё, что бот пишет владельцу в личку (`/help`, `/status`, ответы команд, тревога о отказе провайдера,
+тексты ошибок), живёт в каталоге, а не в коде. Английский каталог — часть движка: `locales/en/{help,
+status,commands,alerts,errors}.yaml` (копируется в образ рядом с `personas/`). Пакет может нести свой
+`locale/<код>/` с теми же пятью файлами; чего в нём нет, берётся из английского (один WARNING на ключ).
+Продакшен-пакет после перехода — `locale: en` без своего каталога; `personas/_legacy_ru/locale/ru/` —
+доказательство миграции (дословно прежние литералы), на котором golden и тесты остаются побайтно теми же.
+
+```python
+# i18n.py
+# файл = один раздел; верхний ключ файла равен его имени; значение — строка либо {one, few, many, other}
+# (форма по lang.plural); плейсхолдеры {имя} (в т.ч. {x!r}, {x:.2f}); литеральные скобки — {{ }}.
+class Catalog: t(key, /, **params) | plural(key, n, /, **params) | keys() | entries() | missing | fell_back
+def load_catalog_dir(directory, locale, *, plural_rule, fallback_dir=None) -> Catalog
+def engine_catalog(locale="en") -> Catalog          # locales/<locale> + английский как запасной
+def read_locale_dir(directory) -> dict[str, str | dict[str, str]]
+def catalog_parity(reference, other, plural_categories, *, other_name) -> list[str]
+# errors.py
+class OwnerError(ValueError): code, params; render(catalog) = catalog.t("errors." + code, **params)
+# stores.py поднимает OwnerError("set_persona" | "set_unknown_section", key= | "ex_rm_range", index=, total=);
+# commands.py печатает errors.generic с текстом OwnerError.render или str(exc) (сообщения pydantic и
+# vocab.py идут как были).
+# commands.py: _t(deps, "commands.x", **params) — каталог берётся из deps.persona.catalog (нет персоны —
+# английский движка). Ни одной строки владельцу в коде нет; общий хвост /help и неизвестной команды — help.text.
+# alerts.render_alert(..., catalog=None): alerts.*; OwnerAlerter берёт persona.catalog.
+# changelog.py: parse_chat_notes / chat_releases(chat_notes, legacy) / owner_releases(legacy). /changelog и
+# /changelog <версия> — chat_notes.md пакета (формат «## [0.9.1] - 2026-11-05» + свободный текст), нет файла —
+# блок «Для чата» из CHANGELOG.md пакета; /changelog owner — блок «Для владельца» CHANGELOG.md пакета
+# (CHANGELOG.md самого движка подключается в PR-8).
+```
+
+`python -m sotto.packcheck ПАКЕТ --locale-parity` сверяет `locale/<код>/` пакета с английским каталогом
+(каждый ключ, те же плейсхолдеры, формы множественного числа по правилу языка, лишних ключей нет).
+`tools/extract_locale.py draft ИСТОЧНИК.py` печатает черновик каталога из кириллических литералов;
+`check --catalog ДИР ИСТОЧНИК.py...` сверяет каталог с исходниками ДО рефакторинга в обе стороны (литерал
+без места в каталоге, значение без литерала). `tools/split_changelog.py CHANGELOG.md --out chat_notes.md`
+выделяет блоки «Для чата» в `chat_notes.md` и проверяет, что они читаются обратно без потерь. Тесты:
+`tests/test_i18n.py` (паритет en и ru, статическая сверка каждого вызова каталога с английскими текстами),
+`tests/test_commands_en.py` (команды с английским каталогом).
 
 ## Конвенции
 

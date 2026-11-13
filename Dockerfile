@@ -34,6 +34,8 @@ COPY --chown=bot:bot CHANGELOG.md ./
 # Persona packs (personas/_legacy_ru until the demo pack lands). The image sets no
 # PERSONA_DIR: the pack is selected at run time and a missing mount fails closed.
 COPY --chown=bot:bot personas ./personas
+# The engine's own owner-UI texts (English); a pack's locale/<code>/ overrides them.
+COPY --chown=bot:bot locales ./locales
 
 # /app/data — точка монтирования bind-volume из docker-compose.yml (см. README:
 # требуется chown 10001:10001 на хосте перед первым запуском).
