@@ -18,8 +18,7 @@ from typing import Any
 TOTAL_FLOOR = 93.0
 NEW_MODULE_FLOOR = 95.0
 
-# Modules held to NEW_MODULE_FLOOR. Extend as stage 2 adds modules (PR-1 renames the package:
-# the ``src/sotto`` entries below are the future names and are skipped until they exist).
+# Modules held to NEW_MODULE_FLOOR. A listed module that does not exist is skipped.
 NEW_MODULES: tuple[str, ...] = (
     "tools/golden/__main__.py",
     "tools/golden/adapter.py",
@@ -28,13 +27,7 @@ NEW_MODULES: tuple[str, ...] = (
     "tools/golden/schema.py",
     "tools/coverage_gate.py",
     "tools/check_language.py",
-    "tools/extract_fragments.py",
-    "tools/extract_filter_defaults.py",
     "tools/extract_config_keys.py",
-    "tools/extract_locale.py",
-    "tools/split_changelog.py",
-    "tools/inventory.py",
-    "tools/test_inventory.py",
     "src/sotto/persona.py",
     "src/sotto/fragments.py",
     "src/sotto/i18n.py",

@@ -159,5 +159,5 @@ def test_exempt_paths_match_the_language_gate_allowance() -> None:
     from tools import check_language
 
     for pattern in ast_equiv.EXEMPT_PATHS:
-        if pattern.startswith(("tests/lang", "tests/legacy", "tests/fixtures")):
+        if pattern.startswith(("tests/lang", "tests/fixtures")):
             assert check_language.is_allowed(pattern.replace("*", "x.py"))

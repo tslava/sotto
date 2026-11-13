@@ -1,8 +1,7 @@
-"""Language gate, REPORT-ONLY for now (plan 3.4; enforced from PR-9).
+"""Language gate: nothing outside the allowed paths may contain Cyrillic.
 
 Prints the number of Cyrillic characters per tracked file outside the allowed paths and a
-total. Exit code is 0 until the gate is switched on (``--enforce`` makes a non-empty report
-fail, for the PR that turns it on).
+total. Exit code is 0 by default; ``--enforce`` makes a non-empty report fail (CI uses it).
 """
 
 from __future__ import annotations
@@ -21,12 +20,8 @@ ALLOWED_PATHS: tuple[str, ...] = (
     "src/sotto/lang/ru.py",
     "tests/lang/*",
     "tests/fixtures/*",
-    "tests/legacy/*",
-    "personas/_legacy_ru/*",
-    # Russian golden fixtures: scenarios and the synthetic baseline recorded from the
-    # repo's own (synthetic) root files. PR-9 decides whether they stay.
-    "tools/golden/scenarios_ru.yaml",
-    "tools/golden/baseline_synthetic/*",
+    "tests/test_ast_equiv.py",  # self-test fixtures: Russian sample code
+    "tools/ast_equiv.py",
 )
 
 

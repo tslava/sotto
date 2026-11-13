@@ -1301,10 +1301,9 @@ async def _act_call(engine: Engine, args: dict[str, Any]) -> Any:
 # --- group D: config ---
 
 
-# Config keys PR-3 added when it moved code constants into the pack (geocoder language and home
-# country, Places search anchor, district aliases and request keywords). The baselines predate
-# them, so the dumps leave them out and compare keeps covering every earlier key;
-# tests/test_fragments_extraction.py checks that the legacy pack carries them with the old values.
+# Config keys that moved from code constants into the pack's config.yaml (geocoder language and
+# home country, Places search anchor, district aliases and request keywords). The recorded
+# baselines predate them, so the dumps leave them out and compare keeps covering every other key.
 POST_BASELINE_CONFIG_KEYS = frozenset(
     {
         "behaviour.weather.geocode_language",

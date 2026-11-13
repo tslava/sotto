@@ -24,13 +24,13 @@ from sotto.packcheck import (
 )
 from sotto.persona import Persona, load_persona
 from sotto.stores import PromptStore
-from tests.packs import LEGACY_PACK
+from tests.packs import DEMO_PACK
 
 
 @pytest.fixture
 def pack(tmp_path: Path) -> Path:
     target = tmp_path / "pack"
-    shutil.copytree(LEGACY_PACK, target)
+    shutil.copytree(DEMO_PACK, target)
     return target
 
 
@@ -51,8 +51,8 @@ async def _seeded_db(tmp_path: Path, persona: Persona) -> Path:
 # -- static checks ---------------------------------------------------------------
 
 
-def test_legacy_pack_is_valid() -> None:
-    assert check_pack(load_persona(LEGACY_PACK)) == []
+def test_demo_pack_is_valid() -> None:
+    assert check_pack(load_persona(DEMO_PACK)) == []
 
 
 def _set_ship(pack: Path, ship: list[str]) -> Persona:
@@ -91,7 +91,7 @@ def test_ship_accepts_single_prompt_files_and_directories_without_slash(pack: Pa
 
 
 def test_main_valid_pack_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main([str(LEGACY_PACK)]) == EXIT_OK
+    assert main([str(DEMO_PACK)]) == EXIT_OK
 
     assert "is valid" in capsys.readouterr().out
 
@@ -104,10 +104,10 @@ def test_main_missing_pack_exits_one(tmp_path: Path, capsys: pytest.CaptureFixtu
 
 def test_ship_entry_that_does_not_exist(pack: Path) -> None:
     data = yaml.safe_load((pack / "pack.yaml").read_text(encoding="utf-8"))
-    data["ship"].append("golden/")
+    data["ship"].append("missing/")
     (pack / "pack.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
 
-    assert check_pack(load_persona(pack)) == ["pack.yaml: ship entry 'golden/' does not exist"]
+    assert check_pack(load_persona(pack)) == ["pack.yaml: ship entry 'missing/' does not exist"]
 
 
 def test_prompt_with_a_disallowed_slot(pack: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -159,7 +159,7 @@ def test_missing_catalog_keys_are_an_error(pack: Path) -> None:
 
 
 def test_fragment_spec_is_checked(pack: Path) -> None:
-    data = yaml.safe_load((LEGACY_PACK / "fragments.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load((DEMO_PACK / "fragments.yaml").read_text(encoding="utf-8"))
     del data["vocab"]["offer_tail"]
     data["situations"]["life"] = "no slot at all"
     data["placeholders"]["extra"] = "unknown"
@@ -188,8 +188,8 @@ def test_pack_without_fragments_reports_every_key(pack: Path) -> None:
 # -- boot ------------------------------------------------------------------------
 
 
-async def test_boot_check_builds_the_wiring_for_the_legacy_pack() -> None:
-    assert await boot_check(load_persona(LEGACY_PACK)) == []
+async def test_boot_check_builds_the_wiring_for_the_demo_pack() -> None:
+    assert await boot_check(load_persona(DEMO_PACK)) == []
 
 
 async def test_boot_check_reports_a_construction_failure(
@@ -202,11 +202,11 @@ async def test_boot_check_reports_a_construction_failure(
 
     monkeypatch.setattr(sotto.wiring, "build_llm_stack", explode)
 
-    assert await boot_check(load_persona(LEGACY_PACK)) == ["boot: RuntimeError: wiring broke"]
+    assert await boot_check(load_persona(DEMO_PACK)) == ["boot: RuntimeError: wiring broke"]
 
 
 def test_main_boot_flag(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main([str(LEGACY_PACK), "--boot"]) == EXIT_OK
+    assert main([str(DEMO_PACK), "--boot"]) == EXIT_OK
 
 
 def test_main_boot_failure_exits_one(
@@ -219,7 +219,7 @@ def test_main_boot_failure_exits_one(
 
     monkeypatch.setattr(sotto.wiring, "build_llm_stack", explode)
 
-    assert main([str(LEGACY_PACK), "--boot"]) == EXIT_INVALID
+    assert main([str(DEMO_PACK), "--boot"]) == EXIT_INVALID
 
     assert "wiring broke" in capsys.readouterr().err
 
@@ -230,21 +230,21 @@ def test_main_boot_failure_exits_one(
 async def test_seed_dry_run_passes_when_the_database_matches_the_pack(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    persona = load_persona(LEGACY_PACK)
+    persona = load_persona(DEMO_PACK)
     db_path = await _seeded_db(tmp_path, persona)
 
-    assert main([str(LEGACY_PACK), "--db", str(db_path), "--seed-dry-run"]) == EXIT_OK
+    assert main([str(DEMO_PACK), "--db", str(db_path), "--seed-dry-run"]) == EXIT_OK
 
     assert "prompt=keep few_shot=keep" in capsys.readouterr().out
 
 
 async def test_seed_dry_run_is_read_only(tmp_path: Path) -> None:
-    db_path = await _seeded_db(tmp_path, load_persona(LEGACY_PACK))
+    db_path = await _seeded_db(tmp_path, load_persona(DEMO_PACK))
     before = _sha(db_path)
     wal = tmp_path / "live.db-wal"
     wal_size = wal.stat().st_size if wal.exists() else 0
 
-    assert main([str(LEGACY_PACK), "--db", str(db_path), "--seed-dry-run"]) == EXIT_OK
+    assert main([str(DEMO_PACK), "--db", str(db_path), "--seed-dry-run"]) == EXIT_OK
 
     # SQLite may create the empty -wal/-shm companions of a WAL database; no page is written.
     assert _sha(db_path) == before
@@ -312,15 +312,15 @@ def test_seed_dry_run_on_a_database_without_tables_plans_a_seed(tmp_path: Path) 
     db_path = tmp_path / "empty.db"
     sqlite3.connect(db_path).close()
 
-    plan = read_seed_plan(load_persona(LEGACY_PACK), db_path)
+    plan = read_seed_plan(load_persona(DEMO_PACK), db_path)
 
     assert (plan.prompt, plan.few_shot) == ("seed", "seed")
     assert plan.prompt_active_version is None
 
 
 def test_seed_dry_run_needs_a_database(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert main([str(LEGACY_PACK), "--seed-dry-run"]) == EXIT_USAGE
-    assert main([str(LEGACY_PACK), "--db", str(tmp_path / "x.db"), "--seed-dry-run"]) == EXIT_USAGE
+    assert main([str(DEMO_PACK), "--seed-dry-run"]) == EXIT_USAGE
+    assert main([str(DEMO_PACK), "--db", str(tmp_path / "x.db"), "--seed-dry-run"]) == EXIT_USAGE
 
     err = capsys.readouterr().err
     assert "needs --db" in err
@@ -333,6 +333,6 @@ def test_seed_dry_run_unreadable_database(
     garbage = tmp_path / "garbage.db"
     garbage.write_bytes(b"this is not a sqlite database" * 100)
 
-    assert main([str(LEGACY_PACK), "--db", str(garbage), "--seed-dry-run"]) == EXIT_USAGE
+    assert main([str(DEMO_PACK), "--db", str(garbage), "--seed-dry-run"]) == EXIT_USAGE
 
     assert "cannot read" in capsys.readouterr().err

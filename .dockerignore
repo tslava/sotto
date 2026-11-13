@@ -9,3 +9,4 @@ data/
 exports/
 .env
 tests/
+personas/demo/golden/

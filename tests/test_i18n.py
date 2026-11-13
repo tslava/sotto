@@ -1,4 +1,4 @@
-"""The owner-UI catalog: the English files, the legacy ru migration proof, fallbacks, parity,
+"""The owner-UI catalog: the English files, fallbacks, parity,
 and a static check that every catalog call in the engine matches the English texts."""
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from sotto.i18n import (
 )
 from sotto.packcheck import EXIT_INVALID, EXIT_OK, locale_parity_errors, main
 from sotto.persona import load_persona
-from tests.packs import LEGACY_PACK, REPO_ROOT
+from tests.packs import DEMO_PACK, REPO_ROOT, RU_PACK
 
 EN = read_locale_dir(ENGINE_LOCALES_DIR / "en")
 AREAS = {"help", "status", "commands", "alerts", "errors", "validation", "config_keys"}
@@ -217,8 +217,7 @@ def test_load_catalog_dir_uses_the_fallback_dir(tmp_path: Path) -> None:
 
 def test_a_pack_without_its_own_locale_reads_the_engine_english(tmp_path: Path) -> None:
     pack = tmp_path / "pack"
-    shutil.copytree(LEGACY_PACK, pack)
-    shutil.rmtree(pack / "locale")
+    shutil.copytree(RU_PACK, pack)
     persona = load_persona(pack)
     assert persona.catalog.keys() == set()
     assert persona.catalog.t("commands.say_sent") == "Sent."
@@ -226,8 +225,7 @@ def test_a_pack_without_its_own_locale_reads_the_engine_english(tmp_path: Path) 
 
 def test_an_english_pack_without_locale_dir_uses_the_engine_catalog(tmp_path: Path) -> None:
     pack = tmp_path / "pack"
-    shutil.copytree(LEGACY_PACK, pack)
-    shutil.rmtree(pack / "locale")
+    shutil.copytree(DEMO_PACK, pack)
     manifest = yaml.safe_load((pack / "pack.yaml").read_text(encoding="utf-8"))
     manifest["locale"] = "en"
     (pack / "pack.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
@@ -270,9 +268,11 @@ def test_parity_reports_every_kind_of_difference() -> None:
 
 
 def test_packcheck_locale_parity_flag(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert main([str(LEGACY_PACK), "--locale-parity"]) == EXIT_OK
+    assert main([str(DEMO_PACK), "--locale-parity"]) == EXIT_OK
     pack = tmp_path / "pack"
-    shutil.copytree(LEGACY_PACK, pack)
+    shutil.copytree(RU_PACK, pack)
+    # A locale/ru that is a copy of the English files (it lacks the Russian plural forms).
+    shutil.copytree(REPO_ROOT / "locales" / "en", pack / "locale" / "ru")
     commands = pack / "locale" / "ru" / "commands.yaml"
     data = yaml.safe_load(commands.read_text(encoding="utf-8"))
     del data["commands"]["say_sent"]
@@ -287,8 +287,7 @@ def test_packcheck_locale_parity_flag(tmp_path: Path, capsys: pytest.CaptureFixt
 
 def test_packcheck_locale_parity_needs_a_locale_dir_for_a_non_english_pack(tmp_path: Path) -> None:
     pack = tmp_path / "pack"
-    shutil.copytree(LEGACY_PACK, pack)
-    shutil.rmtree(pack / "locale")
+    shutil.copytree(RU_PACK, pack)
     errors = locale_parity_errors(load_persona(pack))
     assert errors == ["locale/ru: directory not found (the pack reads English for every text)"]
 

@@ -7,6 +7,8 @@ This file is the engine changelog (config keys, commands, prompts, internals) an
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-13
+
 ### Notes
 
 - Persona packs: everything persona-specific (`config.yaml`, `few_shot.yaml`, `stickers.yaml`, `places_manual.yaml`, `prompts/`, `pack.yaml`) lives in the directory named by `PERSONA_DIR`. Config layering: engine defaults, then the pack's `config.yaml`, then runtime overrides. `python -m sotto.packcheck <dir> [--boot] [--db bot.db --seed-dry-run] [--locale-parity]` validates a pack.
@@ -18,7 +20,8 @@ This file is the engine changelog (config keys, commands, prompts, internals) an
 - Golden harness in `tools/golden`: compares assembled prompts and outputs for a pack before and after engine changes.
 - The `CONFIG_PATH`, `FEW_SHOT_PATH`, `PROMPT_PATH`, `*_PROMPT_PATH`, `STICKERS_PATH` and `CHANGELOG_PATH` variables are no longer read (one startup WARNING if set); `replay` gained `--persona`, `places_fill` and `stickers_fill` take paths from the pack.
 - Tests, docs and code comments are now English; the package was renamed `trolobot` -> `sotto`.
-- `/changelog` reads chat notes from the pack's `chat_notes.md` (`tools/split_changelog.py` builds one from an old-style changelog); `/changelog owner` shows this file.
+- Removed the legacy migration material: the synthetic Russian pack, its golden baseline, the migration-only tools (fragment/locale/filter-default extractors, changelog splitter, inventories) and the persona card. Russian behaviour is covered by `tests/lang` on `tests/fixtures/ru_pack`; the language gate (`tools/check_language.py`) allows Cyrillic only there.
+- `/changelog` reads chat notes from the pack's `chat_notes.md`; `/changelog owner` shows this file.
 
 ## [0.9.1] - 2026-11-05
 
@@ -144,7 +147,8 @@ This file is the engine changelog (config keys, commands, prompts, internals) an
 
 - Plan stages 1-7: skeleton and DB, gate and replay, generation and sending, a three-layer output filter, venues, control from Telegram, operations. Deployed to a VPS through GitHub Actions.
 
-[Unreleased]: https://github.com/tslava/sotto/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/tslava/sotto/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/tslava/sotto/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/tslava/sotto/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/tslava/sotto/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/tslava/sotto/compare/v0.8.0...v0.8.1

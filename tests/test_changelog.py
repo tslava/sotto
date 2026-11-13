@@ -1,10 +1,8 @@
-"""A pack's chat_notes.md (release notes for the chat) and the version string.
-
-The legacy Keep-a-Changelog format is covered in ``tests/legacy/test_legacy_changelog.py``.
-"""
+"""A pack's chat_notes.md (release notes for the chat) and the version string."""
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -31,8 +29,10 @@ Not a release.
 """
 
 
-def test_sotto_version_is_0_9_1() -> None:
-    assert sotto.__version__ == "0.9.1"
+def test_sotto_version_matches_pyproject() -> None:
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    declared = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
+    assert sotto.__version__ == declared
 
 
 def test_latest_release_none_for_empty_text() -> None:

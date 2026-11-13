@@ -29,14 +29,12 @@ README.md, RUNBOOK.md, CHANGELOG.md (engine, English), CLAUDE.md
 docs/creating-a-persona.md   docs/history/   docs/plans/
 locales/en/*.yaml      # owner-UI catalog (English), shipped in the image
 personas/demo/         # the English demo pack ("Gus Marlow"), public, default for tests
-personas/_legacy_ru/   # synthetic Russian pack for the migration proofs; removed in PR-9
 src/sotto/             # the engine (below)
   lang/                # Language modules: base.py (protocol), en.py, ru.py
-tools/                 # dev tools: golden/, coverage_gate.py, check_language.py, extract_*.py,
-                       # inventory.py, split_changelog.py
+tools/                 # dev tools: golden/, coverage_gate.py, check_language.py, extract_config_keys.py,
+                       # ast_equiv.py
 tests/                 # generic tests on the demo pack, English data
   lang/                # Russian-language behaviour, on tests/fixtures/ru_pack/ (synthetic)
-  legacy/              # migration proofs against personas/_legacy_ru and the golden baseline
   responder/           # the Responder tests, one file per area
   fixtures/ru_pack/    # synthetic Russian persona pack for tests/lang
 deploy/                # deploy.sh, deploy-only.sh, setup-host.sh (server side, see RUNBOOK)
@@ -146,7 +144,7 @@ what is linguistic: `stopwords`, `foreign_letters` (None switches the foreign-sc
 `default_filters()`. Persona data (motif declension, district aliases, the character's foreign words)
 is not language, it is pack. `en.py` is deliberately small (an `'s` name suffix, plain `-s/-ed/-ing`
 vocabulary rules, no foreign-alphabet venue filter). Cyrillic is allowed only in `lang/ru.py`,
-`tests/lang/`, `tests/fixtures/ru_pack/` and `personas/_legacy_ru/`.
+`tests/lang/` and `tests/fixtures/` (plus two self-test files, see `tools/check_language.py`).
 
 **Owner-UI catalog** (`i18n.py`): `locales/en/{help,status,commands,alerts,errors,validation,config_keys}.yaml`,
 top-level key = file stem; values are strings or plural maps (`one/few/many/other`); placeholders
@@ -360,21 +358,19 @@ Google Places (reviews are compressed to a validated `fact` and never stored; pl
 
 - Tests never touch the network or need tokens. The DB in tests is a temp file or `:memory:`.
 - Default pack for tests is `personas/demo` (`tests/conftest.py` sets `PERSONA_DIR`; fixtures
-  `demo_pack`, `ru_pack`, `legacy_pack`; helpers in `tests/demo.py`, `tests/packs.py`). English data
-  only, except `tests/lang/` (Russian behaviour on `tests/fixtures/ru_pack/`) and `tests/legacy/`
-  (migration proofs, which die with `personas/_legacy_ru`).
+  `demo_pack`, `ru_pack`; helpers in `tests/demo.py`, `tests/packs.py`). English data
+  only, except `tests/lang/` (Russian behaviour on `tests/fixtures/ru_pack/`).
 - One test file per module (`test_<module>.py`); `tests/responder/` holds the responder tests by area.
 - **Golden harness** (`tools/golden/`, see its README): records what the engine sends to models, how it
   parses and persists, the built config and the owner UI, deterministically (virtual clock, seeded rng,
-  mocked HTTP, fake bot, real `Database`); `compare` diffs against a baseline. Two sets, each must
-  print `golden compare OK: 101 scenarios identical`:
+  mocked HTTP, fake bot, real `Database`); `compare` diffs against a baseline. The demo set must
+  print `golden compare OK: 101 scenarios identical` (a private pack keeps its own scenarios and baseline
+  and runs the same command):
   ```
-  uv run python -m tools.golden compare --pack personas/_legacy_ru --scenarios tools/golden/scenarios_ru.yaml \
-      --baseline tools/golden/baseline_synthetic --allow tools/golden/ALLOWED_DIFFS.md
   uv run python -m tools.golden compare --pack personas/demo --scenarios personas/demo/golden/scenarios.yaml \
       --baseline personas/demo/golden/baseline --allow personas/demo/golden/ALLOWED_DIFFS.md
   ```
-  Never re-record `tools/golden/baseline_synthetic`. The demo baseline may be re-recorded only for an
+  The demo baseline may be re-recorded only for an
   intended change, listed in the pack's `ALLOWED_DIFFS.md` with the reason. `tools/golden/adapter.py` is
   the only module that knows how to build the engine; a refactoring updates it, not the scenarios.
 - **Coverage gate:** `uv run pytest -q --cov --cov-report=json && uv run python -m tools.coverage_gate`

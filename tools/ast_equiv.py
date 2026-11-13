@@ -47,7 +47,6 @@ EXEMPT_PATHS: tuple[str, ...] = (
     "tests/test_ast_equiv.py",
     "src/sotto/lang/ru.py",
     "tests/lang/*",
-    "tests/legacy/*",
     "tests/fixtures/*",
 )
 

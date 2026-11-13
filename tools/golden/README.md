@@ -2,8 +2,8 @@
 
 Records, for a persona pack, exactly what the engine sends to the models, how it parses and
 persists, which config it builds and what the owner UI says; `compare` shows any drift later.
-It exists to prove that the stage 2/3 refactoring (persona split, English) is lossless for the
-real pack. Plan: `04-stage2-3-plan.md`, section 3.2.
+It proves that an engine change leaves a pack's behaviour unchanged. The public demo pack keeps
+its scenarios and baseline in `personas/demo/golden/`; a private pack keeps its own.
 
 ```
 uv run python -m tools.golden record  --pack DIR --scenarios FILE --out DIR [--only ID|GROUP ...]
@@ -11,9 +11,9 @@ uv run python -m tools.golden compare --pack DIR --scenarios FILE --baseline DIR
         [--allow ALLOWED_DIFFS.md] [--only ID|GROUP ...]
 ```
 
-A *pack* directory is a persona pack as `sotto.persona.load_persona` reads it (PR-2): `pack.yaml`,
-`config.yaml`, `few_shot.yaml`, `prompts/*.txt`, `CHANGELOG.md`, `stickers.yaml`, `places_manual.yaml`
-(the repo's own pack is `personas/_legacy_ru`). Output: one canonical JSON per scenario
+A *pack* directory is a persona pack as `sotto.persona.load_persona` reads it `pack.yaml`,
+`config.yaml`, `few_shot.yaml`, `prompts/*.txt`, `chat_notes.md`, `stickers.yaml`, `places_manual.yaml`
+(the repo's own pack is `personas/demo`). Output: one canonical JSON per scenario
 (`sort_keys`, `indent=1`, `ensure_ascii=False`). `compare` prints a unified diff per scenario and
 exits 1; `--allow` takes a markdown file with lines `- <scenario id>: reason` (deliberate changes,
 owner sign-off). `--only` accepts scenario ids or group letters and skips the per-group minimums.
@@ -34,9 +34,8 @@ Run in separate processes with different `PYTHONHASHSEED` the output is byte-ide
 - `adapter.py`: the ONLY module that knows how to build the engine (paths, constructors, the
   engine package name) and how every action calls it. A refactoring PR updates this file only.
 - `runner.py`, `canonical.py`, `schema.py`, `__main__.py`: engine-independent.
-- `scenarios_ru.yaml`: synthetic Russian chat text; for the real pack it is copied to
-  `sotto-soul/golden/scenarios.yaml`. `baseline_synthetic/`: recorded from the repo's own root
-  files (public-safe because they are synthetic). Never regenerate a baseline to hide a diff.
+- Scenarios and baselines live with the pack: `personas/demo/golden/scenarios.yaml` and
+  `baseline/` (synthetic, public-safe). Never regenerate a baseline to hide a diff.
 - Debug aids: `GOLDEN_DEBUG=1` prints swallowed exceptions, `GOLDEN_CAPTURE_ALL=1` captures
   requests, sent messages and the database in every scenario (never for baselines).
 
@@ -49,18 +48,17 @@ Run in separate processes with different `PYTHONHASHSEED` the output is byte-ide
 | C deterministic functions | 13 | `soften`, `check_output` (27 candidates), `Patterns` probes, `sanitize`, `morph`, `Vocab.find`, motifs, `validate_fact`, places menu, weather rendering, reply parser, situations, `/ask` preview |
 | D config | 8 | `flatten_config`, `describe_key` cards, compiled pattern strings, with and without overrides |
 | E owner UI | 20 | the real command handlers with a fake `Message.answer`: `/help /status /get /set /unset /why /last /prompt /ex /life /say /memory /diary /jokes /people /words /changelog /ask`, chat commands, alert texts |
-| F persistence | 13 | rows and state the engine writes: `messages` (placeholders, name fallbacks, injection name), `bot_replies`, `filter_log` per stage, state keys at 12:00, 23:59:30 and 00:00:30 on a day that is also an ISO-week boundary, historical `[стикер #N]` / `[фото: ...]` rows driving sticker repeats, motifs, emoji counting and vocab |
+| F persistence | 13 | rows and state the engine writes: `messages` (placeholders, name fallbacks, injection name), `bot_replies`, `filter_log` per stage, state keys at 12:00, 23:59:30 and 00:00:30 on a day that is also an ISO-week boundary, historical sticker-tag and photo-description rows (in the pack's own wording) driving sticker repeats, motifs, emoji counting and vocab |
 
 Large prompt bodies in `prompt_versions` / `few_shot_versions` are stored as sha256 + length.
 
 ## Config keys added after the baseline
 
-PR-3 moved code constants into the pack's `config.yaml` (`POST_BASELINE_CONFIG_KEYS` in `adapter.py`: geocoder language and home country, Places search anchor, district aliases, request keywords). The baselines predate those keys, so the config dumps leave them out; everything else in the dump is still compared. `tests/test_fragments_extraction.py` checks that the pack carries them.
+Some code constants moved into the pack's `config.yaml` (`POST_BASELINE_CONFIG_KEYS` in `adapter.py`: geocoder language and home country, Places search anchor, district aliases, request keywords). The recorded baselines predate those keys, so the config dumps leave them out; everything else in the dump is still compared.
 
 ## Known limits (scenarios not driven, and why)
 
-- `app.main()` is not run (it starts aiogram polling); the adapter mirrors its wiring. PR-2's
-  `packcheck --boot` is the guard for that wiring.
+- `app.main()` is not run (it starts aiogram polling); the adapter mirrors its wiring. `packcheck --boot` is the guard for that wiring.
 - `Bot` calls are recorded at the `FakeBot` level, aiogram's HTTP layer is not exercised.
 - HTTP headers of the LLM request (`X-Title`) are not recorded: only url-independent body fields.
 - `/memory run` (weekly job through the command), the periodic `*_job` loops and `restore_pending`

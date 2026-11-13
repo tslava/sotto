@@ -1,4 +1,4 @@
-"""Compiled gate and filter patterns (CHARACTER.md section 6, PLAN.md stage 2).
+"""Compiled gate and filter patterns (gate and output-filter defaults live in the persona pack).
 
 Everything is compiled once in __init__; after that, pure search methods over ready
 regex objects. Implements gate_types.PatternsLike.

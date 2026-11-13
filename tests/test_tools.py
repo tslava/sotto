@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from tools import check_language, coverage_gate, inventory, test_inventory
+from tools import check_language, coverage_gate
 from tools.golden import __main__ as golden_cli
 from tools.golden import canonical, runner
 from tools.golden.schema import load_scenarios, parse_offset
@@ -232,120 +232,6 @@ def test_language_gate_reports_and_enforces(
     assert check_language.main(["--repo", str(tmp_path)]) == 0
     assert "report-only): 1 files, 6 Cyrillic" in capsys.readouterr().out
     assert check_language.main(["--repo", str(tmp_path), "--enforce"]) == 1
-
-
-# --- inventories --------------------------------------------------------------
-
-SAMPLE = '''"""\u0414\u043e\u043a."""
-import logging
-logger = logging.getLogger(__name__)
-_MSG = "\u043f\u0440\u0438\u0432\u0435\u0442"
-name = "\u043c\u0438\u0440"  # \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439
-
-class Cfg:
-    x: str = Field(default="\u0430", description="\u043e\u043f\u0438\u0441\u0430\u043d\u0438\u0435")
-
-def f(parser):
-    logger.info("\u043b\u043e\u0433")
-    parser.add_argument("--x", help="\u043f\u043e\u043c\u043e\u0449\u044c")
-    raise ValueError("\u043e\u0448\u0438\u0431\u043a\u0430")
-
-def g():
-    return "\u0432\u043d\u0443\u0442\u0440\u0438"
-
-print("\u0442\u043e\u0436\u0435")
-'''
-
-
-def test_inventory_classifies_literals(tmp_path: Path) -> None:
-    counts = inventory.inventory_file(SAMPLE)
-    assert counts["doc"] == 1 and counts["cmt"] == 1
-    for role in (
-        "const:UPPER",
-        "const:var",
-        "field_desc",
-        "field_default",
-        "log",
-        "cli_help",
-        "exc",
-        "inline_in_func",
-        "other",
-    ):
-        assert counts["role:" + role] >= 1, role
-    (tmp_path / "m.py").write_text(SAMPLE, encoding="utf-8")
-    (tmp_path / "empty.py").write_text("x = 1\n", encoding="utf-8")
-    per_file = inventory.inventory(tmp_path)
-    assert list(per_file) == ["m.py"]
-    assert inventory.totals(per_file)["doc"] == 1
-
-
-def test_inventory_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    (tmp_path / "m.py").write_text(SAMPLE, encoding="utf-8")
-    assert inventory.main([str(tmp_path)]) == 0
-    assert "TOTAL" in capsys.readouterr().out
-    assert inventory.main([str(tmp_path), "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["total"]["doc"] == 1
-
-
-TESTS_SAMPLE = """
-import pytest
-
-@pytest.mark.parametrize("a", [1, 2, 3])
-@pytest.mark.parametrize("b", [1, 2])
-def test_pairs(a, b):
-    assert a
-    assert b
-
-class TestGroup:
-    def test_raises(self):
-        with pytest.raises(ValueError):
-            raise ValueError
-        assert True
-
-async def test_async():
-    assert 1
-
-def helper():
-    assert 0
-
-@pytest.mark.parametrize("c", make())
-def test_dynamic(c):
-    from pytest import raises
-    with raises(KeyError):
-        raise KeyError
-"""
-
-
-def test_test_inventory_counts_and_diff(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    (tmp_path / "test_x.py").write_text(TESTS_SAMPLE, encoding="utf-8")
-    inv = test_inventory.inventory(tmp_path)
-    assert inv["test_x.py::test_pairs"] == {
-        "asserts": 2,
-        "raises": 0,
-        "parametrize": 2,
-        "cases": 6,
-    }
-    assert inv["test_x.py::TestGroup::test_raises"]["raises"] == 1
-    assert inv["test_x.py::test_dynamic"]["raises"] == 1
-    assert "test_x.py::helper" not in inv
-
-    changed = {**inv, "test_x.py::test_async": {**inv["test_x.py::test_async"], "asserts": 0}}
-    changed["test_x.py::test_new"] = {"asserts": 1, "raises": 0, "parametrize": 0, "cases": 1}
-    del changed["test_x.py::test_pairs"]
-    lines = test_inventory.diff(inv, changed)
-    assert [line[0] for line in lines] == ["-", "+", "~"]
-
-    old, new = tmp_path / "old.json", tmp_path / "new.json"
-    old.write_text(json.dumps(inv), encoding="utf-8")
-    new.write_text(json.dumps(changed), encoding="utf-8")
-    assert test_inventory.main(["--diff", str(old), str(new)]) == 0
-    assert "removed" in capsys.readouterr().out
-    assert test_inventory.main(["--diff", str(old), str(old)]) == 0
-    assert "no differences" in capsys.readouterr().out
-    assert test_inventory.main([str(tmp_path)]) == 0
-    assert "TOTAL tests=" in capsys.readouterr().out
-    assert test_inventory.main([str(tmp_path), "--json"]) == 0
-    assert "test_x.py::test_pairs" in capsys.readouterr().out
 
 
 def test_scenario_default_home_needs_the_files_defaults(tmp_path: Path) -> None:
