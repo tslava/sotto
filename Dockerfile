@@ -2,7 +2,7 @@
 
 FROM ghcr.io/astral-sh/uv:0.11.21 AS uv
 
-# ---- builder: собираем виртуальное окружение --------------------------------
+# ---- builder: build the virtual environment ----------------------------------
 FROM python:3.12-slim AS builder
 
 COPY --from=uv /uv /uvx /usr/local/bin/
@@ -18,7 +18,7 @@ COPY src ./src
 
 RUN uv sync --frozen --no-dev
 
-# ---- runtime: минимальный образ без сборочных инструментов ------------------
+# ---- runtime: minimal image without build tools -------------------------------
 FROM python:3.12-slim AS runtime
 
 RUN groupadd --gid 10001 bot \
@@ -37,8 +37,8 @@ COPY --chown=bot:bot personas ./personas
 # The engine's own owner-UI texts (English); a pack's locale/<code>/ overrides them.
 COPY --chown=bot:bot locales ./locales
 
-# /app/data — точка монтирования bind-volume из docker-compose.yml (см. README:
-# требуется chown 10001:10001 на хосте перед первым запуском).
+# /app/data is the bind-mount point from docker-compose.yml (see README: the host
+# directory needs chown 10001:10001 before the first start).
 RUN mkdir -p /app/data && chown -R bot:bot /app
 
 ENV PATH="/app/.venv/bin:${PATH}" \
@@ -47,10 +47,10 @@ ENV PATH="/app/.venv/bin:${PATH}" \
 
 USER bot
 
-# Ничего не слушает наружу — EXPOSE не нужен (long polling).
-# Токен читается из переменной окружения контейнера и никогда не попадает в лог.
+# Nothing listens for inbound connections, so no EXPOSE (long polling).
+# The token is read from the container environment and never written to the log.
 HEALTHCHECK --interval=60s --timeout=10s --start-period=20s --retries=3 \
   CMD ["python", "-c", "import os, sys, httpx\nurl = 'https://api.telegram.org/bot' + os.environ['BOT_TOKEN'] + '/getMe'\nr = httpx.get(url, timeout=5.0)\nsys.exit(0 if r.status_code == 200 else 1)"]
 
-# Без uv в рантайме: у пользователя bot нет домашнего каталога, uv падает на кэше.
+# No uv at runtime: the bot user has no home directory and uv fails on its cache.
 CMD ["python", "-m", "sotto"]

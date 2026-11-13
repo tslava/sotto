@@ -39,13 +39,15 @@ pythonpath = ["src", "."]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests", "tools"]
-# ruff format переписывает python-блоки внутри markdown, а CLAUDE.md — контракт,
-# а не исполняемый код: в нём есть сигнатуры без тел и комментарии-пояснения.
+# ruff format would rewrite python blocks inside markdown; CLAUDE.md is a contract,
+# not runnable code (signatures without bodies, explanatory comments).
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
-ignore = ["RUF001", "RUF002", "RUF003"]  # кириллица в строках и комментариях
+# Typographic dashes and non-Latin letters are deliberate: dash normalisation, date ranges
+# in prompts and the Russian language module.
+ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.mypy]
 python_version = "3.12"
