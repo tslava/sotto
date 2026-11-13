@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_call:
 
@@ -37,5 +39,5 @@ jobs:
       - name: Coverage gate (total >= 93 %, new modules >= 95 %)
         run: uv run python -m tools.coverage_gate
 
-      - name: Language gate (report only)
-        run: uv run python -m tools.check_language
+      - name: Language gate (blocking)
+        run: uv run python -m tools.check_language --enforce
