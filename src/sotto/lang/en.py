@@ -102,6 +102,10 @@ _SELF_MARKERS = [
 class EnglishLanguage:
     code = "en"
     stopwords = _STOPWORDS
+    # No foreign script to guard against: ``regex:venue`` and ``regex:latin`` (and the latin-token
+    # frequency rule) are off for English. A capitalised-word venue check would fire on every
+    # sentence start, weekday and month without a stop list, so it is left out on purpose; the
+    # invented-venue guard for English personas is ``places`` in the prompt plus the judge.
     foreign_letters: str | None = None
     reflexive_suffixes: tuple[str, ...] = ()
 

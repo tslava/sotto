@@ -35,7 +35,7 @@ import yaml
 
 from sotto.i18n import read_locale_dir
 
-_CYRILLIC = re.compile("[А-Яа-яЁё]")
+_CYRILLIC = re.compile("[\u0410-\u044f\u0401\u0451]")
 _LOG_METHODS = frozenset({"debug", "info", "warning", "error", "exception", "critical", "log"})
 _PLACEHOLDER = "{}"
 

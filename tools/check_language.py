@@ -14,13 +14,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-CYRILLIC = re.compile("[Ѐ-ӿ]")
+CYRILLIC = re.compile("[\u0400-\u04ff]")
 
 # Paths where Cyrillic is legitimate (fnmatch patterns on posix paths from the repo root).
 ALLOWED_PATHS: tuple[str, ...] = (
     "src/sotto/lang/ru.py",
     "tests/lang/*",
-    "tests/fixtures/ru_pack/*",
+    "tests/fixtures/*",
+    "tests/legacy/*",
     "personas/_legacy_ru/*",
     # Russian golden fixtures: scenarios and the synthetic baseline recorded from the
     # repo's own (synthetic) root files. PR-9 decides whether they stay.

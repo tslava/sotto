@@ -28,7 +28,7 @@ from typing import Any
 
 import yaml
 
-_CYRILLIC = re.compile("[А-Яа-яЁё]")
+_CYRILLIC = re.compile("[\u0410-\u044f\u0401\u0451]")
 
 
 class ExtractError(Exception):
@@ -54,7 +54,7 @@ class Inline:
     module: str
     function: str
     index: int
-    pattern: str = "[А-Яа-яЁё]"
+    pattern: str = "[\u0410-\u044f\u0401\u0451]"
 
 
 @dataclass(frozen=True)

@@ -18,7 +18,7 @@ import tokenize
 from collections import Counter
 from pathlib import Path
 
-CYRILLIC = re.compile("[Ѐ-ӿ]")
+CYRILLIC = re.compile("[\u0400-\u04ff]")
 _LOG_METHODS = frozenset({"info", "warning", "error", "exception", "debug"})
 _DOC_OWNERS = (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
