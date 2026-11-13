@@ -15,6 +15,7 @@ def _isolated_cwd(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 def test_settings_from_env_minimal(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BOT_TOKEN", "test-token-123")
+    monkeypatch.delenv("PERSONA_DIR")  # the autouse conftest fixture sets it
 
     settings = Settings()
 
@@ -24,11 +25,8 @@ def test_settings_from_env_minimal(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.openrouter_api_key is None
     assert settings.google_places_key is None
     assert settings.db_path == Path("data/bot.db")
-    assert settings.config_path == Path("config.yaml")
-    assert settings.few_shot_path == Path("few_shot.yaml")
-    assert settings.prompt_path == Path("prompts/system.txt")
-    assert settings.vision_prompt_path == Path("prompts/vision.txt")
-    assert settings.changelog_path == Path("CHANGELOG.md")
+    assert settings.allow_demo_persona is False
+    assert settings.deprecated_fields_set() == []
     assert settings.log_level == "INFO"
 
 
@@ -39,7 +37,6 @@ def test_settings_from_env_full(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-1")
     monkeypatch.setenv("GOOGLE_PLACES_KEY", "gp-1")
     monkeypatch.setenv("DB_PATH", "/tmp/custom.db")
-    monkeypatch.setenv("CHANGELOG_PATH", "/tmp/CHANGELOG.md")
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
 
     settings = Settings()
@@ -50,7 +47,6 @@ def test_settings_from_env_full(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.openrouter_api_key.get_secret_value() == "sk-or-1"
     assert settings.google_places_key is not None
     assert settings.google_places_key.get_secret_value() == "gp-1"
-    assert settings.changelog_path == Path("/tmp/CHANGELOG.md")
     assert settings.db_path == Path("/tmp/custom.db")
     assert settings.log_level == "DEBUG"
 
@@ -85,7 +81,6 @@ def test_settings_weather_home_point_defaults_to_unset(monkeypatch: pytest.Monke
     assert settings.weather_latitude is None
     assert settings.weather_longitude is None
     assert settings.weather_home_name == ""
-    assert settings.weather_place_prompt_path == Path("prompts/weather_place.txt")
 
 
 def test_settings_weather_home_point_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -120,3 +115,38 @@ def test_settings_missing_bot_token_raises(monkeypatch: pytest.MonkeyPatch) -> N
 
     with pytest.raises(Exception):  # noqa: B017 - pydantic ValidationError, обязательное поле
         Settings()
+
+
+def test_settings_persona_dir_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BOT_TOKEN", "abc")
+    monkeypatch.setenv("PERSONA_DIR", "/srv/persona")
+    monkeypatch.setenv("ALLOW_DEMO_PERSONA", "true")
+
+    settings = Settings()
+
+    assert settings.persona_dir == Path("/srv/persona")
+    assert settings.allow_demo_persona is True
+
+
+def test_settings_deprecated_path_fields_are_reported_and_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BOT_TOKEN", "abc")
+    monkeypatch.setenv("CHANGELOG_PATH", "/tmp/CHANGELOG.md")
+    monkeypatch.setenv("JUDGE_PROMPT_PATH", "/tmp/judge.txt")
+    monkeypatch.setenv("CONFIG_PATH", "/tmp/config.yaml")
+
+    settings = Settings()
+
+    assert settings.deprecated_fields_set() == [
+        "CONFIG_PATH",
+        "JUDGE_PROMPT_PATH",
+        "CHANGELOG_PATH",
+    ]
+
+
+def test_settings_empty_deprecated_path_counts_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BOT_TOKEN", "abc")
+    monkeypatch.setenv("PROMPT_PATH", "")
+
+    assert Settings().deprecated_fields_set() == []

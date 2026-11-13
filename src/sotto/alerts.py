@@ -23,6 +23,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from sotto.config_models import Config
+from sotto.persona import Persona
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,9 @@ class OwnerAlerter:
         admin_user_id: int,
         cfg_getter: Callable[[], Config],
         clock: Callable[[], int] = lambda: int(time.time()),
+        persona: Persona | None = None,
     ) -> None:
+        self._persona = persona  # пока не используется: тексты тревог переедут в каталог пакета
         self._bot = bot
         self._db = db
         self._admin_user_id = admin_user_id

@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from sotto.db import Database
-from sotto.stores import ConfigStore, PromptStore
+from sotto.persona import Persona, load_persona
+from sotto.stores import ConfigStore, PromptStore, build_seed_plan, decide_seed
+from tests.packs import LEGACY_PACK
+
+
+def _legacy() -> Persona:
+    return load_persona(LEGACY_PACK)
+
+
+def _with_system(persona: Persona, text: str) -> Persona:
+    """The same pack with another system prompt (a restart after an edit of the file)."""
+    return replace(persona, prompts={**persona.prompts, "system": text})
+
 
 # -- ConfigStore ---------------------------------------------------------------
 
@@ -23,7 +37,7 @@ async def _make_config_store(tmp_path: Path) -> tuple[ConfigStore, Database]:
     await db.connect()
     config_path = tmp_path / "config.yaml"
     _write_minimal_config(config_path)
-    store = ConfigStore(config_path, db)
+    store = ConfigStore(replace(_legacy(), config_path=config_path), db)
     await store.load()
     return store, db
 
@@ -196,19 +210,18 @@ _FEW_SHOT_SEED = """\
 
 async def _make_prompt_store(
     tmp_path: Path, prompt_body: str = "system v1"
-) -> tuple[PromptStore, Database, Path]:
+) -> tuple[PromptStore, Database, Persona]:
     db = Database(tmp_path / "bot.db")
     await db.connect()
-    prompt_path = tmp_path / "system.txt"
-    prompt_path.write_text(prompt_body, encoding="utf-8")
     few_shot_path = tmp_path / "few_shot.yaml"
     few_shot_path.write_text(_FEW_SHOT_SEED, encoding="utf-8")
-    store = PromptStore(db, prompt_path, few_shot_path)
-    return store, db, prompt_path
+    persona = _with_system(replace(_legacy(), few_shot_path=few_shot_path), prompt_body)
+    store = PromptStore(persona, db)
+    return store, db, persona
 
 
 async def test_load_empty_db_seeds_version_1_from_files(tmp_path: Path) -> None:
-    store, db, _prompt_path = await _make_prompt_store(tmp_path)
+    store, db, _persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()
 
@@ -226,12 +239,12 @@ async def test_load_empty_db_seeds_version_1_from_files(tmp_path: Path) -> None:
 
 
 async def test_load_changed_prompt_file_creates_new_active_version(tmp_path: Path) -> None:
-    store, db, prompt_path = await _make_prompt_store(tmp_path)
+    store, db, persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()
         assert store.prompt_version() == 1
 
-        prompt_path.write_text("system v2", encoding="utf-8")
+        store = PromptStore(_with_system(persona, "system v2"), db)
         await store.load()
 
         assert store.prompt_version() == 2
@@ -243,7 +256,7 @@ async def test_load_changed_prompt_file_creates_new_active_version(tmp_path: Pat
 
 
 async def test_load_unchanged_prompt_file_does_not_add_version(tmp_path: Path) -> None:
-    store, db, _prompt_path = await _make_prompt_store(tmp_path)
+    store, db, _persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()
         await store.load()
@@ -257,11 +270,11 @@ async def test_load_unchanged_prompt_file_does_not_add_version(tmp_path: Path) -
 
 
 async def test_rollback_prompt_to_1_restores_body(tmp_path: Path) -> None:
-    store, db, prompt_path = await _make_prompt_store(tmp_path)
+    store, db, persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()  # версия 1, "system v1"
 
-        prompt_path.write_text("system v2", encoding="utf-8")
+        store = PromptStore(_with_system(persona, "system v2"), db)
         await store.load()  # версия 2, активная
         assert store.prompt_version() == 2
 
@@ -284,11 +297,11 @@ async def test_load_after_rollback_does_not_reseed_new_version(tmp_path: Path) -
     раньше засевал v3 из файла и тем самым отменял откат — load() сравнивал файл
     только с активной версией, а после отката активная (v1) отличается от файла
     (v2). Исправлено: файл сравнивается ВСЕМИ сохранёнными версиями."""
-    store, db, prompt_path = await _make_prompt_store(tmp_path)
+    store, db, persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()  # версия 1, "system v1"
 
-        prompt_path.write_text("system v2", encoding="utf-8")
+        store = PromptStore(_with_system(persona, "system v2"), db)
         await store.load()  # версия 2, активная, файл теперь "system v2"
         assert store.prompt_version() == 2
 
@@ -300,7 +313,7 @@ async def test_load_after_rollback_does_not_reseed_new_version(tmp_path: Path) -
         # всё ещё содержит "system v2" (никто его не откатывал), но это тело уже
         # есть среди сохранённых версий — новая версия не должна завестись, и
         # активной должна остаться версия 1 (результат отката).
-        restarted = PromptStore(db, prompt_path, tmp_path / "few_shot.yaml")
+        restarted = PromptStore(_with_system(persona, "system v2"), db)
         await restarted.load()
 
         assert restarted.prompt_version() == 1
@@ -315,14 +328,14 @@ async def test_load_new_file_text_after_rollback_still_adds_version(tmp_path: Pa
     """Если после отката файл на диске меняют на текст, которого ещё нет ни в одной
     версии, load() всё равно должен завести новую версию (а не молча остаться на
     откаченной) — сравнение идёт по телу, а не по факту "был ли откат"."""
-    store, db, prompt_path = await _make_prompt_store(tmp_path)
+    store, db, persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()
-        prompt_path.write_text("system v2", encoding="utf-8")
+        store = PromptStore(_with_system(persona, "system v2"), db)
         await store.load()
         assert await store.rollback_prompt(1) is True
 
-        prompt_path.write_text("system v3 - brand new", encoding="utf-8")
+        store = PromptStore(_with_system(persona, "system v3 - brand new"), db)
         await store.load()
 
         assert store.prompt_version() == 3
@@ -334,7 +347,7 @@ async def test_load_new_file_text_after_rollback_still_adds_version(tmp_path: Pa
 
 
 async def test_add_example_bumps_few_shot_version_and_is_findable(tmp_path: Path) -> None:
-    store, db, _prompt_path = await _make_prompt_store(tmp_path)
+    store, db, _persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()
         assert store.few_shot_version() == 1
@@ -365,7 +378,7 @@ async def test_add_example_bumps_few_shot_version_and_is_findable(tmp_path: Path
 
 
 async def test_remove_example_index_1_removes_last_added(tmp_path: Path) -> None:
-    store, db, _prompt_path = await _make_prompt_store(tmp_path)
+    store, db, _persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()
         await store.add_example(
@@ -389,7 +402,7 @@ async def test_concurrent_add_example_serializes_and_keeps_both(tmp_path: Path) 
     self.examples() до того, как любой из них запишет новую версию — потерялся
     бы один добавленный пример, и версий стало бы +1 вместо +2. С локом оба
     вызова исполняются строго по очереди."""
-    store, db, _prompt_path = await _make_prompt_store(tmp_path)
+    store, db, _persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()
         assert store.few_shot_version() == 1
@@ -413,7 +426,7 @@ async def test_concurrent_add_example_serializes_and_keeps_both(tmp_path: Path) 
 
 
 async def test_remove_example_out_of_range_raises_and_keeps_version(tmp_path: Path) -> None:
-    store, db, _prompt_path = await _make_prompt_store(tmp_path)
+    store, db, _persona = await _make_prompt_store(tmp_path)
     try:
         await store.load()
         assert store.few_shot_version() == 1
@@ -423,5 +436,64 @@ async def test_remove_example_out_of_range_raises_and_keeps_version(tmp_path: Pa
 
         assert store.few_shot_version() == 1
         assert len(store.examples()) == 2
+    finally:
+        await db.close()
+
+
+# -- seed plan (PR-2) ----------------------------------------------------------------
+
+
+def test_decide_seed_rules() -> None:
+    assert decide_seed("text", []) == "seed"
+    assert decide_seed("text", ["other"]) == "seed"
+    assert decide_seed("text", ["old", "text"]) == "keep"
+    assert decide_seed("  text\n", ["text"]) == "keep"  # surrounding whitespace is ignored
+    assert decide_seed("text", ["\ntext  "]) == "keep"
+    assert decide_seed("tex t", ["text"]) == "seed"  # inner whitespace is not
+
+
+def test_build_seed_plan_carries_hashes_and_active_versions() -> None:
+    plan = build_seed_plan(
+        prompt_text="p",
+        few_shot_text="f",
+        prompt_bodies=["p"],
+        few_shot_bodies=[],
+        prompt_active_version=3,
+        few_shot_active_version=None,
+    )
+
+    assert (plan.prompt, plan.few_shot) == ("keep", "seed")
+    assert plan.prompt_sha256 == hashlib.sha256(b"p").hexdigest()
+    assert plan.prompt_active_version == 3
+    assert plan.few_shot_active_version is None
+
+
+async def test_plan_seed_before_and_after_load(tmp_path: Path) -> None:
+    store, db, _persona = await _make_prompt_store(tmp_path)
+    try:
+        before = await store.plan_seed()
+        assert (before.prompt, before.few_shot) == ("seed", "seed")
+        assert before.prompt_active_version is None
+
+        await store.load()
+
+        after = await store.plan_seed()
+        assert (after.prompt, after.few_shot) == ("keep", "keep")
+        assert after.prompt_active_version == 1
+        assert after.few_shot_active_version == 1
+        assert after.prompt_sha256 == before.prompt_sha256
+        # plan_seed is pure: it never created a version
+        assert len(await db.prompt_versions()) == 1
+    finally:
+        await db.close()
+
+
+async def test_config_store_patterns_carry_the_persona_language(tmp_path: Path) -> None:
+    store, db = await _make_config_store(tmp_path)
+    try:
+        assert store.patterns().lang is not None
+        assert store.patterns().lang.code == "ru"
+        store.set_bot_username("x_bot")  # rebuilds the patterns
+        assert store.patterns().lang is not None
     finally:
         await db.close()

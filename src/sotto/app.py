@@ -16,22 +16,18 @@ from aiogram import Bot, Dispatcher
 
 from sotto.alerts import OwnerAlerter
 from sotto.bot import Deps, build_router
-from sotto.chat_memory import ChatMemorizer
 from sotto.commands import build_commands_router
 from sotto.db import Database
-from sotto.diary import DiaryExtractor
-from sotto.followup import FollowupChecker
-from sotto.judge import Judge
 from sotto.llm import LLMClient
+from sotto.persona import PackError, Persona, load_persona, resolve_persona_dir
 from sotto.reactions import ReactionChooser, ReactionScheduler
 from sotto.responder import Responder
 from sotto.retention import retention_loop
 from sotto.settings import Settings
-from sotto.stickers import StickerChooser, load_catalog
 from sotto.stores import ConfigStore, PromptStore
-from sotto.vision import VisionDescriber
 from sotto.vocab import VocabStore
-from sotto.weather import Place, WeatherClient, WeatherPlaceExtractor
+from sotto.weather import Place, WeatherClient
+from sotto.wiring import build_llm_stack
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +39,32 @@ def setup_logging(level: str) -> None:
     logging.basicConfig(stream=sys.stdout, level=level, format=_LOG_FORMAT)
 
 
+def load_startup_persona(settings: Settings) -> Persona:
+    """Пакет персоны для процесса. Нет PERSONA_DIR и нет ALLOW_DEMO_PERSONA -> SystemExit.
+
+    Fail-closed: потерянный монтаж на проде не должен молча запустить демо-персону в
+    настоящем чате. Ошибки пакета (нет файлов, кривой манифест, слоты промптов) тоже
+    останавливают процесс до подключения к БД и к Telegram.
+    """
+    for name in settings.deprecated_fields_set():
+        logger.warning("%s задан в окружении, но игнорируется: файлы берутся из PERSONA_DIR", name)
+    try:
+        persona = load_persona(
+            resolve_persona_dir(settings.persona_dir, settings.allow_demo_persona)
+        )
+        errors = persona.prompt_errors()
+    except PackError as exc:
+        raise SystemExit(f"persona pack error: {exc}") from exc
+    if errors:
+        raise SystemExit("persona pack error: " + "; ".join(errors))
+    logger.info("persona: %s rev %s (%s)", persona.name, persona.revision, persona.root)
+    return persona
+
+
 async def main() -> None:
     settings = Settings()
     setup_logging(settings.log_level)
+    persona = load_startup_persona(settings)
 
     db = Database(settings.db_path)
     await db.connect()
@@ -63,10 +82,10 @@ async def main() -> None:
     reaction_scheduler: ReactionScheduler | None = None
     weather: WeatherClient | None = None
     try:
-        config_store = ConfigStore(settings.config_path, db)
+        config_store = ConfigStore(persona, db)
         await config_store.load()
 
-        prompt_store = PromptStore(db, settings.prompt_path, settings.few_shot_path)
+        prompt_store = PromptStore(persona, db)
         await prompt_store.load()
 
         # Словари словечек (CLAUDE.md, "словечки из словаря") живут в БД: владелец
@@ -120,6 +139,7 @@ async def main() -> None:
             config_store=config_store,
             prompt_store=prompt_store,
             bot_username=me.username or "",
+            persona=persona,
             bot=bot,
             weather=weather,
             vocab_store=vocab_store,
@@ -147,123 +167,29 @@ async def main() -> None:
                 logger.warning("судья отключён: llm.judge_model не задан")
 
             http = httpx.AsyncClient(timeout=cfg.llm.timeout_sec)
-            # Отказ провайдера (кончились кредиты, ключ не принят) — сообщение владельцу
-            # в личку (CLAUDE.md, "Интерфейсы: тревога владельцу").
-            alerter = OwnerAlerter(
-                bot=bot, db=db, admin_user_id=settings.admin_user_id, cfg_getter=config_store.get
-            )
-            llm = LLMClient(
-                api_key=api_key.get_secret_value(),
-                cfg_getter=config_store.get,
-                db=db,
-                http=http,
-                on_refusal=alerter.provider_refused,
-            )
-
-            judge_prompt = settings.judge_prompt_path.read_text(encoding="utf-8")
-            judge: Judge | None = Judge(llm, config_store.get, judge_prompt)
-
-            # Дешёвая проверка «это мне?» в горячем окне (CLAUDE.md, "внимание как
-            # у живого человека") — создаётся вместе с остальными LLM-зависимыми
-            # компонентами, как только есть ключ; enabled/model проверяются на
-            # каждом вызове, а не один раз при старте.
-            followup_prompt = settings.followup_prompt_path.read_text(encoding="utf-8")
-            # Дешёвый предфильтр "вернулся проверить" (CLAUDE.md, "Интерфейсы:
-            # дешёвый предфильтр для «вернулся проверить»") — тот же чекер, второй
-            # промпт: пачка сообщений вместо одного, перед основной моделью.
-            checkin_prefilter_prompt = settings.checkin_prefilter_prompt_path.read_text(
-                encoding="utf-8"
-            )
-            # Подтверждение обращения по имени (CLAUDE.md, "имя в падежах и
-            # проверка обращения по имени") — тот же чекер, третий промпт: имя
-            # в любом падеже нашла регулярка, а обращение это или разговор о
-            # нём в третьем лице, решает дешёвая модель.
-            name_check_prompt = settings.name_check_prompt_path.read_text(encoding="utf-8")
-            followup_checker = FollowupChecker(
-                llm,
-                config_store.get,
-                followup_prompt,
-                checkin_prefilter_prompt,
-                name_check_prompt,
-            )
-            deps.followup = followup_checker
-
-            # Зрение на фото (CLAUDE.md, "зрение на фото") — как и followup,
-            # создаётся вместе с остальными LLM-зависимыми компонентами; enabled и
-            # модель проверяются на каждом снимке, а не один раз при старте.
-            vision_prompt = settings.vision_prompt_path.read_text(encoding="utf-8")
-            deps.vision = VisionDescriber(llm, config_store.get, vision_prompt)
-
-            # Выбор реакции моделью (CLAUDE.md, "реакции с задержкой и смыслом") —
-            # как followup и зрение, создаётся при наличии ключа; модель и
-            # semantic проверяются на каждом вызове, а не один раз при старте.
-            reaction_prompt = settings.reaction_prompt_path.read_text(encoding="utf-8")
-            reaction_chooser = ReactionChooser(llm, config_store.get, reaction_prompt)
-
-            # Каталог стикеров — офлайн-файл (CLAUDE.md, "Интерфейсы: стикеры"),
-            # правится stickers_fill.py и владельцем руками. Пустой/отсутствующий
-            # файл -> пустой каталог, чузер не создаётся, всё остальное работает
-            # как раньше (Responder.sticker_chooser=None).
-            catalog = load_catalog(settings.stickers_path)
-            deps.sticker_catalog_enabled = sum(1 for sticker in catalog.stickers if sticker.enabled)
-            sticker_chooser: StickerChooser | None = None
-            if deps.sticker_catalog_enabled:
-                sticker_prompt = settings.sticker_prompt_path.read_text(encoding="utf-8")
-                sticker_chooser = StickerChooser(llm, config_store.get, catalog, sticker_prompt)
-
-            # Долгая память чата (CLAUDE.md, "долгая память чата"): фоновый таск
-            # раз в час смотрит, попало ли локальное время в run_window, и
-            # пересказывает завершённые периоды. enabled проверяется на каждом
-            # заходе, а не один раз при старте — /set включает без рестарта.
-            memory_prompt = settings.memory_prompt_path.read_text(encoding="utf-8")
-            # Два дополнительных вызова недельного пересказа: шутки чата и незакрытые
-            # истории людей (CLAUDE.md, "шутки чата и истории людей").
-            jokes_prompt = settings.jokes_prompt_path.read_text(encoding="utf-8")
-            threads_prompt = settings.threads_prompt_path.read_text(encoding="utf-8")
-            memorizer = ChatMemorizer(
-                llm,
-                db,
-                config_store.get,
-                memory_prompt,
-                chat_id=settings.allowed_chat_id,
-                jokes_prompt=jokes_prompt,
-                threads_prompt=threads_prompt,
-                patterns_getter=config_store.patterns,
-            )
-            deps.memorizer = memorizer
-
-            # Место из вопроса про погоду достаёт дешёвая модель (CLAUDE.md,
-            # "погода в другом месте") — как followup и зрение, создаётся при
-            # наличии ключа; модель и place_lookup проверяются на каждом вызове.
-            weather_place_prompt = settings.weather_place_prompt_path.read_text(encoding="utf-8")
-            weather_places = WeatherPlaceExtractor(llm, config_store.get, weather_place_prompt)
-
-            # Дневник дня (CLAUDE.md, "дневник дня"): дешёвое извлечение факта о себе
-            # из каждой своей текстовой реплики; модель и enabled — на каждом вызове.
-            diary_prompt = settings.diary_prompt_path.read_text(encoding="utf-8")
-            diary = DiaryExtractor(llm, config_store.get, diary_prompt)
-
-            responder = Responder(
-                bot=bot,
-                db=db,
-                cfg_getter=config_store.get,
-                llm=llm,
-                judge=judge,
-                sticker_chooser=sticker_chooser,
-                weather=weather,
-                weather_places=weather_places,
-                diary=diary,
-                vocab_getter=vocab_store.get,
-                patterns_getter=config_store.patterns,
+            stack = build_llm_stack(
+                persona=persona,
+                config_store=config_store,
                 prompt_store=prompt_store,
+                db=db,
+                bot=bot,
+                weather=weather,
+                vocab_store=vocab_store,
                 rng=rng,
+                api_key=api_key.get_secret_value(),
+                http=http,
+                admin_user_id=settings.admin_user_id,
                 chat_id=settings.allowed_chat_id,
                 bot_user_id=me.id,
-                # Та же дешёвая проверка "это мне?", что и в горячем окне: Responder
-                # перепроверяет ею строку, которую выбрал checkin (CLAUDE.md, "меньше
-                # и разнообразнее", мера 3).
-                followup=followup_checker,
             )
+            llm = stack.llm
+            alerter = stack.alerter
+            responder = stack.responder
+            reaction_chooser = stack.reaction_chooser
+            deps.followup = stack.followup
+            deps.vision = stack.vision
+            deps.sticker_catalog_enabled = stack.sticker_catalog_enabled
+            deps.memorizer = stack.memorizer
             deps.responder = responder
 
         # Планировщик реакций нужен всегда: пауза перед реакцией не зависит от LLM.

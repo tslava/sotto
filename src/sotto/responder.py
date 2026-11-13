@@ -66,6 +66,7 @@ from sotto.judge import Judge
 from sotto.llm import LLMClient, LLMError
 from sotto.motifs import render_avoid, story_count, used_motifs
 from sotto.patterns import Patterns
+from sotto.persona import Persona
 from sotto.places import render_places_menu
 from sotto.postprocess import soften
 from sotto.prompt import (
@@ -396,6 +397,7 @@ class Responder:
         bot_user_id: int,
         clock: Callable[[], int] = lambda: int(time.time()),
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        persona: Persona | None = None,
     ) -> None:
         self.bot = bot
         self.db = db
@@ -423,6 +425,9 @@ class Responder:
         self.vocab_getter = vocab_getter
         self.patterns_getter = patterns_getter
         self.prompt_store = prompt_store
+        # Пакет персоны (пока не используется: тексты переедут в него позже). Параметр уже
+        # часть конструктора, чтобы дальше сигнатуру не менять.
+        self.persona = persona
         self.rng = rng
         self.chat_id = chat_id
         self.bot_user_id = bot_user_id

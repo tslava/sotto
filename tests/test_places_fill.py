@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +21,7 @@ import yaml
 
 from sotto.db import Database
 from sotto.llm import LLMResult
+from sotto.persona import load_persona
 from sotto.places_fill import (
     FetchedPlace,
     ManualEntry,
@@ -32,13 +33,25 @@ from sotto.places_fill import (
     pick_category,
     pick_district,
     render_report,
-    run,
+)
+from sotto.places_fill import (
+    run as run_fill,
 )
 from sotto.settings import Settings
 from tests.packs import LEGACY_PACK
 
 REAL_MANUAL_PATH = LEGACY_PACK / "places_manual.yaml"
 API_KEY = "gp-test-key"
+
+
+# No config file at all: the engine defaults, as these tests were written for.
+_NO_CONFIG_PERSONA = replace(
+    load_persona(LEGACY_PACK), config_path=Path("/nonexistent/config.yaml")
+)
+
+
+async def run(argv: list[str] | None = None, **kwargs: Any) -> list[FetchedPlace]:
+    return await run_fill(argv, persona=_NO_CONFIG_PERSONA, **kwargs)
 
 
 @pytest.fixture(autouse=True)
@@ -55,7 +68,6 @@ def _settings(
         google_places_key=google_key,
         openrouter_api_key=openrouter_key,
         db_path=tmp_path / "bot.db",
-        config_path=tmp_path / "no-such-config.yaml",
     )
 
 
@@ -585,3 +597,22 @@ def test_render_report_contains_header_rows_and_reminder() -> None:
 def test_render_report_empty_list() -> None:
     report = render_report([])
     assert "Всего: 0" in report
+
+
+async def test_manual_defaults_to_the_places_manual_of_the_persona(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, google_key=None)
+
+    rows = await run(["--manual-only"], settings=settings)
+
+    assert len(rows) == len(load_manual(REAL_MANUAL_PATH))
+
+
+async def test_places_fill_loads_the_persona_from_env_when_not_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _settings(tmp_path, google_key=None)
+    monkeypatch.setenv("PERSONA_DIR", str(LEGACY_PACK))
+
+    rows = await run_fill(["--manual-only"], settings=settings)
+
+    assert len(rows) == len(load_manual(REAL_MANUAL_PATH))

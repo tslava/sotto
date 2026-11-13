@@ -9,8 +9,11 @@ Patterns; PromptStore держит активную версию системн�
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
-from pathlib import Path
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Literal
 
 import yaml
 
@@ -19,12 +22,13 @@ from sotto.config_models import Config
 from sotto.db import Database
 from sotto.few_shot import FewShot, render_few_shot
 from sotto.patterns import Patterns
+from sotto.persona import Persona
 
 _ALLOWED_PREFIXES = ("behaviour.", "llm.", "places.", "filters.")
 
 
-def _rebuild_patterns(cfg: Config, bot_username: str) -> Patterns:
-    return Patterns(cfg.filters, cfg.persona.name_triggers, bot_username)
+def _rebuild_patterns(cfg: Config, bot_username: str, persona: Persona) -> Patterns:
+    return Patterns(cfg.filters, cfg.persona.name_triggers, bot_username, persona.lang)
 
 
 def _first_error_message(exc: ValueError, key: str) -> str:
@@ -57,14 +61,14 @@ def _parse_few_shot_yaml(body_yaml: str) -> list[FewShot]:
 class ConfigStore:
     """Config.yaml + config_overrides из БД, с горячим /set и пересобираемым Patterns."""
 
-    def __init__(self, path: Path, db: Database) -> None:
-        self._path = path
+    def __init__(self, persona: Persona, db: Database) -> None:
+        self._persona = persona
         self._db = db
         self._bot_username = ""
         self._overrides: dict[str, str] = {}
         self.current: Config = Config()
         self._base: Config = Config()
-        self._patterns = _rebuild_patterns(self.current, self._bot_username)
+        self._patterns = _rebuild_patterns(self.current, self._bot_username, self._persona)
         # Сериализует load/set/unset: без лока два параллельных /set (или /set и
         # рестарт-load) могли бы прочитать один и тот же снимок _overrides, оба
         # пройти валидацию и один из override'ов потерять при записи self.current.
@@ -79,11 +83,12 @@ class ConfigStore:
         держащих его. asyncio.Lock не реентерабелен: повторный load() внутри
         set() дедлокнул бы корутину."""
         overrides = await self._db.get_overrides()
-        cfg = load_config(self._path, overrides)
+        layers = self._persona.config_layers()
+        cfg = load_config(layers, overrides)
         self._overrides = overrides
         self.current = cfg
-        self._base = load_config(self._path)
-        self._patterns = _rebuild_patterns(cfg, self._bot_username)
+        self._base = load_config(layers)
+        self._patterns = _rebuild_patterns(cfg, self._bot_username, self._persona)
         return cfg
 
     def get(self) -> Config:
@@ -97,7 +102,7 @@ class ConfigStore:
 
     def set_bot_username(self, username: str) -> None:
         self._bot_username = username
-        self._patterns = _rebuild_patterns(self.current, self._bot_username)
+        self._patterns = _rebuild_patterns(self.current, self._bot_username, self._persona)
 
     async def set(
         self, key: str, raw_value: str, changed_by: int, now: int
@@ -111,7 +116,7 @@ class ConfigStore:
             candidate_overrides = dict(self._overrides)
             candidate_overrides[key] = raw_value
             try:
-                load_config(self._path, candidate_overrides)
+                load_config(self._persona.config_layers(), candidate_overrides)
             except ValueError as exc:
                 raise ValueError(f"{key}: {_first_error_message(exc, key)}") from exc
 
@@ -133,13 +138,59 @@ class ConfigStore:
         ]
 
 
+SeedAction = Literal["keep", "seed"]
+
+
+@dataclass(frozen=True)
+class SeedPlan:
+    """What ``PromptStore.load`` will do with the pack files against the stored versions.
+
+    ``seed`` means a new version is created from the file (and becomes active); the deploy gate
+    fails on it unless the owner asked for the change. The sha256 values identify the file text
+    that was compared (``read_text`` form, as ``load`` sees it).
+    """
+
+    prompt: SeedAction
+    few_shot: SeedAction
+    prompt_sha256: str
+    few_shot_sha256: str
+    prompt_active_version: int | None
+    few_shot_active_version: int | None
+
+
+def decide_seed(file_text: str, stored_bodies: Sequence[str]) -> SeedAction:
+    """Seed only when no version exists or the file (after strip) equals none of the stored ones."""
+    if not stored_bodies:
+        return "seed"
+    return "keep" if file_text.strip() in {body.strip() for body in stored_bodies} else "seed"
+
+
+def build_seed_plan(
+    *,
+    prompt_text: str,
+    few_shot_text: str,
+    prompt_bodies: Sequence[str],
+    few_shot_bodies: Sequence[str],
+    prompt_active_version: int | None,
+    few_shot_active_version: int | None,
+) -> SeedPlan:
+    """Pure core shared by ``PromptStore.load`` and the read-only ``packcheck --seed-dry-run``."""
+    return SeedPlan(
+        prompt=decide_seed(prompt_text, prompt_bodies),
+        few_shot=decide_seed(few_shot_text, few_shot_bodies),
+        prompt_sha256=hashlib.sha256(prompt_text.encode("utf-8")).hexdigest(),
+        few_shot_sha256=hashlib.sha256(few_shot_text.encode("utf-8")).hexdigest(),
+        prompt_active_version=prompt_active_version,
+        few_shot_active_version=few_shot_active_version,
+    )
+
+
 class PromptStore:
     """Активные версии системного промпта и few-shot, с сидом из файлов при старте."""
 
-    def __init__(self, db: Database, prompt_path: Path, few_shot_path: Path) -> None:
+    def __init__(self, persona: Persona, db: Database) -> None:
+        self._persona = persona
         self._db = db
-        self._prompt_path = prompt_path
-        self._few_shot_path = few_shot_path
         self._prompt_version = 0
         self._prompt_body = ""
         self._few_shot_version = 0
@@ -162,13 +213,28 @@ class PromptStore:
         async with self._lock:
             await self._load_locked()
 
+    async def plan_seed(self) -> SeedPlan:
+        """Решение сида без записи: то же, что сделает load() (read-only для БД)."""
+        prompt_active = await self._db.active_prompt()
+        few_shot_active = await self._db.active_few_shot()
+        return build_seed_plan(
+            prompt_text=self._persona.prompts["system"],
+            few_shot_text=self._few_shot_file_text(),
+            prompt_bodies=await self._db.prompt_version_bodies(),
+            few_shot_bodies=await self._db.few_shot_version_bodies(),
+            prompt_active_version=prompt_active[0] if prompt_active else None,
+            few_shot_active_version=few_shot_active[0] if few_shot_active else None,
+        )
+
+    def _few_shot_file_text(self) -> str:
+        return self._persona.few_shot_path.read_text(encoding="utf-8")
+
     async def _load_locked(self) -> None:
         now = int(time.time())
+        plan = await self.plan_seed()
 
-        file_prompt = self._prompt_path.read_text(encoding="utf-8")
-        existing_prompt_bodies = await self._db.prompt_version_bodies()
-        stripped_prompt_bodies = {body.strip() for body in existing_prompt_bodies}
-        if not existing_prompt_bodies or file_prompt.strip() not in stripped_prompt_bodies:
+        file_prompt = self._persona.prompts["system"]
+        if plan.prompt == "seed":
             version = await self._db.add_prompt_version(file_prompt, "seed from file", now)
             self._prompt_version = version
             self._prompt_body = file_prompt
@@ -177,10 +243,8 @@ class PromptStore:
             assert active_prompt is not None  # есть версии -> есть активная
             self._prompt_version, self._prompt_body = active_prompt
 
-        file_few_shot = self._few_shot_path.read_text(encoding="utf-8")
-        existing_few_shot_bodies = await self._db.few_shot_version_bodies()
-        stripped_few_shot_bodies = {body.strip() for body in existing_few_shot_bodies}
-        if not existing_few_shot_bodies or file_few_shot.strip() not in stripped_few_shot_bodies:
+        file_few_shot = self._few_shot_file_text()
+        if plan.few_shot == "seed":
             version = await self._db.add_few_shot_version(file_few_shot, "seed from file", now)
             self._few_shot_version = version
             self._few_shot_body_yaml = file_few_shot

@@ -59,6 +59,7 @@ from sotto.gate_types import GateMessage, Trigger
 from sotto.judge import Judge
 from sotto.llm import LLMClient
 from sotto.morph import name_forms, name_pattern
+from sotto.persona import Persona, load_persona
 from sotto.reactions import (
     REPLY_UNAVAILABLE,
     ReactionChooser,
@@ -96,23 +97,6 @@ _DEFAULT_FORECAST = {
         "temperature_2m_max": [9.6, 6.0],
         "weather_code": [61, 3],
     },
-}
-
-# Prompt files of the pack, by the Settings attribute that holds their path.
-_PROMPT_FILES = {
-    "prompt_path": "system.txt",
-    "judge_prompt_path": "judge.txt",
-    "sticker_prompt_path": "sticker.txt",
-    "followup_prompt_path": "followup.txt",
-    "checkin_prefilter_prompt_path": "checkin_prefilter.txt",
-    "name_check_prompt_path": "name_check.txt",
-    "reaction_prompt_path": "reaction.txt",
-    "memory_prompt_path": "memory.txt",
-    "diary_prompt_path": "diary.txt",
-    "jokes_prompt_path": "memory_jokes.txt",
-    "threads_prompt_path": "memory_threads.txt",
-    "vision_prompt_path": "vision.txt",
-    "weather_place_prompt_path": "weather_place.txt",
 }
 
 
@@ -316,6 +300,7 @@ class Recorder:
 @dataclass
 class Engine:
     pack: Path
+    persona: Persona
     scenario: Scenario
     clock: VirtualClock
     db: Database
@@ -401,9 +386,6 @@ def pack_timezone(pack: Path) -> str:
 
 
 def _settings_for(pack: Path, workdir: Path, scenario: Scenario) -> Settings:
-    paths: dict[str, Any] = {
-        attr: pack / "prompts" / filename for attr, filename in _PROMPT_FILES.items()
-    }
     weather = scenario.weather
     home = _DEFAULT_HOME if weather.home == "default" else None
     if not isinstance(weather.home, str):
@@ -416,15 +398,11 @@ def _settings_for(pack: Path, workdir: Path, scenario: Scenario) -> Settings:
         openrouter_api_key="golden-key",
         google_places_key=None,
         db_path=workdir / "bot.db",
-        config_path=pack / "config.yaml",
-        few_shot_path=pack / "few_shot.yaml",
-        stickers_path=pack / "stickers.yaml",
-        changelog_path=pack / "CHANGELOG.md",
+        persona_dir=pack,
         weather_latitude=home["lat"] if home else None,
         weather_longitude=home["lon"] if home else None,
         weather_home_name=home["name"] if home else "",
         log_level="WARNING",
-        **paths,
     )
 
 
@@ -544,9 +522,10 @@ async def build_engine(
     for key, value in scenario.config.items():
         await db.set_override(key, value, OWNER_ID, clock.now())
 
-    config_store = ConfigStore(settings.config_path, db)
+    persona = load_persona(pack)
+    config_store = ConfigStore(persona, db)
     await config_store.load()
-    prompt_store = PromptStore(db, settings.prompt_path, settings.few_shot_path)
+    prompt_store = PromptStore(persona, db)
     await prompt_store.load()
     vocab_store = VocabStore(db)
     for raw in scenario.seed.vocab:
@@ -576,7 +555,12 @@ async def build_engine(
     weather = WeatherClient(config_store.get, home=home, http=weather_http, clock=clock.now)
 
     alerter = OwnerAlerter(
-        bot=bot, db=db, admin_user_id=OWNER_ID, cfg_getter=config_store.get, clock=clock.now
+        bot=bot,
+        db=db,
+        admin_user_id=OWNER_ID,
+        cfg_getter=config_store.get,
+        clock=clock.now,
+        persona=persona,
     )
     llm = LLMClient(
         api_key="golden-key",
@@ -587,24 +571,20 @@ async def build_engine(
         clock=clock.now,
     )
 
-    def read(attr: str) -> str:
-        path: Path = getattr(settings, attr)
-        return path.read_text(encoding="utf-8")
-
-    judge = Judge(llm, config_store.get, read("judge_prompt_path"))
+    judge = Judge(llm, config_store.get, persona.prompts["judge"])
     followup = FollowupChecker(
         llm,
         config_store.get,
-        read("followup_prompt_path"),
-        read("checkin_prefilter_prompt_path"),
-        read("name_check_prompt_path"),
+        persona.prompts["followup"],
+        persona.prompts["checkin_prefilter"],
+        persona.prompts["name_check"],
     )
-    vision = VisionDescriber(llm, config_store.get, read("vision_prompt_path"))
-    reaction_chooser = ReactionChooser(llm, config_store.get, read("reaction_prompt_path"))
-    catalog = load_catalog(settings.stickers_path)
+    vision = VisionDescriber(llm, config_store.get, persona.prompts["vision"])
+    reaction_chooser = ReactionChooser(llm, config_store.get, persona.prompts["reaction"])
+    catalog = load_catalog(persona.stickers_path)
     enabled_stickers = sum(1 for sticker in catalog.stickers if sticker.enabled)
     sticker_chooser = (
-        StickerChooser(llm, config_store.get, catalog, read("sticker_prompt_path"))
+        StickerChooser(llm, config_store.get, catalog, persona.prompts["sticker"])
         if enabled_stickers
         else None
     )
@@ -612,15 +592,15 @@ async def build_engine(
         llm,
         db,
         config_store.get,
-        read("memory_prompt_path"),
+        persona.prompts["memory"],
         chat_id=CHAT_ID,
         clock=clock.now,
-        jokes_prompt=read("jokes_prompt_path"),
-        threads_prompt=read("threads_prompt_path"),
+        jokes_prompt=persona.prompts["memory_jokes"],
+        threads_prompt=persona.prompts["memory_threads"],
         patterns_getter=config_store.patterns,
     )
-    weather_places = WeatherPlaceExtractor(llm, config_store.get, read("weather_place_prompt_path"))
-    diary = DiaryExtractor(llm, config_store.get, read("diary_prompt_path"))
+    weather_places = WeatherPlaceExtractor(llm, config_store.get, persona.prompts["weather_place"])
+    diary = DiaryExtractor(llm, config_store.get, persona.prompts["diary"])
     responder = Responder(
         bot=bot,
         db=db,
@@ -640,6 +620,7 @@ async def build_engine(
         followup=followup,
         clock=clock.now,
         sleep=clock.sleep,
+        persona=persona,
     )
     reaction_scheduler = ReactionScheduler(
         bot=bot,
@@ -660,6 +641,7 @@ async def build_engine(
         config_store=config_store,
         prompt_store=prompt_store,
         bot_username=BOT_USERNAME,
+        persona=persona,
         bot=bot,
         weather=weather,
         vocab_store=vocab_store,
@@ -673,6 +655,7 @@ async def build_engine(
     )
     return Engine(
         pack=pack,
+        persona=persona,
         scenario=scenario,
         clock=clock,
         db=db,
@@ -1267,7 +1250,7 @@ async def _act_call(engine: Engine, args: dict[str, Any]) -> Any:
 
 
 async def _act_config_dump(engine: Engine, args: dict[str, Any]) -> Any:
-    base = load_config(engine.settings.config_path)
+    base = load_config(engine.persona.config_layers())
     return {
         "flat": flatten_config(engine.cfg()),
         "flat_yaml_only": flatten_config(base),
@@ -1285,7 +1268,12 @@ async def _act_describe_keys(engine: Engine, args: dict[str, Any]) -> Any:
 
 async def _act_pattern_dump(engine: Engine, args: dict[str, Any]) -> Any:
     patterns = engine.config_store.patterns()
-    return {name.lstrip("_"): _jsonable(value) for name, value in sorted(vars(patterns).items())}
+    # ``lang`` is the pack language handle (added in PR-2), not a compiled pattern.
+    return {
+        name.lstrip("_"): _jsonable(value)
+        for name, value in sorted(vars(patterns).items())
+        if name != "lang"
+    }
 
 
 async def _act_alert(engine: Engine, args: dict[str, Any]) -> Any:

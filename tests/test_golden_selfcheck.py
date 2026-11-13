@@ -22,6 +22,7 @@ SCENARIOS = REPO / "tools" / "golden" / "scenarios_ru.yaml"
 BASELINE = REPO / "tools" / "golden" / "baseline_synthetic"
 ALLOWED = REPO / "tools" / "golden" / "ALLOWED_DIFFS.md"
 PACK_ITEMS = (
+    "pack.yaml",
     "config.yaml",
     "few_shot.yaml",
     "prompts",

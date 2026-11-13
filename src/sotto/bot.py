@@ -26,6 +26,7 @@ from sotto.gate import should_consider
 from sotto.gate_state import load_gate_state
 from sotto.gate_types import GateMessage, Trigger, Verdict
 from sotto.patterns import Patterns
+from sotto.persona import Persona
 from sotto.reactions import (
     REACT_REASONS,
     ReactionBotLike,
@@ -103,6 +104,8 @@ class Deps:
     config_store: ConfigStore
     prompt_store: PromptStore
     bot_username: str = ""
+    # Пакет персоны: /changelog читает из него; None — тесты хендлера без пакета.
+    persona: Persona | None = None
     responder: Responder | None = None
     # Дешёвая проверка «это мне?» для сообщений без обращения в горячем окне
     # (CLAUDE.md, "внимание как у живого человека"). None — LLM не настроен, PASS

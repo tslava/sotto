@@ -1,0 +1,12 @@
+format: 1
+name: legacy_ru
+language: ru
+locale: ru
+ship:
+  - pack.yaml
+  - config.yaml
+  - few_shot.yaml
+  - stickers.yaml
+  - places_manual.yaml
+  - prompts/
+  - CHANGELOG.md

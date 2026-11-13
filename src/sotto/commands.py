@@ -44,6 +44,7 @@ from sotto.db import (
 from sotto.few_shot import FewShot
 from sotto.motifs import render_self_share, self_share
 from sotto.patterns import Patterns
+from sotto.persona import Persona
 from sotto.sanitize import normalize_text, sanitize_display_name
 from sotto.settings import Settings
 from sotto.timeutil import day_key, day_start, local_dt
@@ -324,6 +325,8 @@ class _CommandsDeps(Protocol):
 
     @property
     def settings(self) -> Settings: ...
+    @property
+    def persona(self) -> Persona | None: ...
     @property
     def config_store(self) -> _ConfigStoreLike: ...
     @property
@@ -1341,13 +1344,10 @@ async def _cmd_words(
 async def _cmd_changelog(message: Message, deps: _CommandsDeps, args: list[str]) -> None:
     """/changelog [owner|<версия>] — релиз-ноты из CHANGELOG.md (CLAUDE.md, "версии и changelog").
 
-    Файл маленький — читается заново при каждом вызове, а не кэшируется, чтобы не
-    заводить ещё один stores-подобный объект ради одной команды.
+    Текст — CHANGELOG.md пакета персоны (оба блока), прочитанный при старте: смена пакета
+    это рестарт. Файл chat_notes.md пока не разбирается (переход на него — отдельный шаг).
     """
-    try:
-        text = deps.settings.changelog_path.read_text(encoding="utf-8")
-    except OSError:
-        text = ""
+    text = deps.persona.legacy_changelog if deps.persona is not None else ""
 
     releases = parse_changelog(text) if text else []
     if not releases:

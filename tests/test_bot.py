@@ -26,11 +26,13 @@ from sotto.config_models import Config
 from sotto.db import Database, MessageRow
 from sotto.gate_types import Trigger
 from sotto.patterns import Patterns
+from sotto.persona import load_persona
 from sotto.sanitize import stable_n
 from sotto.settings import Settings
 from sotto.stores import ConfigStore, PromptStore
 from sotto.timeutil import day_key
 from sotto.vocab import VocabStore
+from tests.packs import LEGACY_PACK
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
@@ -109,8 +111,9 @@ def _deps(
     # build_router (в отличие от build_commands_router) ни config_store, ни
     # prompt_store не читает — конструируем их без .load() (не делает I/O в
     # __init__), только чтобы Deps был валиден структурно и по типам.
-    config_store = ConfigStore(Path("unused-config.yaml"), database)
-    prompt_store = PromptStore(database, Path("unused-prompt.txt"), Path("unused-few-shot.yaml"))
+    persona = load_persona(LEGACY_PACK)
+    config_store = ConfigStore(persona, database)
+    prompt_store = PromptStore(persona, database)
     return Deps(
         settings=settings,
         config_getter=lambda: cfg,

@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 
 from sotto.config_models import FiltersConfig
+from sotto.lang import Language
 from sotto.morph import name_pattern
 
 
@@ -31,7 +32,16 @@ def _first_match(patterns: list[re.Pattern[str]], text: str) -> str | None:
 class Patterns:
     """Компилирует регулярки фильтров и триггеры один раз, дальше только поиск."""
 
-    def __init__(self, filters: FiltersConfig, name_triggers: list[str], bot_username: str) -> None:
+    def __init__(
+        self,
+        filters: FiltersConfig,
+        name_triggers: list[str],
+        bot_username: str,
+        lang: Language | None = None,
+    ) -> None:
+        # lang пока только запоминается (склонения имён и маркеры языка переедут в lang/ru.py
+        # позже); None — тесты и инструменты без пакета персоны.
+        self.lang = lang
         self._topic_stop = _compile_regex_list(filters.topic_stop)
         self._injection_markers = _compile_regex_list(filters.injection_markers)
         self._logistics = _compile_regex_list(filters.logistics)

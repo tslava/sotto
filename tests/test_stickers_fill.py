@@ -5,13 +5,14 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
+from sotto.persona import load_persona
 from sotto.settings import Settings
 from sotto.stickers import Sticker, StickerCatalog, load_catalog
 from sotto.stickers_fill import (
@@ -19,10 +20,23 @@ from sotto.stickers_fill import (
     recognize_sticker,
     render_report,
     render_yaml,
-    run,
 )
+from sotto.stickers_fill import (
+    run as run_fill,
+)
+from tests.packs import LEGACY_PACK
 
 NOW = 1_768_003_200
+
+
+# No config file at all: the engine defaults, as these tests were written for.
+_NO_CONFIG_PERSONA = replace(
+    load_persona(LEGACY_PACK), config_path=Path("/nonexistent/config.yaml")
+)
+
+
+async def run(argv: list[str] | None = None, **kwargs: Any) -> StickerCatalog:
+    return await run_fill(argv, persona=_NO_CONFIG_PERSONA, **kwargs)
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +49,6 @@ def _settings(tmp_path: Path, *, openrouter_key: str | None = None) -> Settings:
         bot_token="test-bot-token",
         openrouter_api_key=openrouter_key,
         db_path=tmp_path / "bot.db",
-        config_path=tmp_path / "no-such-config.yaml",
     )
 
 
@@ -326,3 +339,33 @@ def test_render_yaml_round_trips_through_load_catalog(tmp_path: Path) -> None:
     path.write_text(render_yaml(catalog), encoding="utf-8")
     reloaded = load_catalog(path)
     assert reloaded == catalog
+
+
+async def test_out_defaults_to_the_stickers_yaml_of_the_persona(tmp_path: Path) -> None:
+    pack_file = tmp_path / "pack-stickers.yaml"
+    persona = replace(_NO_CONFIG_PERSONA, stickers_path=pack_file)
+    bot = FakeBot(FakeStickerSet([FakeRawSticker(file_id="F1")]))
+
+    catalog = await run_fill(
+        ["myset", "--no-llm"], settings=_settings(tmp_path), bot=bot, persona=persona
+    )
+
+    assert [s.file_id for s in catalog.stickers] == ["F1"]
+    assert load_catalog(pack_file).stickers[0].file_id == "F1"
+
+
+async def test_stickers_fill_loads_the_persona_from_env_for_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.packs import LEGACY_PACK
+
+    monkeypatch.setenv("PERSONA_DIR", str(LEGACY_PACK))
+    bot = FakeBot(FakeStickerSet([FakeRawSticker(file_id="F1")]))
+    llm = FakeLLM()
+
+    await run_fill(
+        ["myset", "--out", str(tmp_path / "out.yaml"), "--dry-run"],
+        settings=_settings(tmp_path),
+        bot=bot,
+        llm=llm,
+    )

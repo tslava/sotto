@@ -43,6 +43,7 @@ import yaml
 
 from sotto.config import load_config
 from sotto.llm import LLMClient, LLMError, LLMResult
+from sotto.persona import Persona, persona_from_env
 from sotto.settings import Settings
 from sotto.stickers import Sticker, StickerCatalog, load_catalog
 
@@ -309,8 +310,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path("stickers.yaml"),
-        help="путь к каталогу (читается и мержится)",
+        default=None,
+        help="путь к каталогу (читается и мержится); по умолчанию stickers.yaml пакета",
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="только напечатать таблицу, не писать файл"
@@ -330,12 +331,23 @@ async def run(
     settings: Settings | None = None,
     bot: BotLike | None = None,
     llm: LLMLike | None = None,
+    persona: Persona | None = None,
 ) -> StickerCatalog:
     """Точка входа, общая для CLI и тестов (см. модульный докстринг про DI)."""
     args = parse_args(argv)
     settings = settings if settings is not None else Settings()
-    existing = load_catalog(args.out)
     now = int(time_module.time())
+
+    persona_cache: list[Persona] = [persona] if persona is not None else []
+
+    def get_persona() -> Persona:
+        if not persona_cache:
+            persona_cache.append(persona_from_env())
+        return persona_cache[0]
+
+    if args.out is None:
+        args.out = get_persona().stickers_path
+    existing = load_catalog(args.out)
 
     owns_bot = bot is None
     if bot is not None:
@@ -352,9 +364,9 @@ async def run(
         use_llm = None
     elif llm is not None:
         use_llm = llm
-        model = model or load_config(settings.config_path).llm.main_model
+        model = model or load_config(get_persona().config_layers()).llm.main_model
     else:
-        cfg = load_config(settings.config_path)
+        cfg = load_config(get_persona().config_layers())
         model = model or cfg.llm.main_model
         if settings.openrouter_api_key is not None and model:
             use_llm = LLMClient(

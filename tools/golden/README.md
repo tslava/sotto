@@ -11,8 +11,9 @@ uv run python -m tools.golden compare --pack DIR --scenarios FILE --baseline DIR
         [--allow ALLOWED_DIFFS.md] [--only ID|GROUP ...]
 ```
 
-A *pack* directory (current layout) holds `config.yaml`, `few_shot.yaml`, `prompts/*.txt`,
-`CHANGELOG.md`, `stickers.yaml`, `places_manual.yaml`. Output: one canonical JSON per scenario
+A *pack* directory is a persona pack as `sotto.persona.load_persona` reads it (PR-2): `pack.yaml`,
+`config.yaml`, `few_shot.yaml`, `prompts/*.txt`, `CHANGELOG.md`, `stickers.yaml`, `places_manual.yaml`
+(the repo's own pack is `personas/_legacy_ru`). Output: one canonical JSON per scenario
 (`sort_keys`, `indent=1`, `ensure_ascii=False`). `compare` prints a unified diff per scenario and
 exits 1; `--allow` takes a markdown file with lines `- <scenario id>: reason` (deliberate changes,
 owner sign-off). `--only` accepts scenario ids or group letters and skips the per-group minimums.

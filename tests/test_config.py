@@ -2,6 +2,7 @@
 
 import json
 from datetime import date
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -435,3 +436,79 @@ def test_reactions_emoji_variation_selector_is_stripped() -> None:
     """С клавиатуры приходит «❤️» (с U+FE0F), в наборе Telegram — «❤»."""
     cfg = Config.model_validate({"behaviour": {"reactions": {"emoji": ["👍", "❤\ufe0f"]}}})
     assert list(cfg.behaviour.reactions.emoji) == ["👍", "❤"]
+
+
+# -- layers (PR-2) ------------------------------------------------------------------
+
+
+def test_load_config_accepts_a_single_path_a_mapping_or_a_sequence(tmp_path: Path) -> None:
+    path = tmp_path / "c.yaml"
+    path.write_text("behaviour:\n  daily_cap: 4\n", encoding="utf-8")
+
+    assert load_config(path).behaviour.daily_cap == 4
+    assert load_config({"behaviour": {"daily_cap": 5}}).behaviour.daily_cap == 5
+    assert load_config([path]).behaviour.daily_cap == 4
+    assert load_config([]).behaviour.daily_cap == Config().behaviour.daily_cap
+
+
+def test_layers_are_merged_deeply_and_the_top_layer_wins(tmp_path: Path) -> None:
+    low = tmp_path / "low.yaml"
+    low.write_text(
+        "behaviour:\n  daily_cap: 4\n  mention_daily_cap: 9\npersona:\n  name: Low\n",
+        encoding="utf-8",
+    )
+    high = {"behaviour": {"daily_cap": 6}}
+
+    cfg = load_config([low, high])
+
+    assert cfg.behaviour.daily_cap == 6
+    assert cfg.behaviour.mention_daily_cap == 9
+    assert cfg.persona.name == "Low"
+
+
+def test_a_list_in_the_top_layer_replaces_the_lower_one(tmp_path: Path) -> None:
+    low = {"filters": {"topic_stop": ["a", "b"]}}
+    high = {"filters": {"topic_stop": ["c"]}}
+
+    assert load_config([low, high]).filters.topic_stop == ["c"]
+
+
+def test_layers_do_not_mutate_their_inputs() -> None:
+    low = {"behaviour": {"daily_cap": 4}}
+    high = {"behaviour": {"daily_cap": 6}}
+
+    load_config([low, high], {"behaviour.daily_cap": "7"})
+
+    assert low == {"behaviour": {"daily_cap": 4}}
+    assert high == {"behaviour": {"daily_cap": 6}}
+
+
+def test_overrides_apply_on_top_of_all_layers(tmp_path: Path) -> None:
+    layers = [{"behaviour": {"daily_cap": 4}}, {"behaviour": {"daily_cap": 6}}]
+
+    assert load_config(layers, {"behaviour.daily_cap": "2"}).behaviour.daily_cap == 2
+
+
+def test_a_missing_layer_file_is_an_empty_layer(tmp_path: Path) -> None:
+    cfg = load_config([tmp_path / "absent.yaml", {"behaviour": {"daily_cap": 3}}])
+
+    assert cfg.behaviour.daily_cap == 3
+
+
+def test_an_empty_layer_file_is_an_empty_layer(tmp_path: Path) -> None:
+    path = tmp_path / "empty.yaml"
+    path.write_text("", encoding="utf-8")
+
+    assert load_config([path]) == Config()
+
+
+def test_a_layer_file_must_be_a_mapping(tmp_path: Path) -> None:
+    path = tmp_path / "list.yaml"
+    path.write_text("- 1\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must contain a mapping"):
+        load_config([path])
+
+
+def test_the_legacy_pack_config_is_identical_via_path_and_via_layers() -> None:
+    assert load_config(CONFIG_PATH) == load_config([CONFIG_PATH])

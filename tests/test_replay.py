@@ -203,6 +203,61 @@ def test_run_replay_produces_day_line_and_summary(tmp_path: Path) -> None:
     assert "2026-09-10" in report
 
 
+def _gate_args(export_path: Path, **overrides: object) -> argparse.Namespace:
+    base: dict[str, object] = {
+        "source": export_path,
+        "config": None,
+        "persona": None,
+        "seed": 1,
+        "bot_username": "example_persona_bot",
+        "bot_user_id": 0,
+        "verbose": False,
+        "generate": False,
+        "judge": False,
+        "max_calls": 20,
+    }
+    base.update(overrides)
+    return argparse.Namespace(**base)
+
+
+@pytest.mark.skipif(
+    not _GATE_AND_PATTERNS_AVAILABLE,
+    reason="sotto.gate и/или sotto.patterns ещё не написаны",
+)
+def test_run_replay_persona_argument_matches_explicit_config(tmp_path: Path) -> None:
+    export_path = tmp_path / "result.json"
+    _write_synthetic_export(export_path, TZ)
+
+    via_persona = run_replay(_gate_args(export_path, persona=LEGACY_PACK))
+    via_config = run_replay(_gate_args(export_path, config=LEGACY_PACK / "config.yaml"))
+    via_env = run_replay(_gate_args(export_path))  # PERSONA_DIR from the autouse fixture
+
+    assert via_persona == via_config == via_env
+
+
+def test_run_replay_fails_closed_without_persona_or_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sotto.persona import PackError
+
+    monkeypatch.chdir(tmp_path)  # no .env here
+    monkeypatch.delenv("PERSONA_DIR")
+    export_path = tmp_path / "result.json"
+    _write_synthetic_export(export_path, TZ)
+
+    with pytest.raises(PackError, match="PERSONA_DIR not set"):
+        run_replay(_gate_args(export_path))
+
+
+def test_replay_parser_has_persona_and_no_default_config() -> None:
+    from sotto.replay import _parse_args
+
+    args = _parse_args(["export.json", "--persona", "/srv/pack"])
+
+    assert args.persona == Path("/srv/pack")
+    assert args.config is None
+
+
 # --- run_replay --generate: реальная генерация + фильтр поверх PASS -----------
 
 
@@ -243,9 +298,6 @@ def test_run_replay_generate_prints_reply_and_verdict(
 ) -> None:
     monkeypatch.setenv("BOT_TOKEN", "123:test-token")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
-    monkeypatch.setenv("PROMPT_PATH", str(LEGACY_PACK / "prompts/system.txt"))
-    monkeypatch.setenv("FEW_SHOT_PATH", str(LEGACY_PACK / "few_shot.yaml"))
-    monkeypatch.setenv("JUDGE_PROMPT_PATH", str(LEGACY_PACK / "prompts/judge.txt"))
 
     export_path = tmp_path / "result.json"
     _write_name_trigger_export(export_path, TZ)
@@ -377,9 +429,6 @@ def test_run_replay_generate_max_calls_counts_real_network_calls(
     """
     monkeypatch.setenv("BOT_TOKEN", "123:test-token")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
-    monkeypatch.setenv("PROMPT_PATH", str(LEGACY_PACK / "prompts/system.txt"))
-    monkeypatch.setenv("FEW_SHOT_PATH", str(LEGACY_PACK / "few_shot.yaml"))
-    monkeypatch.setenv("JUDGE_PROMPT_PATH", str(LEGACY_PACK / "prompts/judge.txt"))
 
     export_path = tmp_path / "result.json"
     _write_repeated_name_trigger_export(export_path, TZ, count=6)

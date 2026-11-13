@@ -1,5 +1,6 @@
 """Загрузка config.yaml с применением плоских overrides из БД (config_overrides)."""
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, get_args, get_origin
@@ -73,18 +74,54 @@ def _set_nested(data: dict[str, Any], parts: list[str], value: Any) -> None:
     node[parts[-1]] = value
 
 
-def load_config(path: Path, overrides: dict[str, str] | None = None) -> Config:
-    """Читает yaml, накатывает плоские overrides ("section.key" -> "value") и валидирует.
+def _deep_merge(base: dict[str, Any], top: Mapping[str, Any]) -> None:
+    """Накатывает top поверх base: словари сливаются по ключам, остальное заменяется целиком."""
+    for key, value in top.items():
+        current = base.get(key)
+        if isinstance(current, dict) and isinstance(value, Mapping):
+            _deep_merge(current, value)
+        elif isinstance(value, Mapping):
+            base[key] = _deep_copy_mapping(value)
+        else:
+            base[key] = value
 
-    Невалидный override или неизвестный ключ -> ValueError с ключом в тексте.
+
+def _deep_copy_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
+    copy: dict[str, Any] = {}
+    _deep_merge(copy, value)
+    return copy
+
+
+def _read_layer(layer: Path | Mapping[str, Any]) -> Mapping[str, Any]:
+    if isinstance(layer, Mapping):
+        return layer
+    if not layer.exists():
+        return {}
+    loaded = yaml.safe_load(layer.read_text(encoding="utf-8"))
+    if loaded is None:
+        return {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"config file {layer} must contain a mapping at top level")
+    return loaded
+
+
+def load_config(
+    layers: Path | Mapping[str, Any] | Sequence[Path | Mapping[str, Any]],
+    overrides: dict[str, str] | None = None,
+) -> Config:
+    """Читает слои конфига, накатывает плоские overrides ("section.key" -> "value") и валидирует.
+
+    layers — один слой или последовательность от нижнего к верхнему (yaml-файл или готовый
+    словарь); слои сливаются вглубь, списки и скаляры верхнего слоя заменяют нижние.
+    Отсутствующий файл — пустой слой. Невалидный override или неизвестный ключ ->
+    ValueError с ключом в тексте.
     """
+    sequence: Sequence[Path | Mapping[str, Any]] = (
+        [layers] if isinstance(layers, (Path, Mapping)) else layers
+    )
     data: dict[str, Any] = {}
-    if path.exists():
-        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
-        if loaded is not None:
-            if not isinstance(loaded, dict):
-                raise ValueError(f"config file {path} must contain a mapping at top level")
-            data = loaded
+    for layer in sequence:
+        _deep_merge(data, _read_layer(layer))
 
     if overrides:
         for key, raw_value in overrides.items():

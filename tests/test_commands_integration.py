@@ -27,14 +27,11 @@ from sotto.db import Database
 from sotto.gate import should_consider
 from sotto.gate_state import load_gate_state
 from sotto.gate_types import GateMessage, Verdict
+from sotto.persona import load_persona
 from sotto.settings import Settings
 from sotto.stores import ConfigStore, PromptStore
 from sotto.timeutil import local_dt
 from tests.packs import LEGACY_PACK
-
-_CONFIG_PATH = LEGACY_PACK / "config.yaml"
-_PROMPT_PATH = LEGACY_PACK / "prompts" / "system.txt"
-_FEW_SHOT_PATH = LEGACY_PACK / "few_shot.yaml"
 
 OWN_CHAT_ID = -1001234567890
 ADMIN_ID = 555
@@ -105,10 +102,11 @@ async def wired(
     db = Database(tmp_path / "bot.db")
     await db.connect()
 
-    config_store = ConfigStore(_CONFIG_PATH, db)
+    persona = load_persona(LEGACY_PACK)
+    config_store = ConfigStore(persona, db)
     await config_store.load()
 
-    prompt_store = PromptStore(db, _PROMPT_PATH, _FEW_SHOT_PATH)
+    prompt_store = PromptStore(persona, db)
     await prompt_store.load()
 
     config_store.set_bot_username(BOT_USERNAME)
@@ -132,6 +130,7 @@ async def wired(
         config_store=config_store,
         prompt_store=prompt_store,
         bot_username=BOT_USERNAME,
+        persona=persona,
     )
     try:
         yield deps, db, config_store, prompt_store

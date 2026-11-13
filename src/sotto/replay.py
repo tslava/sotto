@@ -81,6 +81,7 @@ from sotto.gate_types import (
 from sotto.judge import Judge
 from sotto.llm import LLMClient, LLMError
 from sotto.patterns import Patterns
+from sotto.persona import Persona, load_persona, persona_from_env
 from sotto.prompt import SITUATION_AMBIENT, build_messages, parse_reply, render_context
 from sotto.sanitize import sanitize_display_name
 from sotto.settings import Settings
@@ -281,7 +282,7 @@ def _unique_participant_names(context_rows: list[MessageRow]) -> list[str]:
     return names
 
 
-def _build_generate_context(cfg: Config, use_judge: bool) -> _GenerateContext:
+def _build_generate_context(cfg: Config, use_judge: bool, persona: Persona) -> _GenerateContext:
     """Собирает LLMClient (+ судью, если ``--judge``) для прогона ``--generate``.
 
     Ключ — из ``Settings().openrouter_api_key`` (тот же .env, что у самого бота).
@@ -294,8 +295,8 @@ def _build_generate_context(cfg: Config, use_judge: bool) -> _GenerateContext:
             "(см. README, раздел «Реплей»)"
         )
 
-    prompt_template = settings.prompt_path.read_text(encoding="utf-8")
-    few_shot_items = load_few_shot(settings.few_shot_path)
+    prompt_template = persona.prompts["system"]
+    few_shot_items = load_few_shot(persona.few_shot_path)
     few_shot_text = render_few_shot(few_shot_items)
 
     store = InMemoryStateStore()
@@ -309,8 +310,7 @@ def _build_generate_context(cfg: Config, use_judge: bool) -> _GenerateContext:
 
     judge: Judge | None = None
     if use_judge:
-        judge_prompt = settings.judge_prompt_path.read_text(encoding="utf-8")
-        judge = Judge(llm, lambda: cfg, judge_prompt)
+        judge = Judge(llm, lambda: cfg, persona.prompts["judge"])
 
     return _GenerateContext(
         llm=llm,
@@ -570,7 +570,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Путь к result.json (экспорт) либо к bot.db/*.sqlite(3) (база бота)",
     )
     parser.add_argument(
-        "--config", type=Path, default=Path("config.yaml"), help="Путь к config.yaml"
+        "--persona",
+        type=Path,
+        default=None,
+        help="Каталог пакета персоны (по умолчанию PERSONA_DIR из окружения/.env)",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Явный config.yaml вместо конфига пакета персоны",
     )
     parser.add_argument("--seed", type=int, default=1, help="Seed для random.Random (шаг 11 гейта)")
     parser.add_argument(
@@ -649,8 +658,25 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
     use_judge = bool(getattr(args, "judge", False))
     max_calls = int(getattr(args, "max_calls", 20))
 
-    cfg = load_config(Path(args.config))
-    patterns = Patterns(cfg.filters, cfg.persona.name_triggers, args.bot_username)
+    persona: Persona | None = None
+    persona_arg = getattr(args, "persona", None)
+    config_arg = getattr(args, "config", None)
+    # Пакет нужен, если не задан явный конфиг, либо для промптов генерации.
+    if persona_arg is not None:
+        persona = load_persona(Path(persona_arg))
+    elif config_arg is None or generate:
+        persona = persona_from_env()
+    if config_arg is not None:
+        cfg = load_config(Path(config_arg))
+    else:
+        assert persona is not None  # без --config пакет загружен выше
+        cfg = load_config(persona.config_layers())
+    patterns = Patterns(
+        cfg.filters,
+        cfg.persona.name_triggers,
+        args.bot_username,
+        persona.lang if persona is not None else None,
+    )
     reserved = {
         cfg.persona.name,
         cfg.persona.display_name,
@@ -671,7 +697,8 @@ async def _run_replay_async(args: argparse.Namespace) -> str:
 
     gen_ctx: _GenerateContext | None = None
     if generate:
-        gen_ctx = _build_generate_context(cfg, use_judge)
+        assert persona is not None  # generate -> пакет загружен выше
+        gen_ctx = _build_generate_context(cfg, use_judge, persona)
 
     context_buffer: deque[MessageRow] = deque(maxlen=cfg.behaviour.context_window)
     generated_replies: list[str] = []

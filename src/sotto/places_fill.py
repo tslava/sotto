@@ -54,6 +54,7 @@ import yaml
 from sotto.config import load_config
 from sotto.config_models import Config, PlacesConfig
 from sotto.llm import LLMClient, LLMError, LLMResult
+from sotto.persona import Persona, persona_from_env
 from sotto.prompt import CHAT_CLOSE, CHAT_OPEN
 from sotto.sanitize import normalize_text
 from sotto.settings import Settings
@@ -530,8 +531,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--manual",
         type=Path,
-        default=Path("places_manual.yaml"),
-        help="путь к ручным полям (quiet/category/district)",
+        default=None,
+        help="ручные поля (quiet/category/district); по умолчанию places_manual.yaml пакета",
     )
     parser.add_argument(
         "--manual-only",
@@ -547,6 +548,7 @@ async def run(
     settings: Settings | None = None,
     http: httpx.AsyncClient | None = None,
     llm: LLMLike | None = None,
+    persona: Persona | None = None,
 ) -> list[FetchedPlace]:
     """Точка входа, общая для CLI и тестов.
 
@@ -557,8 +559,9 @@ async def run(
     """
     args = parse_args(argv)
     settings = settings if settings is not None else Settings()
-    cfg: Config = load_config(settings.config_path)
-    manual = load_manual(args.manual)
+    persona = persona if persona is not None else persona_from_env()
+    cfg: Config = load_config(persona.config_layers())
+    manual = load_manual(args.manual if args.manual is not None else persona.places_manual_path)
     now = int(time_module.time())
 
     if args.manual_only:

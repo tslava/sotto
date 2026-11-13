@@ -9,7 +9,7 @@ Message.answer перехватывается фикстурой `sent`, что�
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -31,11 +31,13 @@ from sotto.db import (
 )
 from sotto.few_shot import FewShot
 from sotto.patterns import Patterns
+from sotto.persona import Persona, load_persona
 from sotto.responder import PreviewOutcome, SendOutcome
 from sotto.settings import Settings
 from sotto.timeutil import day_key, local_dt
 from sotto.vocab import VocabStore
 from sotto.weather import Place, Weather
+from tests.packs import LEGACY_PACK
 
 OWN_CHAT_ID = -1001234567890
 FOREIGN_CHAT_ID = -100999
@@ -372,6 +374,7 @@ class FakeDeps:
     weather: FakeWeather | None = None
     vocab_store: VocabStore | None = None
     bot: FakeDownloader | None = None
+    persona: Persona | None = None
 
 
 class FakeDownloader:
@@ -464,6 +467,7 @@ def _deps(
     responder: FakeResponder | None = None,
     memorizer: FakeMemorizer | None = None,
     weather: FakeWeather | None = None,
+    changelog: str = "",
 ) -> tuple[FakeDeps, FakeDb, FakeConfigStore, FakePromptStore]:
     fake_db = db if db is not None else FakeDb()
     config_store = FakeConfigStore(cfg=config)
@@ -478,6 +482,7 @@ def _deps(
         bot_username=BOT_USERNAME,
         memorizer=memorizer,
         weather=weather,
+        persona=replace(load_persona(LEGACY_PACK), legacy_changelog=changelog),
     )
     return deps, fake_db, config_store, prompt_store
 
@@ -2375,20 +2380,11 @@ _CHANGELOG_SAMPLE = """# Changelog
 """
 
 
-def _write_changelog(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, text: str = _CHANGELOG_SAMPLE
-) -> None:
-    path = tmp_path / "CHANGELOG.md"
-    path.write_text(text, encoding="utf-8")
-    monkeypatch.setenv("CHANGELOG_PATH", str(path))
-
-
 async def test_changelog_bare_returns_latest_for_chat(
-    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    _write_changelog(monkeypatch, tmp_path)
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
-    deps, _, _, _ = _deps(settings=settings, config=config)
+    deps, _, _, _ = _deps(settings=settings, config=config, changelog=_CHANGELOG_SAMPLE)
     handler = _handler(deps)
 
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/changelog")
@@ -2398,11 +2394,10 @@ async def test_changelog_bare_returns_latest_for_chat(
 
 
 async def test_changelog_owner_returns_latest_for_owner(
-    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    _write_changelog(monkeypatch, tmp_path)
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
-    deps, _, _, _ = _deps(settings=settings, config=config)
+    deps, _, _, _ = _deps(settings=settings, config=config, changelog=_CHANGELOG_SAMPLE)
     handler = _handler(deps)
 
     message = _message(
@@ -2418,12 +2413,10 @@ async def test_changelog_specific_version_accepts_v_prefix(
     monkeypatch: pytest.MonkeyPatch,
     config: Config,
     sent: list[str],
-    tmp_path: Path,
     version_arg: str,
 ) -> None:
-    _write_changelog(monkeypatch, tmp_path)
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
-    deps, _, _, _ = _deps(settings=settings, config=config)
+    deps, _, _, _ = _deps(settings=settings, config=config, changelog=_CHANGELOG_SAMPLE)
     handler = _handler(deps)
 
     message = _message(
@@ -2435,11 +2428,10 @@ async def test_changelog_specific_version_accepts_v_prefix(
 
 
 async def test_changelog_unknown_version_replies_not_found(
-    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    _write_changelog(monkeypatch, tmp_path)
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
-    deps, _, _, _ = _deps(settings=settings, config=config)
+    deps, _, _, _ = _deps(settings=settings, config=config, changelog=_CHANGELOG_SAMPLE)
     handler = _handler(deps)
 
     message = _message(
@@ -2451,11 +2443,10 @@ async def test_changelog_unknown_version_replies_not_found(
 
 
 async def test_changelog_missing_file_replies_not_found(
-    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    monkeypatch.setenv("CHANGELOG_PATH", str(tmp_path / "does-not-exist.md"))
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
-    deps, _, _, _ = _deps(settings=settings, config=config)
+    deps, _, _, _ = _deps(settings=settings, config=config, changelog="")
     handler = _handler(deps)
 
     message = _message(chat=_private_chat(ADMIN_ID), from_user=_user(ADMIN_ID), text="/changelog")
@@ -2465,11 +2456,10 @@ async def test_changelog_missing_file_replies_not_found(
 
 
 async def test_changelog_ignored_in_chat(
-    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, config: Config, sent: list[str]
 ) -> None:
-    _write_changelog(monkeypatch, tmp_path)
     settings = _make_settings(monkeypatch, allowed_chat_id=OWN_CHAT_ID, admin_user_id=ADMIN_ID)
-    deps, _, _, _ = _deps(settings=settings, config=config)
+    deps, _, _, _ = _deps(settings=settings, config=config, changelog=_CHANGELOG_SAMPLE)
     handler = _handler(deps)
 
     message = _message(chat=_chat(), from_user=_user(ADMIN_ID), text="/changelog")
