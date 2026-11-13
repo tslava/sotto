@@ -1,7 +1,7 @@
-"""Тесты sotto.stickers: каталог, меню, разбор ответа чузера, бюджет, сам чузер.
+"""Tests for sotto.stickers: catalog, menu, chooser answer parsing, budget, the chooser itself.
 
-LLM — настоящий ``LLMClient`` с ``httpx.MockTransport`` (по образцу
-``test_judge.py``): проверяем и реальную сборку запроса, и разбор ответа.
+The LLM is a real ``LLMClient`` over ``httpx.MockTransport`` (modelled on
+``test_judge.py``): both the request assembly and the answer parsing are checked.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import pytest
 import yaml
 
 from sotto.config_models import Config, StickersConfig
+from sotto.fragments import load_valid_fragments
 from sotto.llm import LLMClient
 from sotto.stickers import (
     Sticker,
@@ -26,14 +27,15 @@ from sotto.stickers import (
     render_sticker_menu,
     sticker_allowed,
 )
-from tests.packs import LEGACY_FRAG, LEGACY_PACK
+from tests.packs import DEMO_PACK
 
-STICKER_PROMPT_PATH = LEGACY_PACK / "prompts/sticker.txt"
+DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
+STICKER_PROMPT_PATH = DEMO_PACK / "prompts/sticker.txt"
 NOW = 1_768_003_200
 
 
 class FakeStore:
-    """Минимальная in-memory подделка Database (см. tests/test_llm.py/test_judge.py)."""
+    """Minimal in-memory fake of Database (see tests/test_llm.py/test_judge.py)."""
 
     def __init__(self) -> None:
         self.state: dict[str, str] = {}
@@ -80,7 +82,7 @@ def _choice_response(sticker: int | None) -> httpx.Response:
 
 
 def _fail_handler(_request: httpx.Request) -> httpx.Response:
-    raise AssertionError("LLM не должен был вызываться")
+    raise AssertionError("the LLM should not have been called")
 
 
 def _chooser(
@@ -89,7 +91,7 @@ def _chooser(
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     llm = LLMClient(api_key="sk-test", cfg_getter=lambda: cfg, db=FakeStore(), http=http)
     prompt = STICKER_PROMPT_PATH.read_text(encoding="utf-8")
-    return StickerChooser(llm, lambda: cfg, catalog, prompt, frag=LEGACY_FRAG), llm
+    return StickerChooser(llm, lambda: cfg, catalog, prompt, frag=DEMO_FRAG), llm
 
 
 def _cfg(judge_model: str = "openrouter/small") -> Config:
@@ -105,8 +107,8 @@ def _catalog(*, count: int = 3, disabled: set[int] | None = None) -> StickerCata
             id=i,
             file_id=f"FILE{i}",
             emoji="😂",
-            text=f"Текст {i}",
-            when="когда уместно",
+            text=f"Text {i}",
+            when="when it fits",
             enabled=i not in disabled,
         )
         for i in range(1, count + 1)
@@ -149,8 +151,8 @@ def test_load_catalog_valid_file(tmp_path: Path) -> None:
                         "id": 1,
                         "file_id": "ABC",
                         "emoji": "😂",
-                        "text": "Ну ты даёшь",
-                        "when": "удивление",
+                        "text": "Well played",
+                        "when": "surprise",
                         "enabled": True,
                     }
                 ],
@@ -181,7 +183,7 @@ def test_load_catalog_not_a_mapping_raises_value_error(tmp_path: Path) -> None:
 
 def test_load_catalog_invalid_schema_raises_value_error(tmp_path: Path) -> None:
     path = tmp_path / "stickers.yaml"
-    # sticker без обязательного text -> ValidationError, это ValueError.
+    # a sticker without the required text -> ValidationError, which is a ValueError.
     path.write_text(
         yaml.safe_dump({"set_name": "x", "stickers": [{"id": 1, "file_id": "ABC"}]}),
         encoding="utf-8",
@@ -195,18 +197,18 @@ def test_load_catalog_invalid_schema_raises_value_error(tmp_path: Path) -> None:
 
 def test_render_sticker_menu_skips_disabled_and_formats_with_when() -> None:
     catalog = _catalog(count=2, disabled={2})
-    menu = render_sticker_menu(catalog.stickers, frag=LEGACY_FRAG)
-    assert menu == "1: «Текст 1» — когда уместно"
+    menu = render_sticker_menu(catalog.stickers, frag=DEMO_FRAG)
+    assert menu == "1: “Text 1” — when it fits"
 
 
 def test_render_sticker_menu_without_when_omits_dash() -> None:
-    sticker = Sticker(id=5, file_id="F", text="Просто текст", when="", enabled=True)
-    menu = render_sticker_menu([sticker], frag=LEGACY_FRAG)
-    assert menu == "5: «Просто текст»"
+    sticker = Sticker(id=5, file_id="F", text="Just text", when="", enabled=True)
+    menu = render_sticker_menu([sticker], frag=DEMO_FRAG)
+    assert menu == "5: “Just text”"
 
 
 def test_render_sticker_menu_empty_list_is_empty_string() -> None:
-    assert render_sticker_menu([], frag=LEGACY_FRAG) == ""
+    assert render_sticker_menu([], frag=DEMO_FRAG) == ""
 
 
 # --- parse_choice -------------------------------------------------------------
@@ -215,7 +217,7 @@ def test_render_sticker_menu_empty_list_is_empty_string() -> None:
 @pytest.mark.parametrize(
     "raw",
     [
-        "мусор не json",
+        "garbage, not json",
         '```json\n{"sticker": true}\n```',
         json.dumps({"sticker": "1"}),
         json.dumps({"sticker": 99}),
@@ -243,7 +245,7 @@ def test_parse_choice_code_fence_wrapped() -> None:
 
 
 def test_parse_choice_tolerates_trailing_text() -> None:
-    raw = json.dumps({"sticker": 1}) + "\n\nвот мой ответ"
+    raw = json.dumps({"sticker": 1}) + "\n\nthat is my answer"
     assert parse_choice(raw, {1, 2, 3}) == 1
 
 
@@ -252,20 +254,20 @@ def test_parse_choice_tolerates_trailing_text() -> None:
 
 def test_recent_sticker_ids_extracts_tagged_texts_within_window() -> None:
     texts = [
-        "[стикер #1] раз",
-        "просто текст",
-        "[стикер #2] два",
-        "[стикер #3] три",
+        "[sticker #1] one",
+        "plain text",
+        "[sticker #2] two",
+        "[sticker #3] three",
     ]
-    assert recent_sticker_ids(texts, 2, frag=LEGACY_FRAG) == {2, 3}
+    assert recent_sticker_ids(texts, 2, frag=DEMO_FRAG) == {2, 3}
 
 
 def test_recent_sticker_ids_ignores_non_tagged() -> None:
-    assert recent_sticker_ids(["привет", "как дела"], 5, frag=LEGACY_FRAG) == set()
+    assert recent_sticker_ids(["hello", "how are you"], 5, frag=DEMO_FRAG) == set()
 
 
 def test_recent_sticker_ids_empty_texts() -> None:
-    assert recent_sticker_ids([], 5, frag=LEGACY_FRAG) == set()
+    assert recent_sticker_ids([], 5, frag=DEMO_FRAG) == set()
 
 
 # --- sticker_allowed -----------------------------------------------------------
@@ -305,7 +307,7 @@ async def test_chooser_picks_sticker_from_valid_response() -> None:
     chooser, llm = _chooser(handler, cfg, catalog)
     try:
         sticker = await chooser.choose(
-            reply_text="Бывает.", trigger_text="ну ты и жук", exclude_ids=set(), now=NOW
+            reply_text="It happens.", trigger_text="you sly dog", exclude_ids=set(), now=NOW
         )
     finally:
         await llm.aclose()
@@ -322,7 +324,7 @@ async def test_chooser_returns_none_on_null() -> None:
     chooser, llm = _chooser(handler, cfg, catalog)
     try:
         sticker = await chooser.choose(
-            reply_text="Бывает.", trigger_text="как сам", exclude_ids=set(), now=NOW
+            reply_text="It happens.", trigger_text="how are you", exclude_ids=set(), now=NOW
         )
     finally:
         await llm.aclose()
@@ -337,7 +339,7 @@ async def test_chooser_returns_none_on_invalid_id() -> None:
     chooser, llm = _chooser(handler, cfg, catalog)
     try:
         sticker = await chooser.choose(
-            reply_text="Бывает.", trigger_text="как сам", exclude_ids=set(), now=NOW
+            reply_text="It happens.", trigger_text="how are you", exclude_ids=set(), now=NOW
         )
     finally:
         await llm.aclose()
@@ -347,12 +349,12 @@ async def test_chooser_returns_none_on_invalid_id() -> None:
 
 async def test_chooser_returns_none_on_llm_error() -> None:
     cfg = _cfg()
-    cfg.llm.daily_calls_cap = 0  # гарантированный LLMError без похода в сеть
+    cfg.llm.daily_calls_cap = 0  # guaranteed LLMError without touching the network
     catalog = _catalog(count=3)
     chooser, llm = _chooser(_fail_handler, cfg, catalog)
     try:
         sticker = await chooser.choose(
-            reply_text="Бывает.", trigger_text="как сам", exclude_ids=set(), now=NOW
+            reply_text="It happens.", trigger_text="how are you", exclude_ids=set(), now=NOW
         )
     finally:
         await llm.aclose()
@@ -362,11 +364,11 @@ async def test_chooser_returns_none_on_llm_error() -> None:
 
 async def test_chooser_skips_call_when_no_candidates() -> None:
     cfg = _cfg()
-    catalog = _catalog(count=2, disabled={1, 2})  # все выключены
+    catalog = _catalog(count=2, disabled={1, 2})  # all disabled
     chooser, llm = _chooser(_fail_handler, cfg, catalog)
     try:
         sticker = await chooser.choose(
-            reply_text="Бывает.", trigger_text="как сам", exclude_ids=set(), now=NOW
+            reply_text="It happens.", trigger_text="how are you", exclude_ids=set(), now=NOW
         )
     finally:
         await llm.aclose()
@@ -380,7 +382,7 @@ async def test_chooser_skips_call_when_all_excluded() -> None:
     chooser, llm = _chooser(_fail_handler, cfg, catalog)
     try:
         sticker = await chooser.choose(
-            reply_text="Бывает.", trigger_text="как сам", exclude_ids={1, 2}, now=NOW
+            reply_text="It happens.", trigger_text="how are you", exclude_ids={1, 2}, now=NOW
         )
     finally:
         await llm.aclose()
@@ -394,7 +396,7 @@ async def test_chooser_returns_none_when_no_model_configured() -> None:
     chooser, llm = _chooser(_fail_handler, cfg, catalog)
     try:
         sticker = await chooser.choose(
-            reply_text="Бывает.", trigger_text="как сам", exclude_ids=set(), now=NOW
+            reply_text="It happens.", trigger_text="how are you", exclude_ids=set(), now=NOW
         )
     finally:
         await llm.aclose()
@@ -410,7 +412,7 @@ async def test_chooser_uses_behaviour_model_override() -> None:
     chooser, llm = _chooser(handler, cfg, catalog)
     try:
         await chooser.choose(
-            reply_text="Бывает.", trigger_text="как сам", exclude_ids=set(), now=NOW
+            reply_text="It happens.", trigger_text="how are you", exclude_ids=set(), now=NOW
         )
     finally:
         await llm.aclose()

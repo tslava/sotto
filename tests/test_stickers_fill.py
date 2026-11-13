@@ -1,5 +1,5 @@
-"""Тесты sotto.stickers_fill: без сети — фейковый Bot (get_sticker_set/download) и
-фейковый LLM (call_raw), по образцу tests/test_places_fill.py.
+"""Tests for sotto.stickers_fill: no network, a fake Bot (get_sticker_set/download) and a
+fake LLM (call_raw), modelled on tests/test_places_fill.py.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 import yaml
 
+from sotto.fragments import load_valid_fragments
 from sotto.persona import load_persona
 from sotto.settings import Settings
 from sotto.stickers import Sticker, StickerCatalog, load_catalog
@@ -24,15 +25,15 @@ from sotto.stickers_fill import (
 from sotto.stickers_fill import (
     run as run_fill,
 )
-from tests.packs import LEGACY_FRAG, LEGACY_PACK
+from tests.packs import DEMO_PACK
+
+DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
 
 NOW = 1_768_003_200
 
 
-# No config file at all: the engine defaults, as these tests were written for.
-_NO_CONFIG_PERSONA = replace(
-    load_persona(LEGACY_PACK), config_path=Path("/nonexistent/config.yaml")
-)
+# No config file at all: the engine defaults.
+_NO_CONFIG_PERSONA = replace(load_persona(DEMO_PACK), config_path=Path("/nonexistent/config.yaml"))
 
 
 async def run(argv: list[str] | None = None, **kwargs: Any) -> StickerCatalog:
@@ -90,7 +91,7 @@ class FakeBot:
 
 @dataclass
 class FakeLLM:
-    text: str = '{"text": "Ну ты даёшь", "when": "удивление"}'
+    text: str = '{"text": "Well played", "when": "surprise"}'
     calls: list[dict[str, Any]] = field(default_factory=list)
 
     async def call_raw(
@@ -102,7 +103,7 @@ class FakeLLM:
         return LLMResult(text=self.text, cost_usd=0.0001, prompt_tokens=5, completion_tokens=5)
 
 
-# --- build_catalog: слияние ---------------------------------------------------
+# --- build_catalog: merging ---------------------------------------------------
 
 
 async def test_new_sticker_gets_next_id_and_recognized_text() -> None:
@@ -117,15 +118,15 @@ async def test_new_sticker_gets_next_id_and_recognized_text() -> None:
         llm=llm,
         model="vision/x",
         now=NOW,
-        frag=LEGACY_FRAG,
+        frag=DEMO_FRAG,
     )
 
     assert len(catalog.stickers) == 1
     sticker = catalog.stickers[0]
     assert sticker.id == 1
     assert sticker.file_id == "F1"
-    assert sticker.text == "Ну ты даёшь"
-    assert sticker.when == "удивление"
+    assert sticker.text == "Well played"
+    assert sticker.when == "surprise"
     assert sticker.enabled is True
     assert len(llm.calls) == 1
     assert bot.downloaded_ids == ["F1"]
@@ -133,7 +134,7 @@ async def test_new_sticker_gets_next_id_and_recognized_text() -> None:
 
 async def test_existing_sticker_preserves_owner_edits() -> None:
     bot = FakeBot(FakeStickerSet([FakeRawSticker(file_id="F1", emoji="🙂")]))
-    llm = FakeLLM(text='{"text": "НОВЫЙ ТЕКСТ ОТ МОДЕЛИ", "when": "не важно"}')
+    llm = FakeLLM(text='{"text": "NEW TEXT FROM THE MODEL", "when": "never mind"}')
     existing = StickerCatalog(
         set_name="myset",
         stickers=[
@@ -141,8 +142,8 @@ async def test_existing_sticker_preserves_owner_edits() -> None:
                 id=7,
                 file_id="F1",
                 emoji="😂",
-                text="Ручная правка владельца",
-                when="ручной when",
+                text="Owner hand edit",
+                when="manual when",
                 enabled=False,
             )
         ],
@@ -155,29 +156,29 @@ async def test_existing_sticker_preserves_owner_edits() -> None:
         llm=llm,
         model="vision/x",
         now=NOW,
-        frag=LEGACY_FRAG,
+        frag=DEMO_FRAG,
     )
 
     assert len(catalog.stickers) == 1
     sticker = catalog.stickers[0]
-    # id/text/when/enabled — из старой записи, не тронуты моделью/скриптом.
+    # id/text/when/enabled come from the old entry, untouched by the model/script.
     assert sticker.id == 7
-    assert sticker.text == "Ручная правка владельца"
-    assert sticker.when == "ручной when"
+    assert sticker.text == "Owner hand edit"
+    assert sticker.when == "manual when"
     assert sticker.enabled is False
-    # emoji обновляется от Telegram.
+    # emoji is refreshed from Telegram.
     assert sticker.emoji == "🙂"
-    # Совпадение по file_id -> распознавание не вызывается вовсе (не тратим деньги).
+    # A file_id match means recognition is not called at all (no money spent).
     assert llm.calls == []
     assert bot.downloaded_ids == []
 
 
 async def test_missing_sticker_is_disabled_not_removed(caplog: pytest.LogCaptureFixture) -> None:
-    bot = FakeBot(FakeStickerSet([]))  # набор пуст — старый стикер "пропал"
+    bot = FakeBot(FakeStickerSet([]))  # the set is empty, so the old sticker "went missing"
     llm = FakeLLM()
     existing = StickerCatalog(
         set_name="myset",
-        stickers=[Sticker(id=3, file_id="GONE", text="Был да пропал", enabled=True)],
+        stickers=[Sticker(id=3, file_id="GONE", text="Was here, now gone", enabled=True)],
     )
 
     with caplog.at_level(logging.WARNING):
@@ -188,7 +189,7 @@ async def test_missing_sticker_is_disabled_not_removed(caplog: pytest.LogCapture
             llm=llm,
             model="vision/x",
             now=NOW,
-            frag=LEGACY_FRAG,
+            frag=DEMO_FRAG,
         )
 
     assert len(catalog.stickers) == 1
@@ -196,7 +197,9 @@ async def test_missing_sticker_is_disabled_not_removed(caplog: pytest.LogCapture
     assert sticker.id == 3
     assert sticker.file_id == "GONE"
     assert sticker.enabled is False
-    assert any("пропал" in record.message for record in caplog.records)
+    assert any(
+        "пропал" in record.message for record in caplog.records
+    )  # PR-8: warning text is hard-coded Russian in src/
 
 
 async def test_new_ids_continue_after_max_existing_id() -> None:
@@ -204,7 +207,7 @@ async def test_new_ids_continue_after_max_existing_id() -> None:
     llm = FakeLLM()
     existing = StickerCatalog(
         set_name="myset",
-        stickers=[Sticker(id=5, file_id="OLD", text="старый", enabled=True)],
+        stickers=[Sticker(id=5, file_id="OLD", text="old", enabled=True)],
     )
 
     catalog = await build_catalog(
@@ -214,14 +217,14 @@ async def test_new_ids_continue_after_max_existing_id() -> None:
         llm=llm,
         model="vision/x",
         now=NOW,
-        frag=LEGACY_FRAG,
+        frag=DEMO_FRAG,
     )
 
     new_sticker = next(s for s in catalog.stickers if s.file_id == "NEW")
     assert new_sticker.id == 6
 
 
-# --- пропуск анимированных/видео ---------------------------------------------
+# --- skipping animated/video ---------------------------------------------
 
 
 async def test_animated_and_video_stickers_are_skipped(caplog: pytest.LogCaptureFixture) -> None:
@@ -245,7 +248,7 @@ async def test_animated_and_video_stickers_are_skipped(caplog: pytest.LogCapture
             llm=llm,
             model="vision/x",
             now=NOW,
-            frag=LEGACY_FRAG,
+            frag=DEMO_FRAG,
         )
 
     file_ids = {s.file_id for s in catalog.stickers}
@@ -260,7 +263,7 @@ async def test_animated_and_video_stickers_are_skipped(caplog: pytest.LogCapture
 
 
 async def test_recognize_sticker_without_llm_is_empty() -> None:
-    text, when = await recognize_sticker(b"bytes", llm=None, model="x", now=NOW, frag=LEGACY_FRAG)
+    text, when = await recognize_sticker(b"bytes", llm=None, model="x", now=NOW, frag=DEMO_FRAG)
     assert (text, when) == ("", "")
 
 
@@ -269,16 +272,16 @@ async def test_no_llm_leaves_new_stickers_blank() -> None:
     existing = StickerCatalog()
 
     catalog = await build_catalog(
-        bot=bot, set_name="myset", existing=existing, llm=None, model="", now=NOW, frag=LEGACY_FRAG
+        bot=bot, set_name="myset", existing=existing, llm=None, model="", now=NOW, frag=DEMO_FRAG
     )
 
     assert catalog.stickers[0].text == ""
     assert catalog.stickers[0].when == ""
-    # Скачиваем всё равно — распознавание может включиться позже.
+    # Download anyway: recognition may be switched on later.
     assert bot.downloaded_ids == ["F1"]
 
 
-# --- run(): CLI склейка, --dry-run --------------------------------------------
+# --- run(): CLI glue, --dry-run --------------------------------------------
 
 
 async def test_run_dry_run_does_not_write_file(tmp_path: Path) -> None:
@@ -308,8 +311,8 @@ async def test_run_writes_merged_yaml(tmp_path: Path) -> None:
                         "id": 1,
                         "file_id": "F1",
                         "emoji": "😂",
-                        "text": "Старый текст",
-                        "when": "старый when",
+                        "text": "Old text",
+                        "when": "old when",
                         "enabled": True,
                     }
                 ],
@@ -333,7 +336,7 @@ async def test_run_writes_merged_yaml(tmp_path: Path) -> None:
     reloaded = load_catalog(out_path)
     assert {s.file_id for s in reloaded.stickers} == {"F1", "F2"}
     old = next(s for s in reloaded.stickers if s.file_id == "F1")
-    assert old.text == "Старый текст"  # правка не потеряна
+    assert old.text == "Old text"  # the edit is not lost
 
 
 async def test_run_no_llm_flag_skips_recognition(tmp_path: Path) -> None:
@@ -347,7 +350,7 @@ async def test_run_no_llm_flag_skips_recognition(tmp_path: Path) -> None:
     assert reloaded.stickers[0].text == ""
 
 
-# --- рендер отчёта -------------------------------------------------------------
+# --- report rendering -------------------------------------------------------------
 
 
 def test_render_report_lists_all_columns() -> None:
@@ -357,7 +360,7 @@ def test_render_report_lists_all_columns() -> None:
     )
     report = render_report(catalog)
     assert "id | emoji | text | when | enabled" in report
-    assert "1 | 😂 | t | w | да" in report
+    assert "1 | 😂 | t | w | да" in report  # PR-8: report text is hard-coded Russian in src/
 
 
 def test_render_yaml_round_trips_through_load_catalog(tmp_path: Path) -> None:
@@ -387,9 +390,7 @@ async def test_out_defaults_to_the_stickers_yaml_of_the_persona(tmp_path: Path) 
 async def test_stickers_fill_loads_the_persona_from_env_for_the_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tests.packs import LEGACY_PACK
-
-    monkeypatch.setenv("PERSONA_DIR", str(LEGACY_PACK))
+    monkeypatch.setenv("PERSONA_DIR", str(DEMO_PACK))
     bot = FakeBot(FakeStickerSet([FakeRawSticker(file_id="F1")]))
     llm = FakeLLM()
 

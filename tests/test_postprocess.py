@@ -1,11 +1,12 @@
-"""Тесты для sotto.postprocess: normalize_dashes, strip_emoji, keep_first_emoji, soften.
+"""Tests for sotto.postprocess: normalize_dashes, strip_emoji, keep_first_emoji, soften.
 
-Чистые функции, без I/O — как и сам модуль (CLAUDE.md, "Интерфейсы: пост-обработка").
+Pure functions, no I/O, like the module itself.
 """
 
 from __future__ import annotations
 
 from sotto.config_models import FiltersConfig
+from sotto.fragments import load_valid_fragments
 from sotto.postprocess import (
     Fixed,
     keep_first_emoji,
@@ -13,7 +14,9 @@ from sotto.postprocess import (
     soften,
     strip_emoji,
 )
-from tests.packs import LEGACY_FRAG
+from tests.packs import DEMO_PACK
+
+DEMO_FRAG = load_valid_fragments(DEMO_PACK / "fragments.yaml")
 
 # --------------------------------------------------------------------------- #
 # normalize_dashes
@@ -21,31 +24,31 @@ from tests.packs import LEGACY_FRAG
 
 
 def test_normalize_dashes_em_dash() -> None:
-    assert normalize_dashes("слово — слово") == "слово - слово"
+    assert normalize_dashes("word — word") == "word - word"
 
 
 def test_normalize_dashes_en_dash() -> None:
-    assert normalize_dashes("слово – слово") == "слово - слово"
+    assert normalize_dashes("word – word") == "word - word"
 
 
 def test_normalize_dashes_figure_dash() -> None:
-    assert normalize_dashes("слово ‒ слово") == "слово - слово"
+    assert normalize_dashes("word ‒ word") == "word - word"
 
 
 def test_normalize_dashes_horizontal_bar() -> None:
-    assert normalize_dashes("слово ― слово") == "слово - слово"
+    assert normalize_dashes("word ― word") == "word - word"
 
 
 def test_normalize_dashes_hyphen_in_word_untouched() -> None:
-    assert normalize_dashes("по-русски кто-то") == "по-русски кто-то"
+    assert normalize_dashes("well-known someone-else") == "well-known someone-else"
 
 
 def test_normalize_dashes_no_dash_unchanged() -> None:
-    assert normalize_dashes("Бывает, с кем не случается.") == "Бывает, с кем не случается."
+    assert normalize_dashes("It happens to the best of us.") == "It happens to the best of us."
 
 
 def test_normalize_dashes_multiple() -> None:
-    assert normalize_dashes("раз — два – три") == "раз - два - три"
+    assert normalize_dashes("one — two – three") == "one - two - three"
 
 
 # --------------------------------------------------------------------------- #
@@ -54,43 +57,43 @@ def test_normalize_dashes_multiple() -> None:
 
 
 def test_strip_emoji_at_end() -> None:
-    assert strip_emoji("Бывает 🙂") == "Бывает"
+    assert strip_emoji("It happens 🙂") == "It happens"
 
 
 def test_strip_emoji_at_start() -> None:
-    assert strip_emoji("🙂 Бывает") == "Бывает"
+    assert strip_emoji("🙂 It happens") == "It happens"
 
 
 def test_strip_emoji_in_middle() -> None:
-    assert strip_emoji("Бывает 🙂 привет") == "Бывает привет"
+    assert strip_emoji("It happens 🙂 hello") == "It happens hello"
 
 
 def test_strip_emoji_before_punctuation_no_hanging_space() -> None:
-    assert strip_emoji("Бывает 🙂, как дела") == "Бывает, как дела"
+    assert strip_emoji("It happens 🙂, how are you") == "It happens, how are you"
 
 
 def test_strip_emoji_after_dot() -> None:
-    assert strip_emoji("Бывает. 💩") == "Бывает."
+    assert strip_emoji("It happens. 💩") == "It happens."
 
 
 def test_strip_emoji_with_variation_selector() -> None:
-    assert strip_emoji("Бывает 👍️") == "Бывает"
+    assert strip_emoji("It happens 👍️") == "It happens"
 
 
 def test_strip_emoji_with_skin_tone_modifier() -> None:
-    assert strip_emoji("Бывает 👍🏻") == "Бывает"
+    assert strip_emoji("It happens 👍🏻") == "It happens"
 
 
 def test_strip_emoji_multiple() -> None:
-    assert strip_emoji("Бывает 🙂🙂") == "Бывает"
+    assert strip_emoji("It happens 🙂🙂") == "It happens"
 
 
 def test_strip_emoji_no_emoji_unchanged() -> None:
-    assert strip_emoji("Бывает, с кем не случается.") == "Бывает, с кем не случается."
+    assert strip_emoji("It happens to the best of us.") == "It happens to the best of us."
 
 
 def test_strip_emoji_no_double_space_result() -> None:
-    result = strip_emoji("Бывает 🙂 привет")
+    result = strip_emoji("It happens 🙂 hello")
     assert "  " not in result
 
 
@@ -100,98 +103,100 @@ def test_strip_emoji_no_double_space_result() -> None:
 
 
 def test_keep_first_emoji_two() -> None:
-    assert keep_first_emoji("Бывает 🙂🙂") == "Бывает 🙂"
+    assert keep_first_emoji("It happens 🙂🙂") == "It happens 🙂"
 
 
 def test_keep_first_emoji_far_apart() -> None:
-    assert keep_first_emoji("Бывает 🙂 и вот 💩 тоже") == "Бывает 🙂 и вот тоже"
+    assert keep_first_emoji("It happens 🙂 and here 💩 too") == "It happens 🙂 and here too"
 
 
 def test_keep_first_emoji_single_unchanged() -> None:
-    assert keep_first_emoji("Бывает 🙂") == "Бывает 🙂"
+    assert keep_first_emoji("It happens 🙂") == "It happens 🙂"
 
 
 def test_keep_first_emoji_none_unchanged() -> None:
-    assert keep_first_emoji("Бывает.") == "Бывает."
+    assert keep_first_emoji("It happens.") == "It happens."
 
 
 # --------------------------------------------------------------------------- #
 # soften
 # --------------------------------------------------------------------------- #
 
-_CFG = FiltersConfig()  # allowed_emoji по умолчанию, emoji_max_per_reply=1, emoji_recent_window=4
+_CFG = FiltersConfig()  # default allowed_emoji, emoji_max_per_reply=1, emoji_recent_window=4
 
 
 def test_soften_dash_only() -> None:
     fixed = soften(
-        "Раньше было проще — теперь не так.", recent_replies=[], cfg=_CFG, frag=LEGACY_FRAG
+        "It used to be easier — now it is not.", recent_replies=[], cfg=_CFG, frag=DEMO_FRAG
     )
-    assert fixed == Fixed(text="Раньше было проще - теперь не так.", fixes=("fix:dash",))
+    assert fixed == Fixed(text="It used to be easier - now it is not.", fixes=("fix:dash",))
 
 
 def test_soften_no_fixes_needed() -> None:
-    fixed = soften("Бывает, с кем не случается.", recent_replies=[], cfg=_CFG, frag=LEGACY_FRAG)
-    assert fixed == Fixed(text="Бывает, с кем не случается.", fixes=())
+    fixed = soften("It happens to the best of us.", recent_replies=[], cfg=_CFG, frag=DEMO_FRAG)
+    assert fixed == Fixed(text="It happens to the best of us.", fixes=())
 
 
 def test_soften_emoji_freq_strips_when_recent_has_emoji() -> None:
-    recent = ["Все по домам.", "Бывает.", "Ладно.", "Зря 😂"]
-    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=_CFG, frag=LEGACY_FRAG)
+    recent = ["Everyone home.", "It happens.", "Fine.", "Pointless 😂"]
+    fixed = soften("It happens 🙂", recent_replies=recent, cfg=_CFG, frag=DEMO_FRAG)
     assert fixed.fixes == ("fix:emoji_freq",)
-    assert fixed.text == "Бывает"
+    assert fixed.text == "It happens"
 
 
 def test_soften_emoji_freq_outside_window_pass() -> None:
     recent = [
-        "Зря 😂",
-        "Все по домам разошлись.",
-        "Ладно, я в гараже.",
-        "Купил торф для рассады.",
-        "Спокойной ночи всем.",
+        "Pointless 😂",
+        "Everyone went home.",
+        "Fine, I am in the shed.",
+        "Bought peat for the seedlings.",
+        "Good night, all.",
     ]
-    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=_CFG, frag=LEGACY_FRAG)
+    fixed = soften("It happens 🙂", recent_replies=recent, cfg=_CFG, frag=DEMO_FRAG)
     assert fixed.fixes == ()
-    assert fixed.text == "Бывает 🙂"
+    assert fixed.text == "It happens 🙂"
 
 
 def test_soften_emoji_count_keeps_first() -> None:
-    fixed = soften("Бывает 🙂🙂", recent_replies=[], cfg=_CFG, frag=LEGACY_FRAG)
+    fixed = soften("It happens 🙂🙂", recent_replies=[], cfg=_CFG, frag=DEMO_FRAG)
     assert fixed.fixes == ("fix:emoji_count",)
-    assert fixed.text == "Бывает 🙂"
+    assert fixed.text == "It happens 🙂"
 
 
 def test_soften_order_dash_then_emoji_freq() -> None:
-    recent = ["Зря 😂"]
-    fixed = soften("Раньше было — теперь 🙂", recent_replies=recent, cfg=_CFG, frag=LEGACY_FRAG)
+    recent = ["Pointless 😂"]
+    fixed = soften("It used to be — now 🙂", recent_replies=recent, cfg=_CFG, frag=DEMO_FRAG)
     assert fixed.fixes == ("fix:dash", "fix:emoji_freq")
-    assert fixed.text == "Раньше было - теперь"
+    assert fixed.text == "It used to be - now"
 
 
 def test_soften_emoji_freq_and_count_only_freq_applies() -> None:
-    # emoji_freq проверяется первым: если сработал, до emoji_count дело не доходит,
-    # даже если в кандидате несколько разрешённых эмодзи.
-    recent = ["Зря 😂"]
-    fixed = soften("Бывает 🙂🙂", recent_replies=recent, cfg=_CFG, frag=LEGACY_FRAG)
+    # emoji_freq is checked first: when it fires, emoji_count is never reached,
+    # even if the candidate has several allowed emoji.
+    recent = ["Pointless 😂"]
+    fixed = soften("It happens 🙂🙂", recent_replies=recent, cfg=_CFG, frag=DEMO_FRAG)
     assert fixed.fixes == ("fix:emoji_freq",)
-    assert fixed.text == "Бывает"
+    assert fixed.text == "It happens"
 
 
 def test_soften_sticker_placeholder_not_counted_as_emoji() -> None:
-    recent = ["[стикер #3] Ну началось"]
-    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=_CFG, frag=LEGACY_FRAG)
+    recent = ["[sticker #3] Here we go"]
+    fixed = soften("It happens 🙂", recent_replies=recent, cfg=_CFG, frag=DEMO_FRAG)
     assert fixed.fixes == ()
-    assert fixed.text == "Бывает 🙂"
+    assert fixed.text == "It happens 🙂"
 
 
 def test_soften_window_respects_emoji_recent_window() -> None:
     cfg = FiltersConfig(emoji_recent_window=1)
-    # эмодзи было 2 реплики назад, окно = 1 -> не считается.
-    recent = ["Зря 😂", "Ладно."]
-    fixed = soften("Бывает 🙂", recent_replies=recent, cfg=cfg, frag=LEGACY_FRAG)
+    # the emoji was 2 replies ago, window = 1 -> not counted.
+    recent = ["Pointless 😂", "Fine."]
+    fixed = soften("It happens 🙂", recent_replies=recent, cfg=cfg, frag=DEMO_FRAG)
     assert fixed.fixes == ()
-    assert fixed.text == "Бывает 🙂"
+    assert fixed.text == "It happens 🙂"
 
 
 def test_soften_no_emoji_no_dash_unchanged() -> None:
-    fixed = soften("Ключи в гараже были.", recent_replies=["Зря 😂"], cfg=_CFG, frag=LEGACY_FRAG)
-    assert fixed == Fixed(text="Ключи в гараже были.", fixes=())
+    fixed = soften(
+        "The keys were in the shed.", recent_replies=["Pointless 😂"], cfg=_CFG, frag=DEMO_FRAG
+    )
+    assert fixed == Fixed(text="The keys were in the shed.", fixes=())
