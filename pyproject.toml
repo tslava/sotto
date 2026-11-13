@@ -1,7 +1,12 @@
 [project]
 name = "sotto"
-version = "0.9.1"
-description = "Telegram bot-persona for one group chat"
+version = "0.10.0"
+description = "A Telegram group-chat regular: an engine that decides when a persona speaks, plus persona packs for who it is"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Wiaczesław Cyunczyk" }]
+keywords = ["telegram", "bot", "llm", "persona", "aiogram", "group-chat"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "aiogram>=3.31",
@@ -12,6 +17,10 @@ dependencies = [
     "pydantic-settings>=2.15",
     "pyyaml>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://tslava.dev/sotto.html"
+Repository = "https://github.com/tslava/sotto"
 
 [dependency-groups]
 dev = [
