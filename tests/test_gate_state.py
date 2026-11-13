@@ -5,12 +5,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from sotto.config import load_config
 from sotto.db import Database
 from sotto.gate_state import load_gate_state
 from sotto.gate_types import GateMessage
-from tests.packs import legacy_config
+from sotto.persona import load_persona
+from tests.packs import DEMO_PACK
 
-CONFIG = legacy_config()
+CONFIG = load_config(load_persona(DEMO_PACK).config_layers())
 
 
 def _msg(
@@ -19,7 +21,7 @@ def _msg(
     tg_message_id: int = 1,
     user_id: int = 10,
     is_bot: bool = False,
-    text: str = "привет",
+    text: str = "hello",
     reply_to_bot: bool = False,
     created_at: int = 1000,
 ) -> GateMessage:
@@ -171,7 +173,7 @@ async def test_load_gate_state_recent_activity_within_window(tmp_path: Path) -> 
             text="hi",
             reply_to_tg_message_id=None,
             is_bot=False,
-            created_at=now - window_sec + 1,  # внутри окна
+            created_at=now - window_sec + 1,  # inside the window
         )
         await db.insert_message(
             tg_message_id=2,
@@ -181,7 +183,7 @@ async def test_load_gate_state_recent_activity_within_window(tmp_path: Path) -> 
             text="old",
             reply_to_tg_message_id=None,
             is_bot=False,
-            created_at=now - window_sec - 100,  # вне окна
+            created_at=now - window_sec - 100,  # outside the window
         )
 
         state = await load_gate_state(db, CONFIG, _msg(chat_id=1, created_at=now), now)
@@ -191,20 +193,20 @@ async def test_load_gate_state_recent_activity_within_window(tmp_path: Path) -> 
         await db.close()
 
 
-async def test_load_gate_state_mention_count_key_uses_warsaw_local_day(tmp_path: Path) -> None:
-    """now = 00:30 Варшавы (лето, UTC+2) = 22:30 UTC предыдущего дня.
+async def test_load_gate_state_mention_count_key_uses_london_local_day(tmp_path: Path) -> None:
+    """now = 00:30 London (summer, UTC+1) = 23:30 UTC the previous day.
 
-    Ключ mention_count должен браться за варшавскую дату (следующий UTC-день),
-    а не за UTC-дату.
+    The mention_count key must use the London date (the next UTC day),
+    not the UTC date.
     """
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        # 2026-07-15 22:30 UTC == 2026-07-16 00:30 Europe/Warsaw (лето, UTC+2)
-        now = int(datetime(2026, 7, 15, 22, 30, tzinfo=UTC).timestamp())
+        # 2026-07-15 23:30 UTC == 2026-07-16 00:30 Europe/London (summer, UTC+1)
+        now = int(datetime(2026, 7, 15, 23, 30, tzinfo=UTC).timestamp())
 
-        await db.set_state("mention_count:2026-07-16", "9")  # варшавская дата
-        await db.set_state("mention_count:2026-07-15", "1")  # UTC-дата, не должна использоваться
+        await db.set_state("mention_count:2026-07-16", "9")  # London date
+        await db.set_state("mention_count:2026-07-15", "1")  # UTC date, must not be used
 
         state = await load_gate_state(db, CONFIG, _msg(created_at=now), now)
 
@@ -214,8 +216,8 @@ async def test_load_gate_state_mention_count_key_uses_warsaw_local_day(tmp_path:
 
 
 async def test_load_gate_state_counts_presence_by_local_day(tmp_path: Path) -> None:
-    """Потолок присутствия (CLAUDE.md, "меньше и разнообразнее"): счётчики считаются
-    по таблицам с локальной полуночи persona.timezone, вчерашнее не учитывается."""
+    """Presence cap: the counters are taken from the tables since local midnight in
+    persona.timezone, yesterday is not counted."""
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
@@ -228,8 +230,8 @@ async def test_load_gate_state_counts_presence_by_local_day(tmp_path: Path) -> N
                 tg_message_id=tg_id,
                 chat_id=1,
                 user_id=10,
-                display_name="Гена",
-                text="текст",
+                display_name="Gene",
+                text="some text",
                 reply_to_tg_message_id=None,
                 is_bot=False,
                 created_at=created_at,
@@ -240,7 +242,7 @@ async def test_load_gate_state_counts_presence_by_local_day(tmp_path: Path) -> N
                 reply_to_tg_message_id=None,
                 trigger="ambient",
                 trigger_tg_message_id=None,
-                text="реплика",
+                text="a reply",
                 prompt_version=1,
                 few_shot_version=1,
                 delay_sec=0,

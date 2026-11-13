@@ -99,10 +99,10 @@ async def test_run_retention_no_op_when_nothing_expired(tmp_path: Path) -> None:
 
 
 async def test_run_retention_uses_persona_timezone_for_dated_state_keys(tmp_path: Path) -> None:
-    """cutoff 23:30 UTC = 01:30 Europe/Warsaw следующего дня (летнее время, UTC+2).
+    """cutoff 23:30 UTC = 00:30 Europe/London the next day (summer time, UTC+1).
 
-    Ключ, датированный "вчера по Варшаве" (совпадает с "сегодня по UTC"), должен
-    удаляться при tz=Europe/Warsaw и оставаться при tz=UTC — решает варшавская дата.
+    A key dated "yesterday in London" (equal to "today in UTC") must be deleted
+    with tz=Europe/London and kept with tz=UTC: the London date decides.
     """
     db = Database(tmp_path / "bot.db")
     await db.connect()
@@ -110,7 +110,7 @@ async def test_run_retention_uses_persona_timezone_for_dated_state_keys(tmp_path
         now = int(datetime(2026, 7, 15, 23, 30, tzinfo=UTC).timestamp())
         await db.set_state("ambient_count:2026-07-15", "1")
 
-        stats = await run_retention(db, 0, "Europe/Warsaw", now)
+        stats = await run_retention(db, 0, "Europe/London", now)
 
         assert stats.state_keys == 1
         assert await db.get_state("ambient_count:2026-07-15") is None
@@ -157,7 +157,7 @@ async def test_retention_loop_survives_iteration_errors(tmp_path: Path) -> None:
 
         task = asyncio.create_task(retention_loop(db, failing_cfg_getter, interval_sec=0.01))
         await asyncio.sleep(0.05)
-        assert calls >= 2  # цикл пережил ошибки и продолжил итерации
+        assert calls >= 2  # the loop survived the errors and kept iterating
 
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -167,8 +167,8 @@ async def test_retention_loop_survives_iteration_errors(tmp_path: Path) -> None:
 
 
 async def test_run_retention_purges_chat_memory_by_its_own_keep_days(tmp_path: Path) -> None:
-    """Пересказы живут дольше сообщений (CLAUDE.md, "долгая память чата"): свой
-    срок keep_days, своё поле в PurgeStats."""
+    """Chat memory entries outlive messages: they have their own keep_days and their own
+    PurgeStats field."""
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
@@ -179,13 +179,13 @@ async def test_run_retention_purges_chat_memory_by_its_own_keep_days(tmp_path: P
         old_id = await db.insert_chat_memory(
             period_start=cutoff - 8 * 86400,
             period_end=cutoff - 100,
-            text="давняя неделя",
+            text="an old week",
             created_at=cutoff - 100,
         )
         fresh_id = await db.insert_chat_memory(
             period_start=cutoff + 100,
             period_end=cutoff + 8 * 86400,
-            text="свежая неделя",
+            text="a recent week",
             created_at=cutoff + 8 * 86400,
         )
 
@@ -199,13 +199,13 @@ async def test_run_retention_purges_chat_memory_by_its_own_keep_days(tmp_path: P
 
 
 async def test_run_retention_leaves_chat_memory_alone_without_keep_days(tmp_path: Path) -> None:
-    """Сообщения старше message_retention_days уходят, пересказ того же периода — нет."""
+    """Messages older than message_retention_days go, the summary of the same period stays."""
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
         now = 1_768_003_200
         memory_id = await db.insert_chat_memory(
-            period_start=0, period_end=1000, text="очень давняя неделя", created_at=1000
+            period_start=0, period_end=1000, text="a very old week", created_at=1000
         )
 
         stats = await run_retention(db, 30, "UTC", now)
@@ -221,7 +221,7 @@ async def test_retention_loop_passes_chat_memory_keep_days(tmp_path: Path) -> No
     await db.connect()
     try:
         memory_id = await db.insert_chat_memory(
-            period_start=0, period_end=1000, text="очень давняя неделя", created_at=1000
+            period_start=0, period_end=1000, text="a very old week", created_at=1000
         )
 
         def cfg_getter() -> _Config:
@@ -249,7 +249,7 @@ async def test_run_retention_purges_self_facts_by_diary_keep_days(tmp_path: Path
     try:
         now = 1_768_003_200
         cutoff = now - 14 * 86400
-        for text, created_at in (("старое", cutoff - 1), ("свежее", cutoff + 1)):
+        for text, created_at in (("old", cutoff - 1), ("fresh", cutoff + 1)):
             await db.insert_self_fact(
                 text=text, bot_reply_tg_message_id=None, created_at=created_at
             )
@@ -257,7 +257,7 @@ async def test_run_retention_purges_self_facts_by_diary_keep_days(tmp_path: Path
         stats = await run_retention(db, 30, "UTC", now, None, 14)
 
         assert stats.self_facts_deleted == 1
-        assert [f.text for f in await db.self_facts_since(0)] == ["свежее"]
+        assert [f.text for f in await db.self_facts_since(0)] == ["fresh"]
     finally:
         await db.close()
 
@@ -266,7 +266,7 @@ async def test_run_retention_leaves_self_facts_alone_without_keep_days(tmp_path:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.insert_self_fact(text="давнее", bot_reply_tg_message_id=None, created_at=5)
+        await db.insert_self_fact(text="long ago", bot_reply_tg_message_id=None, created_at=5)
 
         stats = await run_retention(db, 30, "UTC", 1_768_003_200)
 
@@ -280,7 +280,7 @@ async def test_retention_loop_passes_diary_keep_days(tmp_path: Path) -> None:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.insert_self_fact(text="давнее", bot_reply_tg_message_id=None, created_at=5)
+        await db.insert_self_fact(text="long ago", bot_reply_tg_message_id=None, created_at=5)
 
         def cfg_getter() -> _Config:
             return _Config(
@@ -305,13 +305,13 @@ async def test_run_retention_purges_jokes_by_chat_memory_keep_days(tmp_path: Pat
     try:
         now = 1_768_003_200
         cutoff = now - 365 * 86400
-        await db.insert_joke(text="старая", created_at=cutoff - 1)
-        await db.insert_joke(text="свежая", created_at=cutoff + 1)
+        await db.insert_joke(text="stale", created_at=cutoff - 1)
+        await db.insert_joke(text="fresh", created_at=cutoff + 1)
 
         stats = await run_retention(db, 30, "UTC", now, 365)
 
         assert stats.jokes_deleted == 1
-        assert [j.text for j in await db.jokes(10)] == ["свежая"]
+        assert [j.text for j in await db.jokes(10)] == ["fresh"]
     finally:
         await db.close()
 
@@ -322,7 +322,7 @@ async def test_run_retention_purges_threads_by_callback_max_age(tmp_path: Path) 
     try:
         now = 1_768_003_200
         cutoff = now - 14 * 86400
-        for text, created_at in (("старая", cutoff - 1), ("свежая", cutoff + 1)):
+        for text, created_at in (("stale", cutoff - 1), ("fresh", cutoff + 1)):
             await db.insert_people_thread(
                 user_id=1, display_name="A", text=text, created_at=created_at
             )
@@ -330,7 +330,7 @@ async def test_run_retention_purges_threads_by_callback_max_age(tmp_path: Path) 
         stats = await run_retention(db, 30, "UTC", now, None, None, 14)
 
         assert stats.threads_deleted == 1
-        assert [t.text for t in await db.people_threads_all()] == ["свежая"]
+        assert [t.text for t in await db.people_threads_all()] == ["fresh"]
     finally:
         await db.close()
 
@@ -341,8 +341,8 @@ async def test_run_retention_leaves_jokes_and_threads_alone_without_settings(
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.insert_joke(text="давняя", created_at=5)
-        await db.insert_people_thread(user_id=1, display_name="A", text="давняя", created_at=5)
+        await db.insert_joke(text="ancient", created_at=5)
+        await db.insert_people_thread(user_id=1, display_name="A", text="ancient", created_at=5)
 
         stats = await run_retention(db, 30, "UTC", 1_768_003_200)
 
@@ -360,8 +360,8 @@ async def test_retention_loop_passes_callback_max_age_and_chat_memory_keep_days(
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.insert_joke(text="давняя", created_at=5)
-        await db.insert_people_thread(user_id=1, display_name="A", text="давняя", created_at=5)
+        await db.insert_joke(text="ancient", created_at=5)
+        await db.insert_people_thread(user_id=1, display_name="A", text="ancient", created_at=5)
 
         def cfg_getter() -> _Config:
             return _Config(

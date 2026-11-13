@@ -64,7 +64,7 @@ async def test_reconnect_is_idempotent(tmp_path: Path) -> None:
         chat_id=42,
         user_id=1,
         display_name="A",
-        text="привет",
+        text="hello",
         reply_to_tg_message_id=None,
         is_bot=False,
         created_at=1000,
@@ -82,7 +82,7 @@ async def test_reconnect_is_idempotent(tmp_path: Path) -> None:
         assert row[0] == 6
         messages = await db2.recent_messages(42, 10)
         assert len(messages) == 1
-        assert messages[0].text == "привет"
+        assert messages[0].text == "hello"
     finally:
         await db2.close()
 
@@ -102,7 +102,7 @@ async def test_insert_and_recent_messages_order_and_limit(tmp_path: Path) -> Non
                 is_bot=False,
                 created_at=1000 + i,
             )
-        # другой чат не должен попадать в выборку
+        # another chat must not get into the selection
         await db.insert_message(
             tg_message_id=99,
             chat_id=2,
@@ -174,7 +174,7 @@ async def test_purge_older_than(tmp_path: Path) -> None:
 
         cutoff = 1_768_003_200  # 2026-01-10 00:00 UTC
 
-        # messages: старое удаляется, свежее остаётся
+        # messages: the old one is deleted, the fresh one stays
         await db.insert_message(
             tg_message_id=1,
             chat_id=1,
@@ -196,7 +196,7 @@ async def test_purge_older_than(tmp_path: Path) -> None:
             created_at=cutoff + 100,
         )
 
-        # night_queue: отвеченное давно удаляется, неотвеченное и свежее остаются
+        # night_queue: long-answered rows are deleted, unanswered and fresh ones stay
         await conn.execute(
             "INSERT INTO night_queue "
             "(tg_message_id, user_id, display_name, text, created_at, answered_at) "
@@ -216,7 +216,7 @@ async def test_purge_older_than(tmp_path: Path) -> None:
             (12, 1, "A", "answered fresh", cutoff - 1000, cutoff + 100),
         )
 
-        # pending_replies: сделанное давно удаляется, неотправленное и свежее остаются
+        # pending_replies: long-done rows are deleted, unsent and fresh ones stay
         await conn.execute(
             "INSERT INTO pending_replies "
             "(trigger_tg_message_id, user_id, trigger, due_at, created_at, done_at) "
@@ -236,7 +236,7 @@ async def test_purge_older_than(tmp_path: Path) -> None:
             (22, 1, "mention", cutoff + 900, cutoff + 800, cutoff + 900),
         )
 
-        # filter_log: старый candidate_text обнуляется, свежий остаётся
+        # filter_log: the old candidate_text is nulled, the fresh one stays
         await conn.execute(
             "INSERT INTO filter_log "
             "(trigger_tg_message_id, candidate_text, verdict, stage, reason, shadow, created_at) "
@@ -250,12 +250,12 @@ async def test_purge_older_than(tmp_path: Path) -> None:
             (31, "fresh candidate", "cut", "regex", "regex:length", 0, cutoff + 100),
         )
 
-        # state: датированные ключи старше cutoff удаляются, остальные остаются
-        await db.set_state("ambient_count:2026-01-05", "3")  # YYYY-MM-DD, старый
-        await db.set_state("spontaneous_count:2026-W02", "1")  # ISO-неделя, старая (пн 2026-01-05)
-        await db.set_state("ambient_count:2026-01-15", "1")  # YYYY-MM-DD, свежий
-        await db.set_state("last_mention_reply_at:12345", "999")  # суффикс не дата
-        await db.set_state("panic", "0")  # без даты вовсе
+        # state: dated keys older than cutoff are deleted, the rest stay
+        await db.set_state("ambient_count:2026-01-05", "3")  # YYYY-MM-DD, old
+        await db.set_state("spontaneous_count:2026-W02", "1")  # ISO week, old (Monday 2026-01-05)
+        await db.set_state("ambient_count:2026-01-15", "1")  # YYYY-MM-DD, fresh
+        await db.set_state("last_mention_reply_at:12345", "999")  # the suffix is not a date
+        await db.set_state("panic", "0")  # no date at all
 
         await conn.commit()
 
@@ -300,20 +300,21 @@ async def test_purge_older_than(tmp_path: Path) -> None:
 
 
 async def test_purge_older_than_uses_tz_for_dated_state_keys(tmp_path: Path) -> None:
-    """cutoff 23:30 UTC = 01:30 Europe/Warsaw следующего дня (летнее время, UTC+2).
+    """cutoff 23:30 UTC = 00:30 Europe/London the next day (summer time, UTC+1).
 
-    Ключ, датированный "вчера по Варшаве" (= "сегодня по UTC"), удаляется, если cutoff
-    считать в варшавской таймзоне, и остаётся при дефолтном tz=UTC — решает не UTC-дата.
+    A key dated "yesterday in London" (= "today in UTC") is deleted if the cutoff
+    is computed in the London timezone and stays under the default tz=UTC: the UTC date
+    does not decide.
     """
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
         cutoff = int(datetime(2026, 7, 15, 23, 30, tzinfo=UTC).timestamp())
 
-        await db.set_state("ambient_count:2026-07-15", "1")  # вчера по Варшаве, сегодня по UTC
-        await db.set_state("ambient_count:2026-07-16", "1")  # сегодня по Варшаве
+        await db.set_state("ambient_count:2026-07-15", "1")  # yesterday in London, today in UTC
+        await db.set_state("ambient_count:2026-07-16", "1")  # today in London
 
-        stats = await db.purge_older_than(cutoff, tz="Europe/Warsaw")
+        stats = await db.purge_older_than(cutoff, tz="Europe/London")
 
         assert stats.state_keys == 1
         assert await db.get_state("ambient_count:2026-07-15") is None
@@ -330,9 +331,9 @@ async def test_purge_older_than_default_tz_is_utc(tmp_path: Path) -> None:
 
         await db.set_state("ambient_count:2026-07-15", "1")
 
-        stats = await db.purge_older_than(cutoff)  # tz по умолчанию UTC
+        stats = await db.purge_older_than(cutoff)  # the default tz is UTC
 
-        # По UTC cutoff_date = 2026-07-15, ключ той же даты не строго старше -> не удаляется.
+        # In UTC cutoff_date = 2026-07-15, a key of the same date is not strictly older -> it stays.
         assert stats.state_keys == 0
         assert await db.get_state("ambient_count:2026-07-15") == "1"
     finally:
@@ -340,15 +341,15 @@ async def test_purge_older_than_default_tz_is_utc(tmp_path: Path) -> None:
 
 
 async def test_concurrent_inserts_and_purge_are_serialized(tmp_path: Path) -> None:
-    """50 конкурентных insert_message + purge_older_than: без исключений, ожидаемое число строк.
+    """50 concurrent insert_message + purge_older_than: no exceptions, the expected row count.
 
-    Заранее вставленные "старые" сообщения (created_at < cutoff) существуют до старта
-    gather и не меняются им — purge, в какой бы момент он ни выполнился среди 50
-    конкурентных вставок, обязан вычистить их все. Сами 50 вставляемых конкурентно
-    сообщений — свежие (created_at > cutoff), purge их не касается. Поэтому итоговое
-    число строк детерминировано (= 50) независимо от порядка чередования корутин —
-    единственное, что тут проверяется благодаря write-lock, это отсутствие гонок/исключений
-    при многостейтментном purge, идущем параллельно вставкам.
+    The "old" messages inserted beforehand (created_at < cutoff) exist before the start of
+    gather and are not changed by it: purge, whenever it runs among the 50
+    concurrent inserts, must clear all of them. The 50 messages inserted concurrently
+    are fresh (created_at > cutoff), purge does not touch them. So the final
+    row count is deterministic (= 50) whatever the interleaving of the coroutines:
+    the only thing checked here, thanks to the write lock, is the absence of races/exceptions
+    in a multi-statement purge running in parallel with the inserts.
     """
     db = Database(tmp_path / "bot.db")
     await db.connect()
@@ -470,7 +471,7 @@ async def test_recent_activity_filters_bot_since_and_chat(tmp_path: Path) -> Non
     try:
         since = 1000
 
-        # не-бот в окне -> попадает
+        # a non-bot inside the window -> included
         await db.insert_message(
             tg_message_id=1,
             chat_id=1,
@@ -481,7 +482,7 @@ async def test_recent_activity_filters_bot_since_and_chat(tmp_path: Path) -> Non
             is_bot=False,
             created_at=1000,
         )
-        # бот -> исключается
+        # a bot -> excluded
         await db.insert_message(
             tg_message_id=2,
             chat_id=1,
@@ -492,7 +493,7 @@ async def test_recent_activity_filters_bot_since_and_chat(tmp_path: Path) -> Non
             is_bot=True,
             created_at=1001,
         )
-        # старше since -> исключается
+        # older than since -> excluded
         await db.insert_message(
             tg_message_id=3,
             chat_id=1,
@@ -503,7 +504,7 @@ async def test_recent_activity_filters_bot_since_and_chat(tmp_path: Path) -> Non
             is_bot=False,
             created_at=999,
         )
-        # другой чат -> исключается
+        # another chat -> excluded
         await db.insert_message(
             tg_message_id=4,
             chat_id=2,
@@ -514,7 +515,7 @@ async def test_recent_activity_filters_bot_since_and_chat(tmp_path: Path) -> Non
             is_bot=False,
             created_at=1002,
         )
-        # второй в окне, позже -> попадает, порядок по created_at
+        # a second one in the window, later -> included, ordered by created_at
         await db.insert_message(
             tg_message_id=5,
             chat_id=1,
@@ -549,19 +550,19 @@ async def test_display_names_returns_latest_per_user(tmp_path: Path) -> None:
             tg_message_id=1,
             chat_id=1,
             user_id=10,
-            display_name="Гена",
-            text="привет",
+            display_name="Gene",
+            text="hello",
             reply_to_tg_message_id=None,
             is_bot=False,
             created_at=1000,
         )
-        # тот же user_id, более новое сообщение -> более новое имя побеждает
+        # the same user_id, a newer message -> the newer name wins
         await db.insert_message(
             tg_message_id=2,
             chat_id=1,
             user_id=10,
-            display_name="Дмитрий",
-            text="переименовался",
+            display_name="Dennis",
+            text="renamed",
             reply_to_tg_message_id=None,
             is_bot=False,
             created_at=2000,
@@ -570,8 +571,8 @@ async def test_display_names_returns_latest_per_user(tmp_path: Path) -> None:
             tg_message_id=3,
             chat_id=1,
             user_id=20,
-            display_name="Оля",
-            text="привет",
+            display_name="Olive",
+            text="hello",
             reply_to_tg_message_id=None,
             is_bot=False,
             created_at=1500,
@@ -579,7 +580,10 @@ async def test_display_names_returns_latest_per_user(tmp_path: Path) -> None:
 
         names = await db.display_names([10, 20, 999])
 
-        assert names == {10: "Дмитрий", 20: "Оля"}  # 999 отсутствует в messages -> не в результате
+        assert names == {
+            10: "Dennis",
+            20: "Olive",
+        }  # 999 is absent from messages -> not in the result
     finally:
         await db.close()
 
@@ -592,7 +596,7 @@ async def test_enqueue_night_returns_rowid(tmp_path: Path) -> None:
             tg_message_id=5,
             user_id=1,
             display_name="A",
-            text="привет ночью",
+            text="hello at night",
             created_at=1000,
         )
         assert row_id > 0
@@ -610,7 +614,7 @@ async def test_enqueue_night_returns_rowid(tmp_path: Path) -> None:
             "tg_message_id": 5,
             "user_id": 1,
             "display_name": "A",
-            "text": "привет ночью",
+            "text": "hello at night",
             "created_at": 1000,
             "answered_at": None,
         }
@@ -666,7 +670,7 @@ async def test_filter_log_summary_sorted_by_count_desc_then_reason(tmp_path: Pat
             ("gate:topic", 2, since + 2),
             ("gate:ambient_cap", 2, since + 1),
             ("gate:ambient_cap", 2, since + 2),
-            ("gate:is_bot", 1, since - 1),  # раньше since -> не считается
+            ("gate:is_bot", 1, since - 1),  # before since -> not counted
         ]
         for reason, _count, created_at in entries:
             await db.insert_filter_log(
@@ -698,7 +702,7 @@ async def test_insert_bot_reply_returns_rowid_and_stores_fields(tmp_path: Path) 
             reply_to_tg_message_id=42,
             trigger="mention",
             trigger_tg_message_id=42,
-            text="привет",
+            text="hello",
             prompt_version=1,
             few_shot_version=1,
             delay_sec=5,
@@ -721,7 +725,7 @@ async def test_insert_bot_reply_returns_rowid_and_stores_fields(tmp_path: Path) 
             "reply_to_tg_message_id": 42,
             "trigger": "mention",
             "trigger_tg_message_id": 42,
-            "text": "привет",
+            "text": "hello",
             "prompt_version": 1,
             "few_shot_version": 1,
             "delay_sec": 5,
@@ -802,8 +806,8 @@ async def test_add_state_float_accumulates_and_round_trips_parsing(tmp_path: Pat
 
         stored = await db.get_state("llm_spent_usd:2026-01-01")
         assert stored is not None
-        # Накопленное значение должно оставаться парсибельным float() без исключений,
-        # даже когда сумма даёт длинную дробь (0.1 + 0.2 != 0.3 в двоичной арифметике).
+        # The accumulated value must stay parseable by float() without exceptions,
+        # even when the sum gives a long fraction (0.1 + 0.2 != 0.3 in binary arithmetic).
         assert float(stored) == pytest.approx(second)
     finally:
         await db.close()
@@ -973,7 +977,7 @@ async def test_messages_after_counts_only_after_id_and_excludes_bot(tmp_path: Pa
             is_bot=True,
             created_at=1002,
         )
-        # другой чат не должен считаться
+        # another chat must not be counted
         await db.insert_message(
             tg_message_id=30,
             chat_id=2,
@@ -1062,7 +1066,7 @@ async def test_last_bot_reply_at_returns_max_created_at(tmp_path: Path) -> None:
             reply_to_tg_message_id=None,
             trigger="ambient",
             trigger_tg_message_id=None,
-            text="раньше",
+            text="earlier",
             prompt_version=1,
             few_shot_version=1,
             delay_sec=0,
@@ -1073,7 +1077,7 @@ async def test_last_bot_reply_at_returns_max_created_at(tmp_path: Path) -> None:
             reply_to_tg_message_id=None,
             trigger="mention",
             trigger_tg_message_id=None,
-            text="позже",
+            text="later",
             prompt_version=1,
             few_shot_version=1,
             delay_sec=0,
@@ -1133,7 +1137,7 @@ async def test_messages_since_strictly_after_excludes_bot_and_other_chats(
         )
 
         rows = await db.messages_since(1, 1000)
-        # created_at > since (строго): сообщение ровно на границе не входит.
+        # created_at > since (strictly): a message exactly on the boundary is not included.
         assert [row.text for row in rows] == ["after"]
     finally:
         await db.close()
@@ -1164,7 +1168,7 @@ async def test_messages_since_limit_keeps_last_n_chronological(tmp_path: Path) -
         await db.close()
 
 
-# -- этап 6: управление из телеграма ------------------------------------------
+# -- owner control from Telegram ------------------------------------------
 
 
 async def test_set_override_writes_value_and_audit_row_returns_old_none(tmp_path: Path) -> None:
@@ -1281,7 +1285,7 @@ async def test_audit_stop_writes_row_with_null_old_and_new(tmp_path: Path) -> No
                 "created_at": 1234,
             }
         ]
-        # config_overrides никак не затрагивается
+        # config_overrides is not touched at all
         assert await db.get_overrides() == {}
     finally:
         await db.close()
@@ -1293,11 +1297,11 @@ async def test_add_mute_and_remove_mute(tmp_path: Path) -> None:
     try:
         assert await db.muted_user_ids() == frozenset()
 
-        await db.add_mute(10, "Гена", muted_by=1, now=1000)
+        await db.add_mute(10, "Gene", muted_by=1, now=1000)
         assert await db.muted_user_ids() == frozenset({10})
 
-        # повторный add_mute того же user_id обновляет строку, а не дублирует
-        await db.add_mute(10, "Дмитрий", muted_by=2, now=2000)
+        # a repeated add_mute for the same user_id updates the row instead of duplicating it
+        await db.add_mute(10, "Dennis", muted_by=2, now=2000)
         assert await db.muted_user_ids() == frozenset({10})
 
         removed = await db.remove_mute(10)
@@ -1328,7 +1332,7 @@ async def test_last_bot_replies_order_and_limit(tmp_path: Path) -> None:
             )
 
         rows = await db.last_bot_replies(2)
-        assert [r.text for r in rows] == ["reply-2", "reply-1"]  # новые первыми
+        assert [r.text for r in rows] == ["reply-2", "reply-1"]  # newest first
         assert rows[0].trigger == "ambient"
         assert rows[0].tg_message_id == 2
         assert rows[0].trigger_tg_message_id is None
@@ -1399,7 +1403,7 @@ async def test_activate_prompt_switches_active_and_missing_version_returns_false
 
         missing = await db.activate_prompt(99)
         assert missing is False
-        # активная версия не изменилась
+        # the active version did not change
         assert await db.active_prompt() == (1, "body v1")
     finally:
         await db.close()
@@ -1420,7 +1424,7 @@ async def test_few_shot_versions_add_and_activate_independent_from_prompt(
         assert fv1 == 1
         assert fv2 == 2
         assert await db.active_few_shot() == (2, "- a\n- b\n")
-        # версии few_shot и prompt нумеруются независимо
+        # few_shot and prompt versions are numbered independently
         assert await db.active_prompt() == (1, "prompt v1")
 
         ok = await db.activate_few_shot(1)
@@ -1475,17 +1479,17 @@ async def test_message_by_tg_id_found_and_missing(tmp_path: Path) -> None:
             chat_id=1,
             user_id=1,
             display_name="A",
-            text="привет",
+            text="hello",
             reply_to_tg_message_id=None,
             is_bot=False,
             created_at=1000,
         )
-        # другой чат, тот же tg_message_id -> не находится
+        # another chat, the same tg_message_id -> not found
         assert await db.message_by_tg_id(2, 100) is None
 
         row = await db.message_by_tg_id(1, 100)
         assert row is not None
-        assert row.text == "привет"
+        assert row.text == "hello"
         assert row.chat_id == 1
         assert row.tg_message_id == 100
     finally:
@@ -1503,7 +1507,7 @@ async def test_bot_reply_by_tg_id_found_and_missing(tmp_path: Path) -> None:
             reply_to_tg_message_id=None,
             trigger="mention",
             trigger_tg_message_id=42,
-            text="привет",
+            text="hello",
             prompt_version=1,
             few_shot_version=1,
             delay_sec=5,
@@ -1512,7 +1516,7 @@ async def test_bot_reply_by_tg_id_found_and_missing(tmp_path: Path) -> None:
 
         row = await db.bot_reply_by_tg_id(555)
         assert row is not None
-        assert row.text == "привет"
+        assert row.text == "hello"
         assert row.trigger == "mention"
         assert row.tg_message_id == 555
         assert row.trigger_tg_message_id == 42
@@ -1521,7 +1525,7 @@ async def test_bot_reply_by_tg_id_found_and_missing(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# places (этап 5): upsert_place / places_all / places_names
+# places: upsert_place / places_all / places_names
 # --------------------------------------------------------------------------- #
 
 
@@ -1529,13 +1533,13 @@ def _place_row(
     place_id: str,
     name: str,
     *,
-    district: str = "Dolna",
+    district: str = "Kettle Hill",
     category: str = "craft",
     rating: float = 4.6,
     reviews: int = 100,
     price_level: int | None = 2,
     quiet: bool = False,
-    fact: str = "тихо",
+    fact: str = "quiet",
     operational: bool = True,
     refreshed_at: int = 1_700_000_000,
 ) -> PlaceRow:
@@ -1558,28 +1562,30 @@ async def test_upsert_place_inserts_and_updates_by_place_id(tmp_path: Path) -> N
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.upsert_place(_place_row("p1", "PLAMY", rating=4.8, quiet=True))
+        await db.upsert_place(_place_row("p1", "Brindle Arms", rating=4.8, quiet=True))
         rows = await db.places_all()
         assert len(rows) == 1
         assert rows[0].place_id == "p1"
-        assert rows[0].name == "PLAMY"
+        assert rows[0].name == "Brindle Arms"
         assert rows[0].rating == 4.8
         assert rows[0].quiet is True
         assert rows[0].operational is True
 
-        # Тот же place_id -> UPDATE, не второй ряд.
-        await db.upsert_place(_place_row("p1", "PLAMY", rating=4.9, quiet=False, fact="дёшево"))
+        # The same place_id -> UPDATE, not a second row.
+        await db.upsert_place(
+            _place_row("p1", "Brindle Arms", rating=4.9, quiet=False, fact="cheap")
+        )
         rows = await db.places_all()
         assert len(rows) == 1
         assert rows[0].rating == 4.9
         assert rows[0].quiet is False
-        assert rows[0].fact == "дёшево"
+        assert rows[0].fact == "cheap"
     finally:
         await db.close()
 
 
 async def test_upsert_place_price_level_none(tmp_path: Path) -> None:
-    """price_level ненадёжен у Google и иногда отсутствует (PLAN.md, этап 5, п.4)."""
+    """price_level is unreliable at the provider and sometimes missing."""
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
@@ -1594,14 +1600,14 @@ async def test_places_all_operational_only_default_true(tmp_path: Path) -> None:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.upsert_place(_place_row("p1", "Открыто", operational=True))
-        await db.upsert_place(_place_row("p2", "Закрыто", operational=False))
+        await db.upsert_place(_place_row("p1", "Open", operational=True))
+        await db.upsert_place(_place_row("p2", "Closed", operational=False))
 
         operational = await db.places_all()
-        assert [r.name for r in operational] == ["Открыто"]
+        assert [r.name for r in operational] == ["Open"]
 
         everything = await db.places_all(operational_only=False)
-        assert {r.name for r in everything} == {"Открыто", "Закрыто"}
+        assert {r.name for r in everything} == {"Open", "Closed"}
     finally:
         await db.close()
 
@@ -1624,16 +1630,16 @@ async def test_places_names_only_operational(tmp_path: Path) -> None:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.upsert_place(_place_row("p1", "PLAMY", operational=True))
-        await db.upsert_place(_place_row("p2", "Закрытый бар", operational=False))
+        await db.upsert_place(_place_row("p1", "Brindle Arms", operational=True))
+        await db.upsert_place(_place_row("p2", "Closed bar", operational=False))
 
-        assert await db.places_names() == ["PLAMY"]
+        assert await db.places_names() == ["Brindle Arms"]
     finally:
         await db.close()
 
 
 # --------------------------------------------------------------------------- #
-# mark_places_not_seen (код-ревью, places_fill.py после прогона с Google)
+# mark_places_not_seen (places_fill.py after a run against the provider)
 # --------------------------------------------------------------------------- #
 
 
@@ -1641,9 +1647,9 @@ async def test_mark_places_not_seen_marks_missing_leaves_seen_and_manual(tmp_pat
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.upsert_place(_place_row("p1", "Остался"))
-        await db.upsert_place(_place_row("p2", "Пропал"))
-        await db.upsert_place(_place_row("manual:0:ручное", "Ручное Место"))
+        await db.upsert_place(_place_row("p1", "Stayed"))
+        await db.upsert_place(_place_row("p2", "Vanished"))
+        await db.upsert_place(_place_row("manual:0:manual", "Manual Place"))
 
         marked = await db.mark_places_not_seen(["p1"], now=2_000_000_000)
 
@@ -1652,7 +1658,7 @@ async def test_mark_places_not_seen_marks_missing_leaves_seen_and_manual(tmp_pat
         assert by_id["p1"].operational is True
         assert by_id["p2"].operational is False
         assert by_id["p2"].refreshed_at == 2_000_000_000
-        assert by_id["manual:0:ручное"].operational is True
+        assert by_id["manual:0:manual"].operational is True
     finally:
         await db.close()
 
@@ -1661,15 +1667,15 @@ async def test_mark_places_not_seen_empty_seen_ids_marks_all_non_manual(tmp_path
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.upsert_place(_place_row("p1", "Пропал"))
-        await db.upsert_place(_place_row("manual:0:ручное", "Ручное Место"))
+        await db.upsert_place(_place_row("p1", "Vanished"))
+        await db.upsert_place(_place_row("manual:0:manual", "Manual Place"))
 
         marked = await db.mark_places_not_seen([], now=2_000_000_000)
 
         assert marked == 1
         by_id = {row.place_id: row for row in await db.places_all(operational_only=False)}
         assert by_id["p1"].operational is False
-        assert by_id["manual:0:ручное"].operational is True
+        assert by_id["manual:0:manual"].operational is True
     finally:
         await db.close()
 
@@ -1678,7 +1684,7 @@ async def test_mark_places_not_seen_already_not_operational_not_recounted(tmp_pa
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.upsert_place(_place_row("p1", "Уже закрыто", operational=False))
+        await db.upsert_place(_place_row("p1", "Already closed", operational=False))
 
         marked = await db.mark_places_not_seen([], now=2_000_000_000)
 
@@ -1687,13 +1693,14 @@ async def test_mark_places_not_seen_already_not_operational_not_recounted(tmp_pa
         await db.close()
 
 
-# --- life_events (/life, CLAUDE.md "события жизни") --------------------------
+# --- life_events (/life) --------------------------
 
 
 def _schema_sql_v1() -> str:
-    """schema.sql, но как будто ещё нет ни life_events, ни chat_memory (реальная
-    БД на сервере, user_version == 1) — для теста миграции 1 -> 3."""
+    """schema.sql, but as if there were neither life_events nor chat_memory yet (a real
+    server database, user_version == 1): for the 1 -> 3 migration test."""
     schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
+    # PR-8: the life_events/chat_memory blocks must match the Russian comments still in schema.sql
     life_events_block = (
         '-- События жизни персонажа (/life, CLAUDE.md "события жизни") — память, не\n'
         "-- переписка: retention.py её не трогает, чистит только /life rm.\n"
@@ -1714,8 +1721,8 @@ def _schema_sql_v1() -> str:
 
 
 def _schema_sql_v2() -> str:
-    """schema.sql, но как будто ещё нет chat_memory (user_version == 2) — для
-    теста миграции 2 -> 3 (CLAUDE.md, "долгая память чата")."""
+    """schema.sql, but as if there were no chat_memory yet (user_version == 2): for the
+    2 -> 3 migration test."""
     schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
     old_schema_sql = _strip_self_facts(_strip_chat_memory(schema_sql))
     old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 2;")
@@ -1724,8 +1731,8 @@ def _schema_sql_v2() -> str:
 
 
 def _schema_sql_v3() -> str:
-    """schema.sql, но как будто ещё нет self_facts (user_version == 3) — для теста
-    миграции 3 -> 4 (CLAUDE.md, "дневник дня")."""
+    """schema.sql, but as if there were no self_facts yet (user_version == 3): for the
+    3 -> 4 migration test."""
     schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
     old_schema_sql = _strip_self_facts(schema_sql)
     old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 3;")
@@ -1734,10 +1741,12 @@ def _schema_sql_v3() -> str:
 
 
 def _schema_sql_v4() -> str:
-    """schema.sql, но как будто ещё нет chat_jokes/people_threads (user_version == 4) —
-    для теста миграции 4 -> 5 (CLAUDE.md, "шутки чата и истории людей")."""
+    """schema.sql, but as if there were no chat_jokes/people_threads yet (user_version == 4):
+    for the 4 -> 5 migration test."""
     schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
-    start = schema_sql.index("-- Шутки чата и истории людей")
+    start = schema_sql.index(
+        "-- Шутки чата и истории людей"
+    )  # PR-8: schema.sql comments are still Russian
     end = schema_sql.index("CREATE INDEX idx_messages_chat_created")
     old_schema_sql = schema_sql[:start] + schema_sql[end:]
     old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 4;")
@@ -1748,10 +1757,10 @@ def _schema_sql_v4() -> str:
 
 
 def _schema_sql_v5() -> str:
-    """schema.sql, но как будто ещё нет vocab_dicts (user_version == 5) — для теста
-    миграции 5 -> 6 (CLAUDE.md, "словечки из словаря")."""
+    """schema.sql, but as if there were no vocab_dicts yet (user_version == 5): for the
+    5 -> 6 migration test."""
     schema_sql = importlib.resources.files("sotto").joinpath("schema.sql").read_text("utf-8")
-    start = schema_sql.index("-- Словари словечек")
+    start = schema_sql.index("-- Словари словечек")  # PR-8: schema.sql comments are still Russian
     end = schema_sql.index("CREATE INDEX idx_messages_chat_created")
     old_schema_sql = schema_sql[:start] + schema_sql[end:]
     old_schema_sql = old_schema_sql.replace("PRAGMA user_version = 6;", "PRAGMA user_version = 5;")
@@ -1761,7 +1770,7 @@ def _schema_sql_v5() -> str:
 
 
 def _strip_self_facts(schema_sql: str) -> str:
-    start = schema_sql.index("-- Дневник дня")
+    start = schema_sql.index("-- Дневник дня")  # PR-8: schema.sql comments are still Russian
     end = schema_sql.index("CREATE INDEX idx_messages_chat_created")
     index_line = "CREATE INDEX idx_self_facts_created ON self_facts (created_at);\n"
     assert index_line in schema_sql
@@ -1769,6 +1778,7 @@ def _strip_self_facts(schema_sql: str) -> str:
 
 
 def _strip_chat_memory(schema_sql: str) -> str:
+    # PR-8: must match the Russian comments still in schema.sql
     chat_memory_block = (
         '-- Долгая память чата (CLAUDE.md, "долгая память чата") — пересказ прошедших\n'
         "-- разговоров по периодам. Живёт дольше самих сообщений: retention.py чистит её\n"
@@ -1797,7 +1807,7 @@ async def test_migrate_v1_to_v3_adds_new_tables_and_keeps_existing_data(
         await conn.execute(
             "INSERT INTO messages (tg_message_id, chat_id, user_id, display_name, text, "
             "reply_to_tg_message_id, is_bot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (1, 42, 1, "A", "привет со старой схемы", None, 0, 1000),
+            (1, 42, 1, "A", "hello from the old schema", None, 0, 1000),
         )
         await conn.commit()
     finally:
@@ -1822,13 +1832,13 @@ async def test_migrate_v1_to_v3_adds_new_tables_and_keeps_existing_data(
 
         messages = await db.recent_messages(42, 10)
         assert len(messages) == 1
-        assert messages[0].text == "привет со старой схемы"
+        assert messages[0].text == "hello from the old schema"
 
-        # Свежие таблицы рабочие, не просто существуют.
-        event_id = await db.insert_life_event(text="продал тележку", created_at=2000)
+        # The fresh tables work, they do not merely exist.
+        event_id = await db.insert_life_event(text="sold the cart", created_at=2000)
         assert await db.life_event(event_id) is not None
         memory_id = await db.insert_chat_memory(
-            period_start=1000, period_end=2000, text="говорили о гараже", created_at=2000
+            period_start=1000, period_end=2000, text="talked about the garage", created_at=2000
         )
         assert await db.chat_memory(memory_id) is not None
     finally:
@@ -1838,8 +1848,8 @@ async def test_migrate_v1_to_v3_adds_new_tables_and_keeps_existing_data(
 async def test_migrate_v2_to_v3_adds_chat_memory_and_keeps_existing_data(
     tmp_path: Path,
 ) -> None:
-    """Реальная БД на сервере стоит на user_version == 2 (life_events уже есть):
-    миграция 3 должна добавить chat_memory и не тронуть данные."""
+    """A real server database sits at user_version == 2 (life_events already exist):
+    migration 3 must add chat_memory and leave the data alone."""
     path = tmp_path / "bot.db"
     conn = await aiosqlite.connect(path)
     try:
@@ -1847,7 +1857,7 @@ async def test_migrate_v2_to_v3_adds_chat_memory_and_keeps_existing_data(
         await conn.execute(
             "INSERT INTO messages (tg_message_id, chat_id, user_id, display_name, text, "
             "reply_to_tg_message_id, is_bot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (1, 42, 1, "A", "привет со схемы v2", None, 0, 1000),
+            (1, 42, 1, "A", "hello from schema v2", None, 0, 1000),
         )
         await conn.commit()
     finally:
@@ -1865,10 +1875,10 @@ async def test_migrate_v2_to_v3_adds_chat_memory_and_keeps_existing_data(
         assert row[0] == 6
 
         messages = await db.recent_messages(42, 10)
-        assert [m.text for m in messages] == ["привет со схемы v2"]
+        assert [m.text for m in messages] == ["hello from schema v2"]
 
         memory_id = await db.insert_chat_memory(
-            period_start=1000, period_end=2000, text="говорили о гараже", created_at=2000
+            period_start=1000, period_end=2000, text="talked about the garage", created_at=2000
         )
         assert await db.chat_memory(memory_id) is not None
     finally:
@@ -1878,8 +1888,8 @@ async def test_migrate_v2_to_v3_adds_chat_memory_and_keeps_existing_data(
 async def test_migrate_v3_to_v4_adds_self_facts_and_keeps_existing_data(
     tmp_path: Path,
 ) -> None:
-    """Реальная БД на сервере стоит на user_version == 3: миграция 4 добавляет
-    self_facts (CLAUDE.md, "дневник дня") и не трогает данные."""
+    """A real server database sits at user_version == 3: migration 4 adds
+    self_facts and leaves the data alone."""
     path = tmp_path / "bot.db"
     conn = await aiosqlite.connect(path)
     try:
@@ -1887,11 +1897,11 @@ async def test_migrate_v3_to_v4_adds_self_facts_and_keeps_existing_data(
         await conn.execute(
             "INSERT INTO messages (tg_message_id, chat_id, user_id, display_name, text, "
             "reply_to_tg_message_id, is_bot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (1, 42, 1, "A", "привет со схемы v3", None, 0, 1000),
+            (1, 42, 1, "A", "hello from schema v3", None, 0, 1000),
         )
         await conn.execute(
             "INSERT INTO chat_memory (period_start, period_end, text, created_at) "
-            "VALUES (1, 2, 'старый пересказ', 2)"
+            "VALUES (1, 2, 'old summary', 2)"
         )
         await conn.commit()
     finally:
@@ -1908,11 +1918,11 @@ async def test_migrate_v3_to_v4_adds_self_facts_and_keeps_existing_data(
         assert row is not None
         assert row[0] == 6
 
-        assert [m.text for m in await db.recent_messages(42, 10)] == ["привет со схемы v3"]
+        assert [m.text for m in await db.recent_messages(42, 10)] == ["hello from schema v3"]
         assert await db.chat_memory_count() == 1
 
         fact_id = await db.insert_self_fact(
-            text="пошёл в баню", bot_reply_tg_message_id=7, created_at=2000
+            text="went to the sauna", bot_reply_tg_message_id=7, created_at=2000
         )
         assert [f.id for f in await db.self_facts_since(0)] == [fact_id]
     finally:
@@ -1922,8 +1932,8 @@ async def test_migrate_v3_to_v4_adds_self_facts_and_keeps_existing_data(
 async def test_migrate_v4_to_v5_adds_jokes_and_threads_and_keeps_existing_data(
     tmp_path: Path,
 ) -> None:
-    """Реальная БД на сервере стоит на user_version == 4: миграция 5 добавляет
-    chat_jokes и people_threads и не трогает данные."""
+    """A real server database sits at user_version == 4: migration 5 adds
+    chat_jokes and people_threads and leaves the data alone."""
     path = tmp_path / "bot.db"
     conn = await aiosqlite.connect(path)
     try:
@@ -1931,11 +1941,11 @@ async def test_migrate_v4_to_v5_adds_jokes_and_threads_and_keeps_existing_data(
         await conn.execute(
             "INSERT INTO messages (tg_message_id, chat_id, user_id, display_name, text, "
             "reply_to_tg_message_id, is_bot, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (1, 42, 1, "A", "привет со схемы v4", None, 0, 1000),
+            (1, 42, 1, "A", "hello from schema v4", None, 0, 1000),
         )
         await conn.execute(
             "INSERT INTO self_facts (text, bot_reply_tg_message_id, created_at) "
-            "VALUES ('старый факт', NULL, 5)"
+            "VALUES ('old fact', NULL, 5)"
         )
         await conn.commit()
     finally:
@@ -1952,13 +1962,13 @@ async def test_migrate_v4_to_v5_adds_jokes_and_threads_and_keeps_existing_data(
         assert row is not None
         assert row[0] == 6
 
-        assert [m.text for m in await db.recent_messages(42, 10)] == ["привет со схемы v4"]
+        assert [m.text for m in await db.recent_messages(42, 10)] == ["hello from schema v4"]
         assert len(await db.self_facts_since(0)) == 1
 
-        joke_id = await db.insert_joke(text="опять шурупы", created_at=2000)
+        joke_id = await db.insert_joke(text="screws again", created_at=2000)
         assert [j.id for j in await db.jokes(10)] == [joke_id]
         thread_id = await db.insert_people_thread(
-            user_id=1, display_name="A", text="ждёт ответа", created_at=2000
+            user_id=1, display_name="A", text="waiting for an answer", created_at=2000
         )
         assert [t.id for t in await db.open_people_threads()] == [thread_id]
     finally:
@@ -1968,14 +1978,14 @@ async def test_migrate_v4_to_v5_adds_jokes_and_threads_and_keeps_existing_data(
 async def test_migrate_v5_to_v6_adds_vocab_dicts_and_keeps_existing_data(
     tmp_path: Path,
 ) -> None:
-    """Реальная БД на сервере стоит на user_version == 5: миграция 6 добавляет
-    vocab_dicts и не трогает данные."""
+    """A real server database sits at user_version == 5: migration 6 adds
+    vocab_dicts and leaves the data alone."""
     path = tmp_path / "bot.db"
     conn = await aiosqlite.connect(path)
     try:
         await conn.executescript(_schema_sql_v5())
         await conn.execute(
-            "INSERT INTO chat_jokes (text, created_at, uses) VALUES ('опять шурупы', 5, 0)"
+            "INSERT INTO chat_jokes (text, created_at, uses) VALUES ('screws again', 5, 0)"
         )
         await conn.commit()
     finally:
@@ -1990,9 +2000,9 @@ async def test_migrate_v5_to_v6_adds_vocab_dicts_and_keeps_existing_data(
         row = await cursor.fetchone()
         assert row is not None
         assert row[0] == 6
-        assert [j.text for j in await db.jokes(10)] == ["опять шурупы"]
-        await db.upsert_vocab_dict("дворовые", "name: дворовые", 100)
-        assert [d.name for d in await db.vocab_dicts()] == ["дворовые"]
+        assert [j.text for j in await db.jokes(10)] == ["screws again"]
+        await db.upsert_vocab_dict("yard", "name: yard", 100)
+        assert [d.name for d in await db.vocab_dicts()] == ["yard"]
     finally:
         await db.close()
 
@@ -2001,24 +2011,24 @@ async def test_vocab_dicts_crud(tmp_path: Path) -> None:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.upsert_vocab_dict("б", "тело б", 100)
-        await db.upsert_vocab_dict("а", "тело а", 200)
+        await db.upsert_vocab_dict("b", "body b", 100)
+        await db.upsert_vocab_dict("a", "body a", 200)
         rows = await db.vocab_dicts()
         assert [(r.name, r.body, r.enabled, r.updated_at) for r in rows] == [
-            ("а", "тело а", True, 200),
-            ("б", "тело б", True, 100),
+            ("a", "body a", True, 200),
+            ("b", "body b", True, 100),
         ]
 
-        assert await db.set_vocab_dict_enabled("а", False) is True
-        assert await db.set_vocab_dict_enabled("нет", False) is False
-        # Повторная загрузка заменяет тело, но не включает выключенный словарь.
-        await db.upsert_vocab_dict("а", "новое тело", 300)
+        assert await db.set_vocab_dict_enabled("a", False) is True
+        assert await db.set_vocab_dict_enabled("missing", False) is False
+        # Re-uploading replaces the body but does not re-enable a disabled dictionary.
+        await db.upsert_vocab_dict("a", "new body", 300)
         first = (await db.vocab_dicts())[0]
-        assert (first.body, first.enabled, first.updated_at) == ("новое тело", False, 300)
+        assert (first.body, first.enabled, first.updated_at) == ("new body", False, 300)
 
-        assert await db.delete_vocab_dict("а") is True
-        assert await db.delete_vocab_dict("а") is False
-        assert [r.name for r in await db.vocab_dicts()] == ["б"]
+        assert await db.delete_vocab_dict("a") is True
+        assert await db.delete_vocab_dict("a") is False
+        assert [r.name for r in await db.vocab_dicts()] == ["b"]
     finally:
         await db.close()
 
@@ -2027,11 +2037,11 @@ async def test_jokes_crud_and_mark_used(tmp_path: Path) -> None:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        old = await db.insert_joke(text="старая", created_at=1000)
-        new = await db.insert_joke(text="новая", created_at=2000)
+        old = await db.insert_joke(text="stale", created_at=1000)
+        new = await db.insert_joke(text="new", created_at=2000)
 
         rows = await db.jokes(10)
-        assert [r.id for r in rows] == [new, old]  # новые первыми
+        assert [r.id for r in rows] == [new, old]  # newest first
         assert rows[0].last_used_at is None
         assert rows[0].uses == 0
         assert [r.id for r in await db.jokes(1)] == [new]
@@ -2053,8 +2063,8 @@ async def test_purge_jokes_older_than(tmp_path: Path) -> None:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.insert_joke(text="старая", created_at=999)
-        fresh = await db.insert_joke(text="свежая", created_at=1000)
+        await db.insert_joke(text="stale", created_at=999)
+        fresh = await db.insert_joke(text="fresh", created_at=1000)
 
         assert await db.purge_jokes_older_than(1000) == 1
         assert [r.id for r in await db.jokes(10)] == [fresh]
@@ -2067,16 +2077,16 @@ async def test_people_threads_lifecycle(tmp_path: Path) -> None:
     await db.connect()
     try:
         second = await db.insert_people_thread(
-            user_id=2, display_name="Юля", text="ищет лодку", created_at=2000
+            user_id=2, display_name="Julia", text="looking for a boat", created_at=2000
         )
         first = await db.insert_people_thread(
-            user_id=1, display_name="Миша", text="ждёт прослушивания", created_at=1000
+            user_id=1, display_name="Mike", text="waiting for an audition", created_at=1000
         )
 
         open_rows = await db.open_people_threads()
-        assert [r.id for r in open_rows] == [first, second]  # самые старые первыми
+        assert [r.id for r in open_rows] == [first, second]  # oldest first
         assert open_rows[0].user_id == 1
-        assert open_rows[0].display_name == "Миша"
+        assert open_rows[0].display_name == "Mike"
         assert open_rows[0].asked_at is None
         assert open_rows[0].closed is False
 
@@ -2098,9 +2108,9 @@ async def test_purge_people_threads_older_than_by_created_at(tmp_path: Path) -> 
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        await db.insert_people_thread(user_id=1, display_name="A", text="старая", created_at=999)
+        await db.insert_people_thread(user_id=1, display_name="A", text="stale", created_at=999)
         fresh = await db.insert_people_thread(
-            user_id=1, display_name="A", text="свежая", created_at=1000
+            user_id=1, display_name="A", text="fresh", created_at=1000
         )
 
         assert await db.purge_people_threads_older_than(1000) == 1
@@ -2126,27 +2136,27 @@ async def test_last_message_at_by_user_and_user_id_by_display_name(tmp_path: Pat
                 created_at=at,
             )
 
-        await add(1, 7, "Миша", 1000)
-        await add(2, 7, "Миша", 3000)
-        await add(3, 8, "Миша", 2000)  # однофамилец: самое свежее у user 7
-        await add(4, 9, "Юля", 500)
-        await add(5, 10, "Фёдор", 4000, is_bot=True)
+        await add(1, 7, "Mike", 1000)
+        await add(2, 7, "Mike", 3000)
+        await add(3, 8, "Mike", 2000)  # a namesake: the freshest belongs to user 7
+        await add(4, 9, "Julia", 500)
+        await add(5, 10, "Gus", 4000, is_bot=True)
 
         assert await db.last_message_at_by_user(42, 7) == 3000
         assert await db.last_message_at_by_user(42, 9) == 500
         assert await db.last_message_at_by_user(42, 123) is None
         assert await db.last_message_at_by_user(99, 7) is None
-        assert await db.last_message_at_by_user(42, 10) is None  # бот не считается
+        assert await db.last_message_at_by_user(42, 10) is None  # a bot does not count
 
-        assert await db.user_id_by_display_name(42, "Миша", 0, 5000) is None  # двое тёзок
-        assert await db.user_id_by_display_name(42, "Миша", 2500, 5000) == 7
-        assert await db.user_id_by_display_name(42, "Миша", 0, 1500) == 7
-        assert await db.user_id_by_display_name(42, "Миша", 1500, 2500) == 8
-        assert await db.user_id_by_display_name(42, "Юля", 600, 5000) is None  # since отсекает
-        assert await db.user_id_by_display_name(42, "Юля", 0, 500) is None  # until исключителен
-        assert await db.user_id_by_display_name(42, "юля", 0, 5000) is None  # только точное
-        assert await db.user_id_by_display_name(42, "Фёдор", 0, 5000) is None
-        assert await db.user_id_by_display_name(99, "Миша", 0, 5000) is None
+        assert await db.user_id_by_display_name(42, "Mike", 0, 5000) is None  # two namesakes
+        assert await db.user_id_by_display_name(42, "Mike", 2500, 5000) == 7
+        assert await db.user_id_by_display_name(42, "Mike", 0, 1500) == 7
+        assert await db.user_id_by_display_name(42, "Mike", 1500, 2500) == 8
+        assert await db.user_id_by_display_name(42, "Julia", 600, 5000) is None  # since cuts it off
+        assert await db.user_id_by_display_name(42, "Julia", 0, 500) is None  # until is exclusive
+        assert await db.user_id_by_display_name(42, "julia", 0, 5000) is None  # exact match only
+        assert await db.user_id_by_display_name(42, "Gus", 0, 5000) is None
+        assert await db.user_id_by_display_name(99, "Mike", 0, 5000) is None
     finally:
         await db.close()
 
@@ -2156,15 +2166,15 @@ async def test_self_facts_crud(tmp_path: Path) -> None:
     await db.connect()
     try:
         second = await db.insert_self_fact(
-            text="возится с лодкой", bot_reply_tg_message_id=None, created_at=2000
+            text="tinkering with a boat", bot_reply_tg_message_id=None, created_at=2000
         )
         first = await db.insert_self_fact(
-            text="пошёл в баню", bot_reply_tg_message_id=11, created_at=1000
+            text="went to the sauna", bot_reply_tg_message_id=11, created_at=1000
         )
 
         rows = await db.self_facts_since(0)
         assert [r.id for r in rows] == [first, second]
-        assert rows[0].text == "пошёл в баню"
+        assert rows[0].text == "went to the sauna"
         assert rows[0].bot_reply_tg_message_id == 11
         assert rows[1].bot_reply_tg_message_id is None
         assert rows[0].created_at == 1000
@@ -2182,9 +2192,9 @@ async def test_purge_self_facts_older_than(tmp_path: Path) -> None:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        old = await db.insert_self_fact(text="старое", bot_reply_tg_message_id=None, created_at=999)
+        old = await db.insert_self_fact(text="stale", bot_reply_tg_message_id=None, created_at=999)
         fresh = await db.insert_self_fact(
-            text="свежее", bot_reply_tg_message_id=None, created_at=1000
+            text="fresh", bot_reply_tg_message_id=None, created_at=1000
         )
 
         assert await db.purge_self_facts_older_than(1000) == 1
@@ -2198,12 +2208,12 @@ async def test_insert_and_get_life_event(tmp_path: Path) -> None:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        event_id = await db.insert_life_event(text="продал тележку, взял Hyundai", created_at=1000)
+        event_id = await db.insert_life_event(text="sold the cart, bought a Ford", created_at=1000)
 
         event = await db.life_event(event_id)
         assert event is not None
         assert event.id == event_id
-        assert event.text == "продал тележку, взял Hyundai"
+        assert event.text == "sold the cart, bought a Ford"
         assert event.created_at == 1000
         assert event.announced_at is None
         assert event.announced_tg_message_id is None
@@ -2223,8 +2233,8 @@ async def test_life_events_ordered_by_created_at_then_id(tmp_path: Path) -> None
 
         rows = await db.life_events()
 
-        # created_at asc, id asc: A (500) первой; из двух с created_at=1000 —
-        # B раньше C, потому что вставлена раньше (меньший id).
+        # created_at asc, id asc: A (500) first; of the two with created_at=1000,
+        # B comes before C because it was inserted earlier (the smaller id).
         assert [row.id for row in rows] == [id_a, id_b, id_c]
         assert [row.text for row in rows] == ["A", "B", "C"]
     finally:
@@ -2235,7 +2245,7 @@ async def test_delete_life_event_removes_row_and_reports_missing(tmp_path: Path)
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        event_id = await db.insert_life_event(text="продал тележку", created_at=1000)
+        event_id = await db.insert_life_event(text="sold the cart", created_at=1000)
 
         assert await db.delete_life_event(event_id) is True
         assert await db.life_event(event_id) is None
@@ -2248,7 +2258,7 @@ async def test_mark_life_event_announced_sets_fields(tmp_path: Path) -> None:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        event_id = await db.insert_life_event(text="продал тележку", created_at=1000)
+        event_id = await db.insert_life_event(text="sold the cart", created_at=1000)
         before = await db.life_event(event_id)
         assert before is not None
         assert before.announced_at is None
@@ -2263,7 +2273,7 @@ async def test_mark_life_event_announced_sets_fields(tmp_path: Path) -> None:
         await db.close()
 
 
-# --- долгая память чата (CLAUDE.md, "долгая память чата") --------------------
+# --- long-term chat memory --------------------
 
 
 async def test_chat_memory_crud(tmp_path: Path) -> None:
@@ -2271,15 +2281,15 @@ async def test_chat_memory_crud(tmp_path: Path) -> None:
     await db.connect()
     try:
         first = await db.insert_chat_memory(
-            period_start=1000, period_end=2000, text="говорили о гараже", created_at=2000
+            period_start=1000, period_end=2000, text="talked about the garage", created_at=2000
         )
         second = await db.insert_chat_memory(
-            period_start=2000, period_end=3000, text="ездили на рыбалку", created_at=3000
+            period_start=2000, period_end=3000, text="went fishing", created_at=3000
         )
 
         rows = await db.chat_memories(10)
-        assert [row.id for row in rows] == [first, second]  # хронологически
-        assert rows[0].text == "говорили о гараже"
+        assert [row.id for row in rows] == [first, second]  # chronological
+        assert rows[0].text == "talked about the garage"
         assert await db.chat_memory_count() == 2
         assert await db.last_chat_memory_end() == 3000
 
@@ -2303,13 +2313,13 @@ async def test_chat_memories_returns_last_limit_chronologically(tmp_path: Path) 
             await db.insert_chat_memory(
                 period_start=index * 100,
                 period_end=(index + 1) * 100,
-                text=f"неделя {index}",
+                text=f"week {index}",
                 created_at=(index + 1) * 100,
             )
 
         rows = await db.chat_memories(2)
-        assert [row.text for row in rows] == ["неделя 3", "неделя 4"]
-        # in_prompt = 0 -> память в промпт не подмешивается, лишнего запроса нет
+        assert [row.text for row in rows] == ["week 3", "week 4"]
+        # in_prompt = 0 -> memory is not mixed into the prompt, no extra query
         assert await db.chat_memories(0) == []
     finally:
         await db.close()
@@ -2331,10 +2341,10 @@ async def test_purge_chat_memory_older_than_uses_period_end(tmp_path: Path) -> N
     await db.connect()
     try:
         old = await db.insert_chat_memory(
-            period_start=0, period_end=1000, text="давнее", created_at=1000
+            period_start=0, period_end=1000, text="long ago", created_at=1000
         )
         fresh = await db.insert_chat_memory(
-            period_start=1000, period_end=2000, text="свежее", created_at=2000
+            period_start=1000, period_end=2000, text="fresh", created_at=2000
         )
 
         assert await db.purge_chat_memory_older_than(1500) == 1
@@ -2353,7 +2363,7 @@ async def test_messages_between_is_half_open_and_skips_bots(tmp_path: Path) -> N
                 tg_message_id=index + 1,
                 chat_id=42,
                 user_id=1,
-                display_name="Гена",
+                display_name="Gene",
                 text=str(created_at),
                 reply_to_tg_message_id=None,
                 is_bot=False,
@@ -2363,8 +2373,8 @@ async def test_messages_between_is_half_open_and_skips_bots(tmp_path: Path) -> N
             tg_message_id=99,
             chat_id=42,
             user_id=999,
-            display_name="Фёдор",
-            text="реплика бота",
+            display_name="Gus",
+            text="bot reply",
             reply_to_tg_message_id=None,
             is_bot=True,
             created_at=1200,
@@ -2373,15 +2383,15 @@ async def test_messages_between_is_half_open_and_skips_bots(tmp_path: Path) -> N
             tg_message_id=100,
             chat_id=7,
             user_id=1,
-            display_name="Чужой",
-            text="другой чат",
+            display_name="Stranger",
+            text="another chat",
             reply_to_tg_message_id=None,
             is_bot=False,
             created_at=1200,
         )
 
         rows = await db.messages_between(42, 1000, 2000)
-        assert [row.text for row in rows] == ["1000", "1500"]  # start включён, end нет
+        assert [row.text for row in rows] == ["1000", "1500"]  # start is included, end is not
     finally:
         await db.close()
 
@@ -2390,7 +2400,7 @@ async def test_messages_between_excludes_muted_user_ids(tmp_path: Path) -> None:
     db = Database(tmp_path / "bot.db")
     await db.connect()
     try:
-        for user_id, name in ((1, "Гена"), (2, "Молчун")):
+        for user_id, name in ((1, "Gene"), (2, "Quiet one")):
             await db.insert_message(
                 tg_message_id=user_id,
                 chat_id=42,
@@ -2403,10 +2413,10 @@ async def test_messages_between_excludes_muted_user_ids(tmp_path: Path) -> None:
             )
 
         rows = await db.messages_between(42, 0, 5000, exclude_user_ids=frozenset({2}))
-        assert [row.display_name for row in rows] == ["Гена"]
+        assert [row.display_name for row in rows] == ["Gene"]
 
         rows = await db.messages_between(42, 0, 5000)
-        assert [row.display_name for row in rows] == ["Гена", "Молчун"]
+        assert [row.display_name for row in rows] == ["Gene", "Quiet one"]
     finally:
         await db.close()
 
@@ -2445,7 +2455,7 @@ async def test_first_message_at_returns_earliest_of_chat(tmp_path: Path) -> None
                 tg_message_id=created_at,
                 chat_id=chat_id,
                 user_id=1,
-                display_name="Гена",
+                display_name="Gene",
                 text="x",
                 reply_to_tg_message_id=None,
                 is_bot=False,
@@ -2457,7 +2467,7 @@ async def test_first_message_at_returns_earliest_of_chat(tmp_path: Path) -> None
         await db.close()
 
 
-# --- счётчики за локальные сутки (CLAUDE.md, "меньше и разнообразнее", мера 1) ---
+# --- counters per local day (presence cap) ---
 
 
 async def test_count_messages_today_counts_only_humans_of_this_chat_since_day_start(
@@ -2468,19 +2478,19 @@ async def test_count_messages_today_counts_only_humans_of_this_chat_since_day_st
     try:
         day_start = 1_000_000
         rows = (
-            (1, 42, False, day_start - 1),  # до полуночи — не считается
-            (2, 42, False, day_start),  # ровно полночь — считается
+            (1, 42, False, day_start - 1),  # before midnight: not counted
+            (2, 42, False, day_start),  # exactly midnight: counted
             (3, 42, False, day_start + 500),
-            (4, 42, True, day_start + 600),  # реплика бота в messages — не человек
-            (5, 7, False, day_start + 700),  # другой чат
+            (4, 42, True, day_start + 600),  # a bot reply in messages is not a person
+            (5, 7, False, day_start + 700),  # another chat
         )
         for tg_id, chat_id, is_bot, created_at in rows:
             await db.insert_message(
                 tg_message_id=tg_id,
                 chat_id=chat_id,
                 user_id=1,
-                display_name="Гена",
-                text="текст",
+                display_name="Gene",
+                text="some text",
                 reply_to_tg_message_id=None,
                 is_bot=is_bot,
                 created_at=created_at,
@@ -2500,9 +2510,9 @@ async def test_count_bot_replies_today_counts_every_trigger_since_day_start(
     try:
         day_start = 1_000_000
         for tg_id, trigger, created_at in (
-            (1, "ambient", day_start - 1),  # вчерашняя реплика
+            (1, "ambient", day_start - 1),  # yesterday's reply
             (2, "mention", day_start),
-            (3, "life", day_start + 10),  # /life тоже присутствие бота
+            (3, "life", day_start + 10),  # /life is also the bot being present
             (4, "say", day_start + 20),
         ):
             await db.insert_bot_reply(
@@ -2510,7 +2520,7 @@ async def test_count_bot_replies_today_counts_every_trigger_since_day_start(
                 reply_to_tg_message_id=None,
                 trigger=trigger,
                 trigger_tg_message_id=None,
-                text="реплика",
+                text="a reply",
                 prompt_version=1,
                 few_shot_version=1,
                 delay_sec=0,
