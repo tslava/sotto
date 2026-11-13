@@ -234,7 +234,7 @@
     "answers": [
      {
       "chat": 7001,
-      "text": "Could not parse the file: ожидался YAML-объект с полями name и words"
+      "text": "Could not parse the file: expected a YAML object with the fields name and words"
      }
     ],
     "command": "/words"

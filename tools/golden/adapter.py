@@ -36,6 +36,8 @@ import yaml
 from aiogram.types import Chat, Document, Message, PhotoSize, Sticker, User, Voice
 
 from sotto import alerts as engine_alerts
+from sotto import changelog as engine_changelog
+from sotto import commands as engine_commands
 from sotto import filters as engine_filters
 from sotto import motifs as engine_motifs
 from sotto import places as engine_places
@@ -89,7 +91,10 @@ HOLD_MIN_SEC = 10.0
 
 _REAL_SLEEP = asyncio.sleep
 
-_DEFAULT_HOME = {"name": "Золотово", "lat": 52.1, "lon": 17.1}
+# ``/status`` prints the package version; the harness pins it so recorded outputs survive release
+# bumps (the legacy baseline was recorded at this version).
+PINNED_VERSION = "0.9.1"
+
 _DEFAULT_FORECAST = {
     "current": {"temperature_2m": 7.4, "weather_code": 3},
     "daily": {
@@ -155,16 +160,24 @@ class VirtualClock:
 
 @contextlib.contextmanager
 def _patched_runtime(clock: VirtualClock) -> Iterator[None]:
-    """``time.time`` and ``asyncio.sleep`` follow the virtual clock for one scenario."""
+    """``time.time`` and ``asyncio.sleep`` follow the virtual clock for one scenario; the version
+    and the engine changelog path are pinned."""
     real_time = time.time
     real_sleep = asyncio.sleep
+    real_version = vars(engine_commands)["__version__"]
+    real_changelog_path = engine_changelog.ENGINE_CHANGELOG_PATH
     time.time = lambda: clock.value  # deliberate seam: no wall clock
     asyncio.sleep = clock.sleep  # type: ignore[assignment]  # deliberate seam: virtual sleep
+    vars(engine_commands)["__version__"] = PINNED_VERSION  # deliberate seam
+    # The engine's own CHANGELOG.md must not leak into /changelog owner for a pack without one.
+    engine_changelog.ENGINE_CHANGELOG_PATH = Path("/nonexistent/engine-changelog.md")
     try:
         yield
     finally:
         time.time = real_time
         asyncio.sleep = real_sleep
+        vars(engine_commands)["__version__"] = real_version
+        engine_changelog.ENGINE_CHANGELOG_PATH = real_changelog_path
 
 
 def _to_epoch(local: str, tz: str) -> int:
@@ -387,8 +400,8 @@ def pack_timezone(pack: Path) -> str:
 
 def _settings_for(pack: Path, workdir: Path, scenario: Scenario) -> Settings:
     weather = scenario.weather
-    home = _DEFAULT_HOME if weather.home == "default" else None
-    if not isinstance(weather.home, str):
+    home = None
+    if not isinstance(weather.home, str):  # "none" -> no home point ("default" is resolved on load)
         home = {"name": weather.home.name, "lat": weather.home.lat, "lon": weather.home.lon}
     return Settings(
         _env_file=None,
@@ -976,7 +989,7 @@ async def _act_aux(engine: Engine, args: dict[str, Any]) -> Any:
     if which == "followup_check":
         return await engine.followup.check(
             text=args["text"],
-            display_name=args.get("name", "Гость"),
+            display_name=args.get("name", engine.scenario.defaults.guest_name),
             context_rows=rows,
             recent_replies=replies,
             now=now,
@@ -984,7 +997,7 @@ async def _act_aux(engine: Engine, args: dict[str, Any]) -> Any:
     if which == "name_check":
         return await engine.followup.check_name(
             text=args["text"],
-            display_name=args.get("name", "Гость"),
+            display_name=args.get("name", engine.scenario.defaults.guest_name),
             context_rows=rows,
             recent_replies=replies,
             now=now,
@@ -1002,7 +1015,7 @@ async def _act_aux(engine: Engine, args: dict[str, Any]) -> Any:
             reply_to = await engine.db.message_by_tg_id(CHAT_ID, int(args["reply_to"]))
         return await engine.reaction_chooser.choose(
             text=args["text"],
-            display_name=args.get("name", "Гость"),
+            display_name=args.get("name", engine.scenario.defaults.guest_name),
             context_rows=rows,
             allowed=allowed,
             now=now,
@@ -1218,7 +1231,7 @@ def _call_weather(engine: Engine, case: dict[str, Any]) -> Any:
             w, tz, now, home_name=case.get("home", ""), frag=frag
         ),
         "place": engine_weather.render_weather_place(
-            case.get("place", "Гдеугодно"), w, tz, now, frag=frag
+            case.get("place", engine.scenario.defaults.place_name), w, tz, now, frag=frag
         ),
         "none": engine_weather.render_weather(None, tz, now, frag=frag),
         "describe": engine_weather.describe(int(case["code"]), frag=frag),
@@ -1238,7 +1251,9 @@ def _call_situations(engine: Engine, case: dict[str, Any]) -> Any:
         "followup": engine_prompt.situation_followup(items, frag=frag) if items else "",
         "checkin": engine_prompt.situation_checkin(rows, frag=frag) if rows else "",
         "life": engine_prompt.situation_life(case.get("life", ""), frag=frag),
-        "callback": engine_prompt.situation_callback("Имя", case.get("life", ""), frag=frag),
+        "callback": engine_prompt.situation_callback(
+            engine.scenario.defaults.callback_name, case.get("life", ""), frag=frag
+        ),
     }
 
 
@@ -1302,6 +1317,8 @@ POST_BASELINE_CONFIG_KEYS = frozenset(
         "places.default_district",
         "places.quiet_keywords",
         "places.outskirts_keywords",
+        # PR-8a: the old places_fill _OUTSKIRTS_MARKERS constant became a config key.
+        "places.address_outskirts_markers",
         # PR-4: the old filters.py constants _DISTRICTS and _LATIN_LETTERS became config keys.
         "filters.districts",
         "filters.latin_extra_letters",

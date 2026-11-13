@@ -4,6 +4,13 @@
 # The same 101 scenarios as tools/golden/scenarios_ru.yaml, retold for Gus Marlow's chat.
 version: 1
 
+# Values the harness uses where a scenario does not say otherwise.
+defaults:
+  home: {name: "Brindlemoor", lat: 52.0, lon: -1.5}   # weather: {home: default}; a neutral point
+  guest_name: "Guest"
+  place_name: "Elsewhere"
+  callback_name: "Sam"
+
 defs:
   users: &users {1: "Dana", 2: "Theo", 3: "Priya", 4: "Marcus", 5: "Jo"}
   chat: &chat

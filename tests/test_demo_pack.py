@@ -3,15 +3,12 @@ regression, and the guards that keep it free of the private persona's material."
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
-import pytest
 from tools.golden import runner
 from tools.golden.schema import load_scenarios
 
-from sotto import commands
 from sotto.config import load_config
 from sotto.few_shot import load_few_shot
 from sotto.filters import FilterContext, check_output
@@ -26,7 +23,7 @@ SCENARIOS = GOLDEN / "scenarios.yaml"
 BASELINE = GOLDEN / "baseline"
 EXPORT = GOLDEN / "export.json"
 
-_CYRILLIC = re.compile(r"[Ѐ-ӿ]")
+_CYRILLIC = re.compile("[\u0400-\u04ff]")
 # Words of the private persona and its city that must never appear in the public demo pack.
 _PRIVATE_WORDS = re.compile(
     r"wolsa|wolsań|dolna|fyodor|fedor|fedya|father fy|lidl|\bpolish\b|\bpoland\b", re.IGNORECASE
@@ -109,14 +106,8 @@ def test_golden_scenarios_cover_every_group() -> None:
     assert len(list(BASELINE.glob("*.json"))) == 101
 
 
-def test_golden_baseline_matches(monkeypatch: pytest.MonkeyPatch) -> None:
-    # /status prints the package version; compare against the version the baseline was
-    # recorded with, so a release bump does not read as a behaviour change.
-    status = json.loads((BASELINE / "E_status.json").read_text(encoding="utf-8"))
-    match = re.search(r"sotto v(\d+\.\d+\.\d+)", json.dumps(status))
-    assert match is not None
-    monkeypatch.setattr(commands, "__version__", match.group(1))
-
+def test_golden_baseline_matches() -> None:
+    # The golden adapter pins the version /status prints, so a release bump does not move it.
     outputs = runner.run_scenarios(DEMO_PACK, load_scenarios(SCENARIOS))
     result = runner.diff_outputs(outputs, BASELINE, allowed=set(), check_extra=True)
     assert result.ok, (sorted(result.diffs), result.missing, result.extra)

@@ -18,6 +18,7 @@ PACK = REPO / "personas" / "demo"
 
 MINI = """
 version: 1
+defaults: {home: {name: Town, lat: 1.0, lon: 2.0}}
 scenarios:
   - id: A_mini
     group: A
@@ -345,3 +346,19 @@ def test_test_inventory_counts_and_diff(tmp_path: Path, capsys: pytest.CaptureFi
     assert "TOTAL tests=" in capsys.readouterr().out
     assert test_inventory.main([str(tmp_path), "--json"]) == 0
     assert "test_x.py::test_pairs" in capsys.readouterr().out
+
+
+def test_scenario_default_home_needs_the_files_defaults(tmp_path: Path) -> None:
+    from tools.golden.schema import load_scenarios
+
+    body = "scenarios:\n  - {id: A_x, group: A, actions: [{kind: gate_pass}]}\n"
+    path = tmp_path / "s.yaml"
+    path.write_text("version: 1\n" + body, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"needs defaults\.home"):
+        load_scenarios(path, enforce_minimums=False)
+    path.write_text(
+        "version: 1\ndefaults: {home: {name: T, lat: 1.0, lon: 2.0}}\n" + body, encoding="utf-8"
+    )
+    (scenario,) = load_scenarios(path, enforce_minimums=False)
+    assert scenario.weather.home.name == "T"  # type: ignore[union-attr]
+    assert scenario.defaults.guest_name == "Guest"

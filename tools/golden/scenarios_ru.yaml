@@ -3,6 +3,13 @@
 # "-10m", "-2h", "-3d". Scenario ids start with their group letter (A..F, see tools/golden/README.md).
 version: 1
 
+# Values the harness uses where a scenario does not say otherwise.
+defaults:
+  home: {name: "Золотово", lat: 52.1, lon: 17.1}   # weather: {home: default}
+  guest_name: "Гость"
+  place_name: "Гдеугодно"
+  callback_name: "Имя"
+
 defs:
   users: &users {1: "Гена", 2: "Лёша", 3: "Марина", 4: "Костя", 5: "Ира"}
   chat: &chat

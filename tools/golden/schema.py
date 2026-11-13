@@ -176,8 +176,19 @@ class WeatherHome(_Strict):
     lon: float
 
 
+class Defaults(_Strict):
+    """File-level values the harness uses where a scenario does not say otherwise (set under the
+    top-level ``defaults:`` key of a scenario file, so the harness itself has no persona text)."""
+
+    # The home point of ``weather: {home: default}``; required if any scenario uses "default".
+    home: WeatherHome | None = None
+    guest_name: str = "Guest"  # display name for helper calls that take none
+    place_name: str = "Elsewhere"  # geocoded place name of the weather rendering cases
+    callback_name: str = "Name"  # name in the callback situation case
+
+
 class WeatherSpec(_Strict):
-    # "default" -> the harness home point; "none" -> no home point (the home block is empty).
+    # "default" -> the file's ``defaults.home``; "none" -> no home point (the home block is empty).
     home: WeatherHome | Literal["default", "none"] = "default"
     forecast: dict[str, Any] | None = None
     # query -> geocoder result item (name, latitude, longitude, country, country_code)
@@ -209,6 +220,8 @@ class Scenario(_Strict):
     weather: WeatherSpec = Field(default_factory=WeatherSpec)
     actions: list[Action]
     capture: list[str] = Field(default_factory=lambda: ["requests", "sent", "result"])
+    # Filled in by ``load_scenarios`` from the file's ``defaults:``; not a scenario key.
+    defaults: Defaults = Field(default_factory=Defaults)
 
     @field_validator("id")
     @classmethod
@@ -230,6 +243,7 @@ class ScenarioFile(_Strict):
     version: int = 1
     # Free-form block that only holds YAML anchors shared by scenarios; never interpreted.
     defs: Any = None
+    defaults: Defaults = Field(default_factory=Defaults)
     scenarios: list[Scenario]
 
 
@@ -244,6 +258,12 @@ def load_scenarios(path: Path, *, enforce_minimums: bool = True) -> list[Scenari
     problems: list[str] = []
     seen: set[str] = set()
     for scenario in parsed.scenarios:
+        scenario.defaults = parsed.defaults
+        if scenario.weather.home == "default":
+            if parsed.defaults.home is None:
+                problems.append(f"{scenario.id}: weather home 'default' needs defaults.home")
+            else:
+                scenario.weather.home = parsed.defaults.home
         if scenario.id in seen:
             problems.append(f"duplicate scenario id {scenario.id}")
         seen.add(scenario.id)
