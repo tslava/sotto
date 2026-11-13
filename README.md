@@ -1,910 +1,274 @@
 # sotto
 
-Телеграм-бот-персонаж «Отец Фёдор» для одного дружеского чата. Фёдору 52 года,
-он живёт в Волсани, у него гараж со старой машиной и участок под городом.
-Читает переписку чата, но отвечает редко и с задержкой — не как ассистент,
-а как сосед, который заглядывает в чат между делами. Ночью (02:00–07:00)
-молчит вообще, даже если его прямо позвали. Один чат, один процесс, long
-polling, без вебхуков и без веб-панели.
+[![CI](https://github.com/tslava/sotto/actions/workflows/ci.yml/badge.svg)](https://github.com/tslava/sotto/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/tslava/sotto/badges/coverage.json)](https://github.com/tslava/sotto/actions/workflows/badges.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![golden: 101 scenarios](https://img.shields.io/badge/golden-101%20scenarios-informational)
 
-## Статус
+A Telegram bot that plays one character in one group chat, as a regular and not as an assistant.
+It does not wait for commands. It reads the room, decides whether to speak at all, usually stays
+quiet, answers a direct question a few minutes late like a person who was away from the phone,
+remembers what the chat talked about last month, and does not drop the character.
 
-Все этапы плана реализованы, бот работает в тестовом режиме.
-Что делать по нему дальше — [`RUNBOOK.md`](RUNBOOK.md); что нужно сделать
-перед первым запуском — раздел «Настройка» ниже.
+The engine in this repository has run a private persona in a friends' group chat since September
+2026. That persona is not part of the repo: the public version ships an invented English one,
+**Gus Marlow**, a retired bus driver who mends clocks, as a demo and a test fixture.
 
-## Как он решает, когда говорить
+The interesting part is not the model call, it is everything around it: when to speak, how not to
+be annoying, how to keep a model that reads untrusted chat text from being steered by it, and how
+to change such a system without silently changing its behaviour.
 
-- **Прямое обращение** (`@юзернейм`, реплай на его сообщение или слово вроде
-  «Федя»/«дед» из `persona.name_triggers`) — отвечает почти всегда, кроме ночи
-  и потолка `mention_daily_cap` (по умолчанию 50 в сутки). Ответ не мгновенный:
-  задержка от 30 секунд до часа, по вероятностным бакетам. Кулдаун между
-  обращениями (60 с на человека, 90 с на чат) не отказ, а просто сдвигает
-  момент ответа. У имени есть оговорка — следующий пункт.
-- **Имя он слышит в любом падеже.** «Спроси у отца», «передай Фёдору»,
-  «Феде бы зашло», «с дедом на рыбалку» — всё это обращение к нему, а не только
-  «Фёдор» в именительном падеже (формы строит `morph.py` по закрытому списку
-  окончаний, так что «федерация», «дедлайн» и «Федяев» мимо). Но имя в сообщении
-  ещё не значит, что зовут именно его: «вчера встретил Фёдора на рынке» — разговор о нём,
-  а не с ним. Поэтому такое сообщение перед ответом смотрит дешёвая модель
-  (`behaviour.followup.name_check`, промпт `prompts/name_check.txt`): «уместно ли
-  Фёдору сейчас ответить?». Сомневается — отвечает; сказала «нет» — молчит
-  (в `/why` это `followup:name_no`) и в лучшем случае ставит реакцию. Реплай на
-  его сообщение и `@юзернейм` так не проверяются никогда — там сомнений нет.
-- **Сам вступает в разговор** (ambient), только если видит живой диалог —
-  несколько сообщений от разных людей за последние 10 минут. Это редкость:
-  шанс на сообщение 15%, максимум несколько раз в сутки.
-- **Пишет просто так**, без повода, пару раз в неделю, когда в чате давно
-  тихо — про свои дела (гараж, участок, грибы), никого не зовёт и не
-  спрашивает.
-- **В логистику встреч не лезет** («во сколько», «кто идёт») — молчит, кроме
-  случая, когда его самого напрямую позвали (тогда отвечает отказом: он с
-  чатом по барам не ходит).
-- Ответ проходит через выходной фильтр (регулярки, дедуп повторов,
-  LLM-судья) до отправки. Фильтр в shadow-режиме (`filters.shadow: true`
-  в `config.yaml`): большинство слоёв только считает срезы, не отправляя реплику
-  в мусор. Исключение — стадии из `filters.enforce_stages` (по умолчанию `dedup`
-  и `style`): повторы и сорванный стиль режутся всегда, даже в shadow. Это
-  прямое следствие стопа 15.09, когда фильтр видел самоповторы, а shadow их
-  пропускал в чат.
-- Иногда, когда мог бы что-то сказать, но не сложилось (кости не выпали или
-  подошёл кулдаун), просто ставит реакцию вместо ответа: 🤣, 😁, 👍, 💩, 🔥, 👏
-  или 🍾.
-  Реакция не мгновенная: сначала пауза `behaviour.reactions.delay_sec`
-  (по умолчанию 20–120 секунд) — человек сперва читает, — а после паузы условия
-  перепроверяются заново (за минуту в чате всё могло измениться) и дешёвая модель
-  решает, уместна ли реакция и какая: она же и есть фильтр, поэтому кубик при
-  `semantic: true` не бросается вовсе. Модель видит несколько сообщений до этого
-  и то, на что человек ответил; над жалобой, бедой и детьми не смеётся, а если
-  непонятно, о чём речь, реакции нет. Набор — `behaviour.reactions.emoji`:
-  эмодзи и когда оно уместно («😁: улыбнуло, лёгкая шутка»), это описание модель
-  и видит. Одно и то же эмодзи не ставится больше `max_repeat` (2) раз подряд:
-  третий раз его просто нет в выборе. Вызовы считаются своим потолком
-  `semantic_daily_cap` (`/status`: `semantic calls`), в `/why` видно `react:sent`,
-  `react:declined` (модель сказала «не нужно») и `react:recheck` (за паузу подошёл
-  кулдаун или потолок). `semantic: false` возвращает прежний выбор кубиком без
-  модели — пауза перед реакцией при этом остаётся.
-- Иногда вместо текста отправляет стикер из своего набора (на стикерах
-  надписи) — решает вторая, дешёвая модель уже над готовым ответом; основная
-  модель про стикеры не знает и меню ей не показывается.
-- **Фото он видит.** Снимок из чата уходит модели со зрением и превращается в
-  описание одной-двумя фразами, а в истории чата вместо глухого `[фото]`
-  остаётся `[фото: кружка пива на деревянном столе]` — дальше это обычный текст,
-  и гейт, контекст и ответ работают с ним как со словами. Стоит денег, поэтому
-  описывается не каждое фото: когда его позвали (реплай, `@`, имя) или пока он
-  «держит телефон в руках», иначе по кубику (`behaviour.vision.*`), и не больше
-  `daily_cap` снимков в сутки. Подпись автора остаётся рядом и своими словами.
-- Первые десять минут после `/life` или `/say` он «держит телефон в руках» — живее
-  отвечает на ambient и заодно дешёвой моделью проверяет сообщения без явного
-  обращения («это мне?»), подробнее в разделе про `/life` ниже. После обычного
-  ответа окно не открывается: раньше открывалось после любой реплики, и бот сам
-  себе продлевал присутствие в чате бесконечно (`behaviour.hot_window.open_on_any_reply`
-  возвращает прежнее поведение).
-- **Потолок присутствия.** За локальные сутки он говорит не больше своей доли
-  от того, сколько написали люди: `floor(сообщений людей × behaviour.presence.max_share)
-  + behaviour.presence.free_replies` — по умолчанию 15% плюс две реплики в запас
-  (на утро пустого чата). Потолок выбран — молчит до завтра: и на имя, и на `@`,
-  и на ambient, и утром, и «вернувшись проверить». Проходят только реплаи на его
-  собственное сообщение (человек написал именно ему и ждёт ответа) и кнопки
-  владельца `/life` и `/say`. `/status` показывает `presence: <сказал>/<можно>
-  (people <написали люди>)`.
-- **Пауза между репликами.** Между любыми двумя его сообщениями — минимум
-  `behaviour.min_gap_sec` (по умолчанию 5 минут). Обращение при этом не
-  теряется, а просто переносится на конец паузы; неадресный повод (ambient,
-  «просто так», утро, «вернулся проверить») за паузу не держится — молчит.
-  `/life` и `/say` пауза не касается.
-- **Помнит, о чём говорили раньше.** Сообщения живут 30 дней, а раз в неделю
-  (ночью, в окне `behaviour.chat_memory.run_window`) один вызов модели сжимает
-  прошедшую неделю чата в 3–7 коротких строк — «Миша хвастался самокатом»,
-  «собирались на рыбалку». Последние `chat_memory.in_prompt` таких пересказов
-  (по умолчанию 8, то есть примерно два месяца) уходят в каждый системный
-  промпт, поэтому он может к слову вспомнить то, чего в свежем контексте уже
-  нет. Смотреть и править эту память — `/memory` (см. «Команды»).
-- **Помнит общие шутки и спрашивает «ну как там?».** Тот же недельный прогон
-  делает ещё два дешёвых вызова по тем же сообщениям. Первый достаёт шутки и
-  словечки, которые чат подхватил («опять Мишины шурупы»): последние
-  `behaviour.jokes.in_prompt` уходят в промпт слотом `{jokes}`, и он может к месту
-  вернуть одну; использованная шутка отдыхает `cooldown_days` суток. Второй достаёт
-  незакрытые истории людей — собеседование, ремонт, поездка. Через несколько дней в
-  дневное окно `behaviour.callback.window`, в тишине и не чаще раза в `min_days`
-  суток он сам коротко спрашивает автора, чем кончилось, по имени (если автор
-  недавно писал в чат). Вопрос задаётся один раз: тред закрывается при любом исходе,
-  даже если он промолчал. Смотреть и удалять — `/jokes`, `/people`, выключить —
-  `/set behaviour.jokes.enabled false`, `/set behaviour.callback.enabled false`.
-- **Держится того, что сам сегодня сказал.** После каждой своей текстовой реплики
-  (и после `/say`) в фоне, не задерживая ответ, дешёвая модель достаёт из неё факт
-  о его делах — «пошёл в баню», «возится с лодкой» (воспоминания, шутки и
-  мнения фактом не считаются). Факты текущих суток и короткая строка «на этой
-  неделе» уходят в системный промпт слотом `{diary}` с пометкой «держись этого,
-  не противоречь» — чтобы через семь минут он не оказался «на рыбалке». Факты
-  живут `behaviour.diary.keep_days` (по умолчанию 14 суток), смотреть и удалять
-  их — `/diary` (см. «Команды»), выключить — `/set behaviour.diary.enabled false`.
-- **Знает погоду.** В каждый системный промпт уходит одна-две строки: сколько
-  сейчас градусов и что за окном, что днём и что завтра (источник — Open-Meteo,
-  публичный API без ключа и регистрации). Это фон, а не справочная услуга:
-  упомянуть погоду или промолчать про неё решает модель. Координаты домашней
-  точки задаются в `.env` (`WEATHER_LATITUDE`/`WEATHER_LONGITUDE`, название —
-  `WEATHER_HOME_NAME`) и в репозитории не лежат; не заданы — блока нет вовсе.
-  Если в обращении спрашивают про другое место («а в Гданьске дождь?»), название
-  достаёт из текста дешёвая модель (склонения геокодер не понимает), координаты
-  даёт геокодер Open-Meteo, и рядом появляется вторая строка — про это место.
-  Вызов делается только на прямое обращение и только когда сработала регулярка
-  повода `filters.weather_request`; в `/why` это видно как `weather:place`,
-  `weather:no_place` и `weather:not_found`. Настройки — `behaviour.weather.*`,
-  текущий снимок — в `/status`.
+Project page: <https://tslava.dev/sotto.html>
 
-## Голос: реквизит и байки
+## How it decides to speak
 
-У персонажа есть постоянный реквизит — жена, теплица, гараж, участок, грибы,
-машина, девяностые. Он и делает его живым, и он же его убивает, если лезет в
-каждую реплику: 14 сентября бот выдал 19 ответов на 49 человеческих сообщений,
-и в 22 репликах жена встретилась семь раз, теплица пять, гараж пять, «в девяносто
-пятом» пять. Чат остановил его на сутки командой `/stop`, и формулировка владельца
-была «бота слишком много и он однообразный».
+A message goes through a pure function, `gate.should_consider(msg, state, cfg, patterns, now, rng)`,
+in a fixed order. Everything that is dropped is written to a `filter_log` table with a reason
+(`gate:night`, `gate:not_live`, `gate:dice`, ...), so `/why` in the owner chat can say why the bot
+stayed quiet.
 
-Теперь это держится с двух концов. **До модели**: из последних
-`filters.motif_avoid_window` реплик собирается список уже использованного
-реквизита (`filters.motifs` — метка мотива и её регулярки), и в системный промпт
-уходит абзац «в последних репликах ты уже поминал жену, теплицу, гараж — сейчас
-без них». Если в последних `filters.story_window` репликах баек уже
-`filters.story_max` и больше (байка опознаётся по `filters.story_markers`:
-«в девяностых», «помню», «как-то раз»), туда же добавляется «байку сейчас не
-рассказывай, короткий ответ по делу». **После модели**: выходной фильтр страхует
-теми же списками — `dedup:motif` режет реплику, если она тянет мотив из последних
-`filters.motif_recent_window` ответов, `style:story_quota` — если квота баек уже
-выбрана. Обе причины из стадий `dedup`/`style`, то есть режут и в shadow-режиме.
+1. Bots, panic switch, `/stop`, muted people.
+2. Stop topics (the message is dropped and the topic cools down) and prompt-injection markers.
+3. A **direct address** (a reply to the bot, `@username`, or its name, declined by the language module) is
+   answered almost always. Only the quiet night window and a daily cap stop it. A cooldown never
+   drops it, it only postpones it.
+4. Otherwise **ambient** speech: not at night, not about logistics ("who is coming", "I am late"),
+   and only inside a **live conversation** (at least N messages from at least M people in the last
+   few minutes). Then a per-chat cooldown, a daily cap and a dice roll.
 
-Байка при этом никуда не делась, она просто перестала быть обязательной: чаще
-короткий ответ по делу, история — одна на несколько ответов и каждый раз про
-другое. Заодно персонаж больше не напрашивается в чужие планы и поездки: своё
-он делает один и просто об этом сообщает. Всё, кроме потолков, — обычные ключи
-конфига, меняются `/set` без рестарта.
+On top of the gate:
 
-## Словечки из словаря
+- **Presence cap.** Over a local day the bot may say at most a fraction of what people said, plus a
+  couple of free replies. Replies to its own messages and direct @mentions are exempt.
+- **Pending replies with human delays.** A direct address becomes a row in `pending_replies` with a
+  due time drawn from buckets (mostly 30 s to 3 min, sometimes up to an hour). Several addresses
+  arriving meanwhile collapse into one reply. A restart re-arms the timers; a row is closed only
+  after a final outcome, so a SIGTERM in the middle of a model call does not lose the reply.
+- **Night queue and morning reply.** Addresses during the quiet window are answered once, in one
+  sentence, at a random moment of the morning window.
+- **Attention rhythm.** *Phone in hand:* when the owner pushes a message through `/life` or `/say`
+  a ten-minute hot window opens; ambient replies are likelier in it, and a cheap model decides
+  whether an unaddressed message is still "for him" (follow-up check). *Phone put down:* only direct
+  addresses count. *Back to check:* later, once the chat has gone quiet, a cheap prefilter looks at
+  everything written since his last line, and the main model replies only if something really was
+  for him; otherwise silence, and no new check unless people wrote.
+- **Reactions instead of silence.** On some random drops it sets an emoji reaction after a pause of
+  20 to 120 seconds, if a cheap model thinks the message deserves one; the same emoji is not used
+  more than twice in a row.
 
-Фёдор вырос в научном городке, и у него иногда проскакивают словечки
-оттуда: «сырюка», «зюфа», «кумонок». Словари грузит владелец: YAML-файл боту в
-личку с подписью `/words` (формат — в `vocab.example.yaml`: `name`, `about` и
-список `words` из `word`, `meaning`, необязательных `example` и `forms`). Файл с
-тем же `name` заменяет словарь, словарей может быть несколько, `/words` показывает
-их, `/words off|on|rm <имя>` выключает, включает и удаляет. Сами словари живут в
-базе бота, а не в репозитории: обычно это чужой текст.
+Every number above is a key in the persona's `config.yaml`, validated against ranges, and the owner
+can change it from Telegram without a restart (`/set`).
 
-Употребляет редко. Пара слов на выбор попадает в промпт только когда выпал кубик
-`behaviour.vocab.probability`, за сутки сказано меньше `daily_cap` словечек и в
-последних `recent_window` репликах их не было; модели сказано брать слово, только
-если оно само ложится в реплику. Если словечко мелькнуло в последних сообщениях
-чата или в его собственной реплике, в промпт уходит его значение: на «Федь, что
-такое сырюка?» он объяснит своими словами. Слова ищутся с падежами («в сырюку»,
-«бурается»); где автоматика ошибается, формы перечисляются в `forms`. Слова,
-совпадающие с обычными («зал», «ведро» вместо «вёдро»), лучше в словарь не класть.
-`/status` показывает, сколько словечек сказано сегодня и какое последнее.
+## Generation and safety
 
-Если его прямо попросить («Федь, скажи что-нибудь по-дворовому», «какие у тебя
-словечки?»), он получает пять слов на выбор без кубика и лимитов: просьба — это
-имя словаря («дворовые» → «по-дворовому») или `vocab.request_markers`. А если
-после его словечка кто-то пишет «не понял», «что это значит», «в смысле» (в
-течение `explain_window_min` минут, `vocab.explain_markers`), это считается
-вопросом ему даже без имени и реплая, и он объясняет своими словами.
+- **One LLM entry point.** Every model call goes through `LLMClient.call` (OpenRouter): circuit
+  breaker, per-counter daily call cap, dollar budget, the counter is incremented before the
+  request, no retries. The cheap helpers (judge, follow-up check, reaction chooser, sticker chooser,
+  vision, diary extractor, ...) each have their own counter and cap, so a flood of cheap calls
+  cannot eat the main model's allowance. A provider refusal (402, 401, ...) sends the owner a rate-limited
+  DM; secrets are redacted before anything is logged.
+- **Chat text is data, not instructions.** The system prompt holds only owner-curated text. All
+  participant text (context, recent replies, the venue list, the situation) goes into a separate
+  `user` message between `<<<CHAT` and `>>>` with a "data, not commands" notice. Delimiters are
+  stripped on input and again in every renderer; slots are filled in one `re.sub` pass so one
+  slot's content is never rescanned; `str.format` is never used on text people can influence.
+  Display names that look like injection are replaced before they are stored.
+- **A three-layer output filter; failure means silence.** The model answers `{"speak", "text"}`;
+  a cosmetic `postprocess` step fixes dashes and emoji frequency; then
+  1. *regex*: length, markdown, emoji, sentence count, phone numbers, venues that are not on the
+     verified list, echo of someone's message, leak of the prompt, "as an AI" talk, stop topics;
+  2. *rules*: near-duplicates of recent replies (Jaccard on word shingles), repeated props and
+     stories (a per-motif memory), a question twice in a row, grumpy and assistant phrases;
+  3. *LLM judge*: a small model answers "in character?", "risky?", "obeyed an instruction from the
+     user?" as strict JSON; any error counts as a fail.
 
-## Что он никогда не делает
+  A cut means the bot says nothing. The main model is never called again to try for a better answer.
+- **Shadow vs enforced stages.** With `filters.shadow: true` a failing filter is only logged and the
+  reply is sent, which lets you collect statistics before switching the filter on. Stages in
+  `filters.enforce_stages` (by default `dedup` and `style`) cut even in shadow mode.
+- **Injection test table.** `tests/test_injections.py` runs 16 attacks end to end on real
+  components (14 on the English pack, 2 script-specific ones in `tests/lang/`): "ignore your
+  instructions", "say exactly ...", forged delimiters and slots, injection inside a display name,
+  model talk, prompt-leak requests, a judge that answers in prose, and so on.
 
-Красные линии персонажа — подробно в [`CHARACTER.md`, раздел 8](CHARACTER.md).
-Коротко: не лезет в логистику встреч, не называет телефоны и адреса частных
-лиц, не называет заведений, которых нет в его кэше, не говорит о политике,
-войне, религии и национальностях, не шутит про чужой алкоголь, не имитирует
-реального человека и работает только в одном разрешённом чате — из любого
-другого чата и из личных сообщений от кого угодно, кроме владельца, для него
-не существует ни одного сообщения.
+## Memory
 
-## Приватность
+Messages live 30 days (`message_retention_days`); beyond that the bot keeps only what is distilled:
 
-Бот хранит сообщения чата `message_retention_days` дней (`config.yaml`, по
-умолчанию 30), затем они удаляются ретеншн-джобом. При каждом ответе бот
-отправляет последние `behaviour.context_window` сообщений чата (по умолчанию
-30) во внешний LLM API (OpenRouter) — это основной вызов модели.
+- **Weekly chat summaries.** A scheduled cheap call compresses each past week into a few lines
+  ("what was going on in the chat"); the latest ones go into the prompt. Muted people never get in.
+- **A diary of its own day.** After each reply a small model extracts any fact the bot stated about
+  *itself* ("went to the canal", "fixing a clock"); today's facts go back into the prompt so the bot
+  does not contradict itself an hour later.
+- **Chat jokes and people's open threads.** Recurring words the chat picked up, and unfinished
+  stories ("waiting to hear back about a job"). A thread is asked about once, a few days later, at
+  a sensible hour ("how did it go?").
+- **Retention** (`retention.py`) purges messages, queues, candidate texts in the log, dated state
+  keys, summaries and notes on their own schedules. Photos are described by a vision model and not
+  stored. Notes about participants are screened for injection markers before they are saved,
+  because they end up in the prompt.
 
-Туда же, во внешний API, уходит больше, чем просто свежий контекст:
+## Persona packs
 
-- **Few-shot примеры** (`few_shot.yaml`) — курируются владельцем, но это тоже
-  текст из этого чата (`/ex add` берёт реальные пары «сообщение → ответ»
-  прямо из переписки) и он целиком уходит в каждый системный промпт.
-- **LLM-судья** (слой 3 выходного фильтра, `llm.judge_model`) — получает
-  отдельным вызовом сообщение-триггер и кандидата на ответ; это тот же
-  провайдер OpenRouter, просто другой (обычно более дешёвый) вызов.
-- **Отзывы заведений** — не рантайм-путь, а офлайн-прогон `places_fill.py` раз
-  в месяц: до 5 отзывов Google на заведение уходят в LLM для сжатия в `fact`
-  (см. раздел «Заведения» ниже), сами отзывы в БД не попадают.
-- **Стикеры** (см. раздел «Стикеры» ниже) — уже готовый (прошедший выходной
-  фильтр) ответ и сообщение-триггер вторым, отдельным вызовом уходят дешёвой
-  модели вместе с каталогом стикеров, чтобы она выбрала подходящий или `null`.
-- **События жизни** (`/life <текст>`, см. «Команды» ниже) — заметка владельца
-  о себе, которую он завёл через `/life`, уходит слотом `{life}` в КАЖДЫЙ
-  системный промпт, пока её не удалят `/life rm`. `/say <текст>` в модель не
-  уходит вовсе — отправляется в чат дословно.
-- **Дешёвая проверка «это мне?»** (`behaviour.followup.*`, см. раздел про
-  `/life` ниже) — пока открыто горячее окно, сообщения без явного обращения
-  дополнительно уходят отдельным, дешёвым вызовом (недавний контекст чата,
-  последние реплики бота и новое сообщение) — решить, отвечать ли на них.
-- **Вопрос про погоду в конкретном месте** (`behaviour.weather.place_lookup`) —
-  текст сообщения-триггера уходит отдельным дешёвым вызовом, чтобы достать из
-  него название места, а само название — в геокодер Open-Meteo. Сам запрос
-  погоды (координаты, без чьих-либо данных) уходит в Open-Meteo при каждом
-  обновлении кэша, не чаще раза в `behaviour.weather.ttl_min` минут. Координаты
-  домашней точки живут только в `.env` на хосте. Выключается целиком:
-  `/set behaviour.weather.enabled false` (или только поиск по месту —
-  `/set behaviour.weather.place_lookup false`).
-- **Фотографии** (`behaviour.vision.*`) — это самое чувствительное место: когда
-  бот решает описать снимок, сам файл (превью не шире
-  `behaviour.vision.max_width`, по умолчанию 1024 px) уходит во внешний API
-  провайдера модели. Байты фото нигде не сохраняются — ни на диск, ни в базу, ни
-  в лог: они живут ровно один вызов. В базе остаётся только текстовое описание
-  (`[фото: ...]`), и оно, как и остальные сообщения, удаляется через
-  `message_retention_days`. Описывается не каждое фото (см. «Как он решает, когда
-  говорить»), а выключается всё целиком: `/set behaviour.vision.enabled false` —
-  тогда фото снова просто `[фото]` и никуда не уходит.
+The engine knows nothing about any particular character. Everything that makes it somebody is a
+**pack**, a directory chosen at start by `PERSONA_DIR`:
 
-Отдельно про долгую память чата (`behaviour.chat_memory.*`): раз в неделю весь
-прошедший период сообщений уходит в модель на сжатие, а получившийся пересказ
-хранится `keep_days` (по умолчанию год) — то есть **дольше самих сообщений**,
-которые к тому моменту уже удалены ретеншном. Это осознанное решение владельца:
-без него бот забывает всё, о чём говорили месяц назад. Сообщения замьюченных
-участников (`/mute`) в пересказ не попадают вовсе, отдельный пересказ можно
-удалить (`/memory rm N`), а всю эту механику — выключить целиком
-(`/set behaviour.chat_memory.enabled false`).
+```
+pack.yaml        manifest: format, name, language, ship list
+config.yaml      persona (name, triggers, birth date) and every behaviour number
+prompts/*.txt    13 prompts: the main one plus judge, follow-up, reaction, sticker, diary, memory, ...
+fragments.yaml   the wording the engine puts into prompts (situations, headers, weather, ...)
+few_shot.yaml    examples; also stickers.yaml, places_manual.yaml, vocab.example.yaml
+locale/<code>/   optional translations of the owner commands (fallback: English)
+golden/          scenarios and a recorded baseline (dev only, never shipped)
+```
 
-Заметки о незакрытых историях людей (`/people`, «ну как там?») — тоже заметки о
-конкретных людях, и они хранятся только до вопроса или не дольше
-`behaviour.callback.max_age_days` (по умолчанию 14 суток), потом удаляются
-ретеншном. Здоровье, политика и оценки в них не попадают по промпту, сообщения
-замьюченных участников в них не попадают вовсе, а владелец видит все заметки
-через `/people` и может удалить любую (`/people rm N`). Общие шутки (`/jokes`)
-живут столько же, сколько пересказы, и удаляются так же (`/jokes rm N`).
+- **Fail-closed.** With no `PERSONA_DIR` the process does not start (a lost mount must not start
+  another persona in a real chat). `ALLOW_DEMO_PERSONA=true` opts into the demo.
+- **Config layering:** engine defaults, then the language module's filter defaults, then the pack's
+  `config.yaml`, then runtime overrides from the database (`/set`).
+- **Language modules** (`sotto.lang`) hold only what is linguistic: how a name declines, how
+  vocabulary words are stemmed, stop words, whether foreign-script checks apply. English is
+  deliberately small; Russian is complete and tested on a synthetic pack in `tests/lang/`.
+- **Owner-UI catalog:** everything the bot writes in the owner's DM comes from `locales/<code>/*.yaml`.
+- `python -m sotto.packcheck DIR --boot --locale-parity` validates a pack, down to building the whole
+  LLM stack. How to write one: [docs/creating-a-persona.md](docs/creating-a-persona.md).
 
-Участникам чата стоит знать обо всём этом заранее.
+## The demo persona: Gus Marlow
 
-## Запуск
+A retired school-bus driver in his sixties who mends old clocks in a shed, plays tuba in a brass band
+and watches birds from a canal bank with a flask of tea. Dry, kind, brief. Everything about him,
+including his town, is invented. The pack in `personas/demo/` has 21 few-shot examples, 7 of them
+silence. A few of them:
 
-### Локально
+```
+Dana:  they moved the meeting again, second time this week
+Gus:   Second time is a routine. Third time, bring cake.
+
+Theo:  Gus how's the shed project going
+Gus:   The radio works now. It only receives a station that stopped broadcasting in 1987,
+       but it receives it well.
+
+Jo:    good morning everyone
+Gus:   (says nothing)
+```
+
+## Quickstart
+
+You need a bot token from BotFather, an OpenRouter API key, your own Telegram user id and a test
+group. Weather and venue features stay off until you add their optional keys.
+
+```bash
+cp .env.example .env        # fill BOT_TOKEN, ADMIN_USER_ID, OPENROUTER_API_KEY
+docker compose -f docker-compose.demo.yml up --build
+```
+
+Without Docker (Python 3.12, [uv](https://docs.astral.sh/uv/)):
 
 ```bash
 uv sync
-cp .env.example .env   # заполнить BOT_TOKEN и остальные ключи
-uv run python -m sotto
+PERSONA_DIR=personas/demo uv run python -m sotto
 ```
 
-### Docker
+1. Add the bot to the test group and write something. With `ALLOWED_CHAT_ID` empty the bot is in
+   *discovery mode*: it stores nothing, answers nothing and logs the chat id at WARNING level.
+2. Put that id in `.env` and restart. Talk to it: `@your_bot hello`, or `Gus, where are you?`.
+3. DM the bot from the owner account: `/help`, `/status`, `/get`, `/set`.
 
-Перед первым `docker compose up` обязательно:
+To try the gate without a chat or a model: the demo ships a synthetic Telegram export, and replay
+prints, per day, who would have been answered and why the rest were dropped.
 
 ```bash
-mkdir -p data && sudo chown 10001:10001 data
+uv run python -m sotto.replay personas/demo/golden/export.json --persona personas/demo \
+    --bot-username gus_demo_bot --bot-user-id 900001 --verbose
 ```
 
-Без этого шага bind-mount `./data`, созданный Docker'ом, принадлежит root, а процесс в контейнере работает от uid 10001 и не сможет писать `bot.db`.
+`--generate` also calls the real model and filter (capped by `--max-calls`) and prints the replies
+without sending anything.
 
-```bash
-cp .env.example .env   # заполнить ключи
-docker compose up -d --build
-```
+## Owner commands (private chat with the bot)
 
-`docker-compose.yml` монтирует `./data` в `/app/data` внутри контейнера —
-там живёт `bot.db`. Каталог `data/` в `.gitignore`, в репозиторий не
-попадает. Контейнер ничего не слушает наружу (long polling, открытых портов
-нет).
-
-Для продакшен-деплоя через готовый образ из GHCR (см. `PLAN.md`, этап 1.5)
-задайте `GHCR_OWNER` и `IMAGE_TAG` в окружении или в `.env` вместо флага
-`--build`.
-
-## Настройка перед первым запуском
-
-Чеклист (подробности в подразделах ниже и в разделах «Команды», «Заведения»,
-«Деплой»):
-
-1. Токен бота у [@BotFather](https://t.me/BotFather) (`BOT_TOKEN`).
-2. `chat_id` целевого чата и свой `user_id` — через discovery mode (см. ниже),
-   в `.env` это `ALLOWED_CHAT_ID` и `ADMIN_USER_ID`.
-3. Ключ OpenRouter с выставленным `credit limit` в кабинете (`OPENROUTER_API_KEY`)
-   — без лимита не выкатывать.
-4. Модели в `config.yaml`: `llm.main_model` и `llm.judge_model` — по умолчанию
-   уже заданы (`anthropic/claude-opus-5` и `openai/gpt-5.4-nano`), но если
-   один из них очистить через `/set`/`/unset`, бот молчит (`llm:no_model`
-   в `/why`), пока модель не задана снова.
-5. Заведения: либо ключ Google Places (`GOOGLE_PLACES_KEY`) и настоящий прогон
-   `places_fill.py`, либо `python -m sotto.places_fill --manual-only` —
-   без этого шага бот не сможет ответить на вопрос про место.
-6. Погода (необязательно): `WEATHER_LATITUDE`, `WEATHER_LONGITUDE` и
-   `WEATHER_HOME_NAME` в `.env` — координаты места, погоду которого бот считает
-   «своей». Ключ API не нужен, источник публичный. Не заданы — бот просто не
-   знает погоду за окном, всё остальное работает.
-7. VPS и секреты для деплоя (`SSH_HOST`/`SSH_USER`/`SSH_KEY`/`SSH_KNOWN_HOSTS`
-   в GitHub Secrets, `deploy/setup-host.sh` на хосте) — раздел «Деплой» ниже.
-
-### 1. BotFather
-
-1. Создать бота через [@BotFather](https://t.me/BotFather) командой `/newbot`,
-   сохранить токен.
-2. Задать имя профиля бота — **Отец Фёдор**.
-3. Выполнить `/setprivacy` → **Disable**. Это позволяет боту видеть все
-   сообщения в группе, а не только команды и реплаи на себя.
-4. Если бот уже был добавлен в чат до `/setprivacy` — режим приватности не
-   применится к уже состоящему в чате боту. **Удалить бота из чата и добавить
-   заново.**
-
-### 2. OpenRouter
-
-1. Создать ключ на [openrouter.ai](https://openrouter.ai/keys).
-2. **Обязательно** поставить на ключе `credit limit` в личном кабинете
-   OpenRouter. Без лимита сбой предохранителя в коде ничем не ограничен —
-   не выкатывать без этого шага.
-3. Когда кредиты кончаются или ключ перестаёт работать, OpenRouter отвечает
-   отказом (402, 401 и другие 4xx, кроме 408 и 429), и бот молчит там, где
-   нужна основная модель. Об этом он сам пишет владельцу в личку, не чаще раза
-   в сутки на код ответа (`llm.alert_owner`, `llm.alert_interval_hours`);
-   `/status` показывает последний отказ за сутки.
-
-### 3. Discovery mode — узнать chat_id и свой user_id
-
-Пока `ALLOWED_CHAT_ID` в `.env` не задан (или равен `0`), бот работает в
-discovery mode: ничего не пишет в БД, ни на что не отвечает, а только
-логирует уровнем `WARNING` `chat_id`, название чата, `user_id` и
-`display_name` каждого входящего сообщения.
-
-1. Заполнить `BOT_TOKEN` в `.env`, оставить `ALLOWED_CHAT_ID` пустым.
-2. Запустить бота (см. «Запуск» выше), добавить его в целевой чат, написать
-   туда любое сообщение.
-3. В логе первого запуска найти строку с нужным `chat_id` — вписать его в
-   `ALLOWED_CHAT_ID`. Тем же способом смотрите `user_id` своего аккаунта для
-   `ADMIN_USER_ID`.
-4. Перезапустить бота — discovery mode выключится, бот начнёт работать в
-   указанном чате.
-
-## Команды
-
-Командный роутер (`commands.py`) включён в `Dispatcher` первым — команды не
-попадают в гейт и не пишутся в `messages`. Ответы всегда plain text, без
-клавиатур, обрезаны до 3500 символов. Команда с суффиксом `@другой_бот`
-(Telegram рассылает такие всем ботам чата сразу) исполняется только если
-суффикс совпадает с username этого бота без учёта регистра; команда,
-пришедшая подписью к фото/видео, распознаётся так же, как обычный текст.
-
-### Команды чата — доступны всем участникам
-
-| Команда | Кто может | Что делает |
-|---|---|---|
-| `/stop` | все | 24 часа тишины для всего чата, без ответа |
-| `/mute` (без реплая) | все | мьютит самого отправителя |
-| `/mute` (реплаем на чужое) | **только владелец** | мьютит того, на чьё сообщение ответили |
-| `/unmute` (без реплая) | все | снимает мьют с самого отправителя |
-| `/unmute` (реплаем на чужое) | **только владелец** | снимает мьют с того, на чьё сообщение ответили |
-| `/ex add` (реплаем на реплику бота) | только владелец | пара «сообщение → ответ» уходит в новую версию few-shot |
-
-`/mute`/`/unmute` никогда не действуют на владельца и на самого бота —
-независимо от того, кто позвал команду. Все переключатели (`/stop`, `/panic`,
-`/resume`, `/mute`, `/unmute`) пишутся в `config_audit` (кто, когда, что).
-
-### Команды владельца — только в личке с ботом
-
-Проверка по `ADMIN_USER_ID` из `.env`. Неизвестная команда — список команд;
-любая команда не от владельца в личке — молчание.
-
-| Команда | Что делает |
+| Command | What it does |
 |---|---|
-| `/panic` | стоп навсегда, до `/resume` |
-| `/resume` | снимает panic, stop и предохранитель LLM |
-| `/status` | паника/стоп, предохранитель и последний отказ провайдера, версии промпта и few-shot, модели, shadow, счётчики дня, pending, night queue, горячее окно, доля реплик «о себе» за 3 суток |
-| `/last [n]` | последние реплики бота (по умолчанию 5, максимум 20) |
-| `/why [hours]` | сводка причин молчания за N часов (по умолчанию 1) |
-| `/get [ключ\|префикс]` | параметры конфига; точный ключ — карточка с описанием, типом и диапазоном |
-| `/set <ключ> <значение>` | изменить параметр без рестарта; списки — в YAML: `[a, b]` |
-| `/unset <ключ>` | сброс параметра к дефолту из `config.yaml` |
-| `/prompt [full]` | текущий системный промпт (превью или целиком) |
-| `/rollback <версия>` | откат промпта на версию |
-| `/ex last [n]` | последние примеры few-shot |
-| `/ex rm [n]` | удалить n-й пример few-shot с конца (по умолчанию 1) |
-| `/life <текст>` | запомнить новость о себе и сразу рассказать её в чате |
-| `/life list \| rm N \| post N` | события: список, удалить, повторить публикацию |
-| `/say <текст>` | сказать в чат ровно этот текст, без модели |
-| `/ask <текст>` | что ответил бы Фёдор, если бы ты обратился к нему в чате с этим текстом: тот же промпт со свежим контекстом и тот же фильтр, но в чат ничего не уходит и нигде не запоминается (вызов модели настоящий, идёт в бюджет) |
-| `/memory [list]` | пересказы прошедших недель: «#N 08.09–14.09.2026» и текст |
-| `/memory rm N` | удалить пересказ #N |
-| `/memory run` | пересказать всё, что накопилось, прямо сейчас (вне ночного окна) |
-| `/diary` | факты о себе за неделю, достанные из реплик: «#N dd.mm HH:MM текст» |
-| `/diary rm N` | удалить факт #N (перестаёт попадать в промпт) |
-| `/jokes` | шутки чата, которые он помнит: «#N текст (использована dd.mm \| —)», новые сверху |
-| `/jokes rm N` | удалить шутку #N |
-| `/people` | незакрытые истории людей для «ну как там?»: «#N Имя: текст (спросил dd.mm \| открыт)» |
-| `/people rm N` | удалить историю #N |
-| `/words` | словари словечек: имя, сколько слов, вкл/выкл; загрузка — YAML-файл с подписью `/words` |
-| `/words show\|on\|off\|rm <имя>` | слова словаря; включить; выключить; удалить |
-| `/changelog [owner\|<версия>]` | что нового: блок для чата (готов к копированию в группу) или для владельца |
-| `/help` | эта справка |
+| `/status`, `/why [h]`, `/last [n]` | state and counters; why it stayed silent; its latest replies |
+| `/get [key]`, `/set k v`, `/unset k` | read, change (validated, audited) or reset any config key without a restart |
+| `/panic`, `/resume` | stop everything; resume (also resets the LLM circuit breaker) |
+| `/prompt`, `/rollback N`, `/ex ...` | prompt and few-shot versions; add or remove examples |
+| `/ask <text>` | what it would answer to this message; nothing is sent or stored |
+| `/life <text>`, `/say <text>` | tell the chat a piece of news (remembered), or say a line verbatim |
+| `/memory`, `/diary`, `/jokes`, `/people`, `/words` | inspect and delete what it remembers; upload a word dictionary |
+| `/changelog [owner]` | release notes for the chat, or the engine changelog |
 
-`/life` и `/say` — не очередь, а кнопка «прямо сейчас»: ночное окно, дневные
-лимиты, кубик и живость чата не проверяются, останавливают только `panic` и
-`/stop`. Разница между ними — в памяти: `/life <текст>` заводит запись в БД,
-которая уходит в системный промпт слотом `{life}` и не стареет сама по себе —
-только `/life rm N` её чистит, поэтому Фёдор может к месту вспомнить старую
-новость и через неделю. `/say <текст>` память не трогает вовсе — ровно этот
-текст уходит в чат один раз, без модели и без выходного фильтра.
+In the group everybody can use `/stop` (24 hours of silence, no reply) and `/mute` / `/unmute`
+(for themselves). Commands never reach the gate or the message log.
 
-После КАЖДОЙ своей реплики — не только `/life`/`/say`, а вообще любого ответа,
-текстом или стикером — открывается горячее окно (`behaviour.hot_window.*`, по
-умолчанию 30 минут): пока оно открыто, ambient-реплики отвечают заметно живее
-(своя, более высокая вероятность и свой лимит на окно вместо дневного), а ответ
-на прямое обращение не откладывается дальше `mention_max_delay_sec`. Каждый
-следующий ответ (в том числе внутри уже открытого окна) продлевает его заново.
-Вне окна поведение не меняется ни на шаг; `/status` показывает `hot window: до
-HH:MM (n/cap)`, когда оно открыто.
-
-### Ритм внимания: телефон то в руках, то отложен
-
-В этом чате разговор идёт медленно, и люди часто пишут боту без реплая и без
-имени — просто продолжают разговор. Пока горячее окно открыто («телефон в
-руках»), каждое такое сообщение, которое обычный гейт не признал обращением,
-дополнительно проверяет дешёвая модель: «это мне или про мою тему?» (свой
-промпт, `prompts/followup.txt`, свой суточный лимит вызовов
-`behaviour.followup.daily_cap`, отдельный от бюджета основной модели). «Да» —
-бот отвечает как на обращение, с тем же потолком задержки, что и у горячего
-окна. Вне окна («телефон отложен») эта проверка не работает — реплай, имя и
-`@` по-прежнему доходят как раньше. `/status` показывает `followup calls:
-<сегодня>/<лимит>`. Тот же счётчик и тот же лимит тратит проверка обращения по
-имени (`behaviour.followup.name_check`, см. «Как он решает, когда говорить») —
-это дешёвые вызовы одной и той же маленькой модели.
-
-Ещё через `behaviour.checkin.after_min` минут (по умолчанию 2–4 часа) после
-того, как горячее окно закрылось, бот «возвращается проверить» чат — раз в
-`checkin.poll_sec` фоновый джоб (`checkin_job`) смотрит, не пора ли. Проверка
-идёт только в тишине: если в чате писали меньше `checkin.quiet_min` минут назад
-(по умолчанию 10), бот ждёт следующего захода — возвращаются в разговор, который
-уже остыл, а не влезают в идущий. Перед основной моделью пачку смотрит дешёвая
-модель (`behaviour.checkin.prefilter`, свой промпт
-`prompts/checkin_prefilter.txt`) — не нашла ничего для Фёдора, основная модель
-вообще не вызывается. Иначе — один вызов основной модели по всему, что
-написали после его последней реплики (до `checkin.max_messages` сообщений):
-«ответь, только если написано явно тебе — по имени, вопросом или ответом на твою
-реплику; сомневаешься — промолчи». Номер сообщения обязателен: ответ «всем
-сразу», без адресата, не отправляется вовсе, а выбранную строку ещё раз
-проверяет дешёвая модель («это правда ему?»). Ответ уходит реплаем на выбранное
-моделью сообщение. Ответил —
-горячее окно снова открыто, цикл повторяется; промолчал — следующая проверка
-ещё через `after_min`, но только если с тех пор писали. Если бот не отвечал
-дольше `checkin.topic_max_hours` (по умолчанию 48 часов) — тема считается
-умершей, проверки прекращаются, пока он не заговорит снова. Пока горячее окно
-ещё открыто («телефон в руках») — эта проверка не идёт, там справляется
-followup. `/status` показывает `checkin: due HH:MM` или `checkin: нет`.
-
-Примеры:
-
-```
-/why 3
-gate:not_live 14
-regex:length 2
-judge:risky 1
-
-/set behaviour.ambient_probability 0.2
-behaviour.ambient_probability: 0.15 → 0.2
-
-/get behaviour.daily_cap
-behaviour.daily_cap: 3
-тип: int, 0..50
-Суточный лимит ambient и «просто так» вместе
-
-/ex add            (реплаем на удачную реплику бота, в чате)
-```
-
-### Горячая перезагрузка и версии
-
-`/set`/`/unset` пишут в `config_overrides` и сразу пересобирают `Config` и
-`Patterns` в памяти (`ConfigStore`) — без рестарта процесса. То же самое для
-LLM: как только задан `OPENROUTER_API_KEY`, `LLMClient`/`Judge`/`Responder`
-создаются сразу при старте; если `llm.main_model` в этот момент пуст, бот
-просто молчит (`llm:no_model` в `/why`) и начинает отвечать сразу после
-`/set llm.main_model <id>`, без пересборки Responder. Системный промпт и
-few-shot версионируются отдельно (`prompt_versions`, `few_shot_versions`):
-`/rollback` переключает активную версию промпта, `/ex add`/`/ex rm` заводят
-новую версию few-shot — обе видны в `/status`, `/prompt` и в каждой строке
-`bot_replies` (`prompt_version`/`few_shot_version`).
-
-## Реплей
-
-`python -m sotto.replay <result.json|bot.db>` прогоняет гейт (и, с `--generate`,
-весь пайплайн генерации и выходного фильтра) по истории чата — либо по выгрузке из
-Telegram Desktop, либо напрямую по базе самого бота. Ничего не отправляется в чат и
-никуда не пишется — только печатается в stdout. Полезно перед выкатом: проверить, что
-новый конфиг не заваливает бота меншнами или, наоборот, не душит ambient, и увидеть
-вживую, что бы он ответил.
-
-### Источник: экспорт Telegram Desktop или база бота
-
-Обычный источник — выгрузка чата («Экспорт данных» → JSON, `result.json`; каталог
-`exports/` в `.gitignore`):
+## Testing
 
 ```bash
-uv run python -m sotto.replay exports/result.json \
-  --config config.yaml --bot-username example_persona_bot --seed 1
+uv run pytest -q
+uv run ruff check . && uv run ruff format --check . && uv run mypy src tools
+uv run pytest -q --cov --cov-report=json && uv run python -m tools.coverage_gate
 ```
 
-Но если в группе включён запрет на сохранение контента, владелец физически не может
-сделать такую выгрузку — Telegram Desktop не даёт экспортировать историю такого чата.
-В этом случае реплей можно прогнать прямо по базе бота (`data/bot.db` — та же, что
-использует сам бот в проде):
+- Over 2,000 tests, no network, no tokens; the test database is a temporary file. Coverage is
+  about 95 %, with a gate in CI: a total floor and a higher per-module floor for new code.
+  `ruff` and `mypy --strict` run clean.
+- **Golden harness** (`tools/golden`). For a pack it records exactly what the engine sends to the
+  models, how it parses answers, what it writes to the database, which config it builds and what
+  the owner UI says, for 101 scenarios in six groups (main prompts, helper prompts, deterministic
+  functions, config, owner UI, persistence). Time, randomness, HTTP and Telegram are faked, so the
+  output is byte-identical between runs.
 
-```bash
-uv run python -m sotto.replay data/bot.db --since 2026-09-01
-```
+  ```bash
+  uv run python -m tools.golden compare --pack personas/demo \
+      --scenarios personas/demo/golden/scenarios.yaml \
+      --baseline personas/demo/golden/baseline --allow personas/demo/golden/ALLOWED_DIFFS.md
+  uv run python -m tools.golden record --pack DIR --scenarios FILE --out DIR   # a new baseline
+  ```
 
-Источник определяется по расширению файла (`.db`/`.sqlite`/`.sqlite3` → база бота,
-иначе — экспорт); для нестандартного имени файла есть флаг `--from-db`. База читается
-одним read-only SELECT по таблице `messages` через sqlite3 URI `mode=ro` — без
-`Database.connect()`/`migrate()`, так что живой файл (и его WAL) не трогается и боту
-ничего не мешает работать параллельно. Чат берётся из единственного `chat_id`,
-встретившегося в таблице; если в базе несколько чатов — команда упадёт с понятной
-ошибкой и попросит уточнить `--chat-id <id>`. Сообщения самого бота (`is_bot=1` в
-таблице) остаются в потоке как обычно, а `--bot-user-id`, если не задан явно, реплей
-определяет по ним автоматически.
+  A refactor must print `golden compare OK: 101 scenarios identical`; intended changes are listed
+  by scenario id in `ALLOWED_DIFFS.md`. A baseline is never regenerated to hide a diff.
+- **`tools.ast_equiv`** shows that a translation pass changed no code: it compares two git revisions
+  after dropping docstrings and replacing user-facing strings by markers that keep their
+  placeholders. It was used to move the whole code base from Russian to English.
+- A **language gate** (`tools.check_language`) fails CI if Cyrillic appears outside the Russian
+  language module and its tests.
 
-`--since YYYY-MM-DD` / `--until YYYY-MM-DD` — отсечь историю по локальной дате
-(`persona.timezone`) с обеих сторон; работают одинаково что для экспорта, что для базы
-бота — удобно прогнать реплей только по последнему месяцу вместо всей истории чата.
+## How it was built
 
-### Только гейт
+Built by one person with AI assistants, as an experiment in a disciplined workflow rather than
+vibe coding.
 
-```bash
-uv run python -m sotto.replay exports/result.json \
-  --config config.yaml --bot-username example_persona_bot --seed 1
-```
+- **A written contract.** [CLAUDE.md](CLAUDE.md) is the spec: module interfaces, invariants (one
+  LLM entry point, gate order, shadow semantics), conventions, what not to do. Claude Code agents
+  worked from it, often several in parallel on separate modules.
+- **Independent review.** Plans and large diffs went to a second model (Codex) for review before
+  merging, and findings were argued with evidence rather than accepted by default.
+- **Golden baselines as the safety net.** Before the persona/language split, 101 scenarios were
+  recorded on the old code, and each refactoring PR had to reproduce them exactly. That is what made
+  it safe to turn a single-persona bot into an engine plus packs, and later to translate the code.
+- **History.** Development started on 2026-09-10 and reached this state in about two months, one
+  pull request per feature or release. Their titles and descriptions are in
+  [docs/history/pull-requests.md](docs/history/pull-requests.md), the original staged plan in
+  [docs/history/original-plan.md](docs/history/original-plan.md). The private history was cleaned of
+  chat data before publication.
 
-Ключ не нужен, сеть не используется. На выходе — таблица по дням (сообщений,
-pass по триггерам, night, топ-5 причин drop) и итог со средними в сутки.
-`--verbose` добавляет построчный список всех PASS с текстом сообщения.
-`--bot-user-id` — если бот уже был в чате во время выгрузки (нужен для
-детекта реплаев на его сообщения); `--bot-username` — для детекта `@упоминаний`.
-
-### С генерацией: `--generate`
-
-```bash
-uv run python -m sotto.replay exports/result.json \
-  --config config.yaml --bot-username example_persona_bot \
-  --generate --max-calls 20
-```
-
-На каждом PASS дополнительно вызывается настоящая модель (`llm.main_model` из
-конфига) по тому же пути, что использует бот в проде: свежий контекст из
-выгрузки → промпт → ответ → выходной фильтр (слои 1–2 всегда, судья — только
-с `--judge`, отдельным вызовом `llm.judge_model`). Требует `OPENROUTER_API_KEY`
-в `.env` — без него команда сразу падает с понятным сообщением, до единого
-сетевого запроса.
-
-- `--max-calls N` (по умолчанию 20) — жёсткий потолок **реальных сетевых
-  вызовов** модели за прогон реплея (основной + судья вместе), отдельно от
-  дневных лимитов из `config.yaml` (`llm.daily_calls_cap`/`llm.daily_budget_usd`
-  при этом тоже действуют). Считается не число PASS с генерацией, а фактическое
-  число обращений к OpenRouter: перед каждым новым PASS команда проверяет,
-  сколько вызовов уже сделано, и если лимит уже достигнут — генерацию на этом
-  и следующих PASS не запускает (подсчёт гейта по дням при этом продолжается
-  как обычно). Проверка идёт до вызова, поэтому уже начатая генерация может
-  добавить ещё вызов судьи сверх лимита — превышение `--max-calls` максимум на
-  один судейский вызов ожидаемо, не баг. На выгрузке за месяц PASS обычно на
-  порядок больше 20 — это специально: реплей не для того, чтобы сгенерировать
-  всё сразу, а чтобы посмотреть на десяток-другой живых примеров.
-- `--judge` — включить LLM-судью (слой 3). Каждый PASS с генерацией — это до
-  двух вызовов модели (основной + судья), оба считаются в `--max-calls` и в
-  дневных лимитах OpenRouter.
-- Ориентировочная цена: `llm.max_tokens` (по умолчанию 200) и типичный контекст
-  на `context_window` сообщений — один вызов основной модели редко превышает
-  несколько тысяч входных токенов. При дешёвой модели (доли цента за 1K
-  токенов) 20 вызовов почти всегда укладываются в центы, но точная цифра
-  зависит от выбранной модели — команда печатает фактическую потраченную
-  сумму в конце (`usage.cost` из ответа OpenRouter), полагаться на неё,
-  а не на прикидку заранее. Перед первым прогоном с новой дорогой моделью
-  разумно попробовать `--max-calls 3`.
-
-### Как читать вывод
-
-С `--generate` в начале печатается блок построчно на каждый сгенерированный
-PASS:
+## Project layout
 
 ```
-2026-09-10 18:03:12 | Гена | name | федя привет как дела → Бывает, дед. | pass
+src/sotto/          the engine: gate, responder, filters, judge, llm, db, commands, memory, lang/
+personas/demo/      the English demo pack (Gus Marlow) with its golden scenarios and baseline
+locales/en/         owner-UI texts
+tests/              pytest suite on the demo pack; tests/lang/ for Russian behaviour
+tools/              golden harness, coverage gate, language gate, ast_equiv
+docs/               creating-a-persona.md, history/, plans/
+deploy/, Dockerfile, docker-compose*.yml, RUNBOOK.md   operations
+CLAUDE.md           the contract for agents
+CHANGELOG.md        the engine changelog
 ```
 
-`время | имя автора триггера | тип триггера (mention/reply/name/ambient) |
-сообщение-триггер → сгенерированный ответ | вердикт`. Вердикт — `pass`
-(прошёл бы все слои) либо список причин среза через запятую (например
-`regex:latin` или `judge:risky` — тот же словарь причин, что в `filter_log`
-и в `/why`).
+## Author and license
 
-Дальше — таблица по дням, как и без `--generate`, а в самом конце — сводка
-только по генерации:
-
-```
-Генерация: вызовов=14, отправлено бы=9, срезано (топ-5): regex:venue=2, dedup:jaccard=1, потрачено $=0.0231
-```
-
-`вызовов` — фактическое число сетевых обращений к OpenRouter за весь прогон
-(основной + судья, включая пойманные ошибкой: таймаут, бюджет, невалидный
-JSON) — то же число, по которому считается потолок `--max-calls`, не число
-PASS, для которых была запущена генерация. `отправлено бы` — сколько
-кандидатов прошли бы фильтр целиком (с учётом `filters.shadow: true` — в
-shadow-режиме «отправлено бы» считает то, что реально ушло бы в чат при
-выключенном shadow). `срезано` — топ-5 причин, тем же форматом, что и `/why`.
-`потрачено $` — сумма `usage.cost` по всем вызовам этого прогона, включая
-судью, если был `--judge`.
-
-### Бюджет в shadow-режиме
-
-При `filters.shadow: true` (дефолт) и непустом `llm.judge_model` судья
-вызывается почти на каждую сгенерированную реплику — слой 3 в shadow
-пропускает даже кандидатов, уже срезанных слоями 1–2 (нужна полная
-статистика), поэтому реальный расход на генерацию удваивается: каждый
-успешный PASS с `--generate --judge` — это два сетевых вызова, а не один.
-Это относится и к боевому режиму (`responder.py`), не только к реплею —
-при планировании credit limit на ключе OpenRouter на неделю с включённым
-shadow и заданным `judge_model` закладывайте вдвое больше вызовов/бюджета,
-чем даёт грубая прикидка «худший день» из раздела про защиту бюджета
-(PLAN.md, этап 3): пока `shadow: true`, это не резерв на всякий случай, а
-типичный расход.
-
-## Заведения
-
-Бот называет только заведения из своего кэша (таблица `places`) — никогда не
-выдумывает. Кэш наполняется офлайн-скриптом `places_fill.py`, а не в рантайме:
-рантайм (`places.py`) только выбирает из уже готового кэша, ходить в Google на
-каждый вопрос про бар — и дорого, и медленно.
-
-При прямом обращении (mention/reply/имя) в промпт уходит весь кэш заведений
-целиком, а не отбор по регуляркам — решать, спрашивали ли про место и что
-назвать (максимум два, по тишине и району), доверено самой модели. Регулярки
-про запрос места (`filters.places_request`) остаются только для статистики
-триггера в `filter_log`/`bot_replies`, гейт они не обходят. Страховка от
-выдуманных заведений — не детект, а срез `regex:venue` в выходном фильтре по
-названиям из кэша.
-
-### 1. Ключ Google Places API (New)
-
-1. В [Google Cloud Console](https://console.cloud.google.com/) создать проект
-   (или использовать существующий) и включить **Places API (New)**
-   (`console.cloud.google.com/apis/library/places-backend.googleapis.com`) —
-   именно New, не старый Places API: `places_fill.py` ходит на
-   `places.googleapis.com/v1/places:searchText`.
-2. Создать API-ключ (APIs & Services → Credentials → Create credentials → API
-   key).
-3. **Обязательно ограничить ключ** (Edit API key → API restrictions →
-   Restrict key → выбрать только `Places API (New)`). Без ограничения ключ
-   действителен для любого API проекта — при утечке (например, случайный
-   коммит `.env`) им можно жечь деньги на чём угодно, не только на Places.
-   Чтобы ключ не читался бесконтрольно с любого сервера, здесь же можно
-   дополнительно ограничить по IP хоста, где запускается `places_fill.py`
-   (Application restrictions), если он всегда один и тот же.
-4. В биллинге проекта — как и с OpenRouter — поставить бюджетное
-   оповещение/лимит: `places:searchText` тарифицируется за вызов, а скрипт
-   делает по вызову на каждый запрос из `places.queries` (по умолчанию 8).
-   Поле `places.reviews` в `X-Goog-FieldMask` (без него не сжать отзывы в
-   `fact`) поднимает тариф вызова до уровня Enterprise + Atmosphere —
-   порядка $35–40 за 1000 запросов, поэтому наш прогон из 8 запросов раз в
-   месяц стоит около $0.3, а не копейки, но лимит на аккаунте всё равно
-   стоит завести один раз.
-5. Вписать ключ в `.env`: `GOOGLE_PLACES_KEY=...`.
-
-Без ключа бот всё ещё может работать по стартовому списку — см.
-`--manual-only` ниже.
-
-### 2. Заполнить `places_manual.yaml`
-
-Google не знает, можно ли в заведении поговорить (`quiet`), а категорию
-(`craft`/`cheap`/`pub`/`outskirts`) и район по одному только его ответу
-доверять не стоит — это проставляется руками в `places_manual.yaml` (в корне
-репозитория) и переопределяет то, что вернул поиск:
-
-```yaml
-- name: Klubokawiarnia ZORZA   # сопоставляется с displayName Google без учёта
-  quiet: true                  # регистра: точным совпадением или вхождением
-  category: pub                # craft | cheap | outskirts | pub
-  district: Rożyce             # переопределяет formattedAddress, если задан
-```
-
-Стартовый список (11 заведений + 3 окрестности) уже заполнен из CHARACTER.md,
-раздел 7 — его нужно только поддерживать: новое место в кэше без записи в
-`places_manual.yaml` останется с `quiet: false` и категорией, угаданной по
-тексту отзывов/типу заведения (см. докстринг `places_fill.py`), что для
-`quiet` почти наверняка неверно. Три записи-заглушки для Bórnik/Leszczykowo/
-Jezioro Strzechyńskie помечены `ДОБИТЬ РУКАМИ` в комментариях — после первого
-прогона со свежим ключом надо заменить их на реальные найденные заведения.
-
-### 3. Запуск
-
-```bash
-# ничего не пишет в БД, только печатает таблицу найденного — смотреть fact
-uv run python -m sotto.places_fill --dry-run
-
-# настоящий прогон: пишет в places, печатает ту же таблицу
-uv run python -m sotto.places_fill
-
-# без ключа Google вообще — только стартовый список из places_manual.yaml,
-# rating=5.0/reviews=999 (честно ручные данные, в логе строка "данные ручные"),
-# чтобы бот отвечал про места до появления ключа
-uv run python -m sotto.places_fill --manual-only
-
-# без вызова LLM (например, чтобы посмотреть на сырой список без денег на API)
-uv run python -m sotto.places_fill --no-llm
-
-# свои запросы вместо cfg.places.queries, через ';'
-uv run python -m sotto.places_fill --queries "kraft Wolsań;cichy pub Wolsań"
-```
-
-### 4. Обязательно проверить `fact` руками
-
-Отзывы — чужой текст из интернета, английские и туристические: бот не должен
-их пересказывать, поэтому они не попадают в БД сырыми. Вместо этого один
-LLM-вызов сжимает до 5 отзывов в короткую характеристику (`тихо`, `терраса`,
-`дёшево`, `настолки` — только кириллица, ≤ 40 символов), которая и идёт в
-`places.fact` и оттуда — в каждый промпт про места. Отзыв — это ещё и канал
-непрямой инъекции (команда внутри отзыва теоретически может доехать через
-сжатие до fact), поэтому `validate_fact` уже режет всё, что не прошло строгий
-формат, но это последний автоматический рубеж, не единственный: после каждого
-прогона **обязательно** просмотреть колонку `fact` в напечатанной таблице
-(или `SELECT name, fact FROM places` в `data/bot.db`) и руками поправить, что
-криво сжалось или выглядит подозрительно — на 15 строк уходит минут десять.
-
-### 5. Раз в месяц
-
-Заведения закрываются, рейтинги плывут. Раз в месяц (`places.cache_ttl_days`,
-по умолчанию 30 — заодно и напоминание, когда следующий прогон) — перегнать
-`uv run python -m sotto.places_fill`, проверить `fact`. Место, которое в
-этом прогоне не нашлось среди ответов Google (закрылось, перестало проходить
-по `min_rating`/`min_reviews`, или просто не попало ни в один из
-`places.queries`), не удаляется из БД — оно тихо помечается `operational=0`
-(`Database.mark_places_not_seen`), и бот перестаёт его называть, ничего
-дополнительно делать не нужно. Это работает только для настоящего прогона с
-Google (не `--dry-run` и не `--manual-only`) — записи `--manual-only` (стартовый
-список без ключа) этим прогоном никогда не трогаются, Google их и не должен
-находить.
-
-## Стикеры
-
-Бот может ответить стикером из одного конкретного набора вместо текста —
-основная модель об этом не знает, выбор делает вторая, дешёвая модель уже над
-готовым (прошедшим выходной фильтр) ответом (`config.yaml`, раздел
-`behaviour.stickers`; подробности решения — `PLAN.md`, «Стикеры»).
-
-Каталог — `stickers.yaml` в корне (пустой по умолчанию, значит «стикеров
-нет»). Наполняется офлайн: собрать набор в самом Telegram
-(`t.me/addstickers/<имя>`), затем
-
-```bash
-# скачивает набор, распознаёт надписи моделью со зрением, мержит с уже
-# существующим stickers.yaml (правки владельца не теряются) и печатает таблицу
-uv run python -m sotto.stickers_fill <имя_набора>
-
-# только посмотреть, не писать файл
-uv run python -m sotto.stickers_fill <имя_набора> --dry-run
-
-# без модели: text/when пустые, заполнить руками
-uv run python -m sotto.stickers_fill <имя_набора> --no-llm
-```
-
-Дальше **обязательно** проверить `text`/`when` в `stickers.yaml` руками —
-надпись распознана моделью по картинке, а не взята из Telegram (Telegram текст
-на стикере не отдаёт), и `when` («когда уместен») — только черновик.
-
-## Деплой
-
-Продакшен — VPS (Hetzner, Ubuntu) с публичным IP, деплой push-моделью по SSH
-из GitHub Actions при каждом пуше в `main` (см. `PLAN.md`, этап 1.5).
-Образ собирается и публикуется в `ghcr.io/tslava/trolobot`. Ничего не слушает
-наружу — long polling, firewall на хосте пропускает только SSH.
-
-### GitHub Secrets (Settings → Secrets and variables → Actions)
-
-Заводятся в environment `production`:
-
-| Secret | Значение |
-|---|---|
-| `SSH_HOST` | IP или домен VPS |
-| `SSH_USER` | `bot` |
-| `SSH_KEY` | приватный ключ деплоя (парный к ключу в `authorized_keys` на хосте) |
-| `SSH_KNOWN_HOSTS` | вывод `ssh-keyscan -H <host>` |
-
-Секретов приложения (`BOT_TOKEN`, `OPENROUTER_API_KEY` и т.д.) в CI нет и быть
-не должно — они живут только в `/opt/trolobot/.env` на хосте.
-
-### Первый выкат
-
-1. На хосте под sudo: `sudo bash deploy/setup-host.sh --pubkey-file deploy_key.pub`
-   (ставит docker, пользователя `bot`, `/opt/trolobot`, `deploy.env`,
-   ограниченный SSH-ключ, ufw, cron-бэкап). Скрипт идемпотентен, можно
-   перезапускать.
-2. Заполнить `/opt/trolobot/.env` на хосте (скопирован пустым из
-   `.env.example`, права 600) — `BOT_TOKEN`, `OPENROUTER_API_KEY`,
-   `GOOGLE_PLACES_KEY`, `ADMIN_USER_ID`, `ALLOWED_CHAT_ID`.
-3. Если пакет `ghcr.io/tslava/trolobot` приватный — залогинить `bot` в GHCR
-   (`docker login ghcr.io`, PAT с `read:packages`), либо сделать пакет
-   публичным в настройках GHCR. Без этого `docker compose pull` на хосте не
-   сработает.
-4. Завести секреты выше в GitHub, создать environment `production`.
-5. Push в `main` (или `workflow_dispatch` на вкладке Actions) — прогонит
-   тесты, соберёт и запушит образ, выполнит `deploy/deploy.sh` на хосте по SSH.
-6. Проверить логи: ключ деплоя (`SSH_KEY`) — forced-command, пропускает
-   только `bash -s -- sha-xxx` (см. `deploy/deploy-only.sh`), им `docker compose
-   logs` не выполнить. Владелец заходит на хост **своим** пользователем и
-   ключом, а дальше смотрит логи от имени `bot`:
-   ```bash
-   ssh owner@host "sudo -u bot docker compose -f /opt/trolobot/docker-compose.yml --env-file /opt/trolobot/deploy.env logs -f"
-   ```
-7. Проверить ключевой вход владельца (шаг выше), затем вручную отключить
-   парольный и root-доступ по SSH — `deploy/setup-host.sh` этого намеренно
-   не делает, чтобы не отрезать доступ до проверки. На хосте, под sudo, в
-   `/etc/ssh/sshd_config`: `PasswordAuthentication no`, `PermitRootLogin
-   prohibit-password` (или `no`), затем `systemctl restart sshd`.
-8. Бэкапы `bot.db` (cron из `setup-host.sh`) по умолчанию пишутся в
-   `/opt/trolobot/backups` на том же диске, что и `data/` — при потере диска
-   бэкап пропадает вместе с БД. Для бэкапа на отдельном диске: подключить
-   Hetzner Volume к серверу, смонтировать его в `/opt/trolobot/backups`
-   (перенести туда существующие файлы перед первым монтированием, если они
-   уже есть). Это ручной шаг, `setup-host.sh` том не создаёт и не монтирует.
-
-### Откат руками
-
-Без нового пуша — руками на хосте, тоже от имени владельца (свой пользователь
-и ключ; ключ деплоя для этого не годится, он пропускает только форму
-`bash -s -- sha-xxx`, см. выше):
-
-```bash
-# вариант 1: зайти на хост и вручную отредактировать IMAGE_TAG
-ssh owner@host
-sudo -u bot -i
-cd /opt/trolobot && nano deploy.env   # выставить нужный IMAGE_TAG=sha-xxxxxxx
-docker compose --env-file deploy.env up -d
-
-# вариант 2: прогнать deploy.sh с явным тегом, от имени bot, со своей
-# (проверенной) локальной копии репозитория, без захода на хост интерактивно
-ssh owner@host "sudo -u bot bash -s -- sha-xxxxxxx" < deploy/deploy.sh
-```
-
-`deploy/deploy.sh` сам откатится на `IMAGE_TAG_PREV`, если новый тег не стал
-healthy за 60 секунд, или если `docker compose pull`/`up -d` не отработали —
-ручной откат нужен только для более старых версий.
-
-## Версии и changelog
-
-Версия — SemVer с мажором 0, единственный источник — `version` в `pyproject.toml`
-(`sotto.__version__` читает её через метаданные пакета, видна в `/status`).
-Release-notes — [`CHANGELOG.md`](CHANGELOG.md), два блока на версию: «Для чата»
-(без технических слов, `/changelog` отдаёт его владельцу для копирования в группу)
-и «Для владельца» (`/changelog owner`, `/changelog <версия>`). Процесс релиза:
-
-1. Каждый PR, меняющий поведение бота, дописывает раздел `## [Unreleased]` в
-   `CHANGELOG.md` — оба блока.
-2. При релизе: поднять `version` в `pyproject.toml`, `uv lock`, перенести
-   Unreleased в `## [X.Y.Z] — YYYY-MM-DD`, обновить ссылки внизу файла.
-3. Смержить, затем `git tag vX.Y.Z <squash-commit> && git push origin vX.Y.Z`.
-   Docker-образ по-прежнему тегируется `sha-…`, версия к деплою не привязана.
-
-## Эксплуатация
-
-Что смотреть раз в неделю и раз в месяц, что делать при инцидентах с телефона
-и как восстанавливаться после сбоя — всё в [`RUNBOOK.md`](RUNBOOK.md).
-
-## Разработка
-
-```bash
-uv run ruff check src tests
-uv run ruff format --check src tests
-uv run mypy src
-uv run pytest
-```
-
-Все четыре команды должны быть зелёными перед сдачей изменений.
-
-## Документы
-
-- [`PLAN.md`](PLAN.md) — технический план по этапам: что и в каком порядке
-  реализовано, схема БД, приёмочные критерии.
-- [`CHARACTER.md`](CHARACTER.md) — карточка персонажа: биография, голос,
-  системный промпт, few-shot, конфиг поведения, красные линии.
-- [`CLAUDE.md`](CLAUDE.md) — контракт кода для тех, кто его меняет: структура
-  модулей, интерфейсы, конвенции.
-- [`RUNBOOK.md`](RUNBOOK.md) — операционная книжка: еженедельные и
-  ежемесячные проверки, инциденты с телефона, восстановление после сбоя.
+Wiaczesław Cyunczyk, <https://tslava.dev>, GitHub [@tslava](https://github.com/tslava).
+MIT, see [LICENSE](LICENSE).
