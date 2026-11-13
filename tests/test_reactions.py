@@ -36,6 +36,7 @@ from sotto.reactions import (
     react,
 )
 from sotto.timeutil import day_key
+from tests.packs import LEGACY_PACK
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 TZ = "Europe/Warsaw"
@@ -444,7 +445,7 @@ def test_reactions_config_rejects_inverted_delay_range() -> None:
 
 # --- ReactionChooser: дешёвый вызов модели ---
 
-REACTION_PROMPT = Path("prompts/reaction.txt").read_text(encoding="utf-8")
+REACTION_PROMPT = (LEGACY_PACK / "prompts/reaction.txt").read_text(encoding="utf-8")
 
 Handler = Callable[[httpx.Request], httpx.Response]
 

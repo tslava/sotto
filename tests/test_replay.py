@@ -19,6 +19,7 @@ from sotto import replay as replay_module
 from sotto.db import Database
 from sotto.gate_types import GateMessage, StateChange, Trigger
 from sotto.replay import ReplayState, run_replay
+from tests.packs import LEGACY_PACK
 
 TZ = "Europe/Warsaw"
 
@@ -182,7 +183,7 @@ def test_run_replay_produces_day_line_and_summary(tmp_path: Path) -> None:
     export_path = tmp_path / "result.json"
     _write_synthetic_export(export_path, TZ)
 
-    config_path = Path(__file__).resolve().parent.parent / "config.yaml"
+    config_path = LEGACY_PACK / "config.yaml"
 
     args = argparse.Namespace(
         source=export_path,
@@ -242,6 +243,9 @@ def test_run_replay_generate_prints_reply_and_verdict(
 ) -> None:
     monkeypatch.setenv("BOT_TOKEN", "123:test-token")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+    monkeypatch.setenv("PROMPT_PATH", str(LEGACY_PACK / "prompts/system.txt"))
+    monkeypatch.setenv("FEW_SHOT_PATH", str(LEGACY_PACK / "few_shot.yaml"))
+    monkeypatch.setenv("JUDGE_PROMPT_PATH", str(LEGACY_PACK / "prompts/judge.txt"))
 
     export_path = tmp_path / "result.json"
     _write_name_trigger_export(export_path, TZ)
@@ -373,6 +377,9 @@ def test_run_replay_generate_max_calls_counts_real_network_calls(
     """
     monkeypatch.setenv("BOT_TOKEN", "123:test-token")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+    monkeypatch.setenv("PROMPT_PATH", str(LEGACY_PACK / "prompts/system.txt"))
+    monkeypatch.setenv("FEW_SHOT_PATH", str(LEGACY_PACK / "few_shot.yaml"))
+    monkeypatch.setenv("JUDGE_PROMPT_PATH", str(LEGACY_PACK / "prompts/judge.txt"))
 
     export_path = tmp_path / "result.json"
     _write_repeated_name_trigger_export(export_path, TZ, count=6)
@@ -482,7 +489,7 @@ def _seed_bot_db_sync(db_path: Path, tz: str) -> None:
 
 
 def _db_args(source: Path, **overrides: object) -> argparse.Namespace:
-    config_path = Path(__file__).resolve().parent.parent / "config.yaml"
+    config_path = LEGACY_PACK / "config.yaml"
     base: dict[str, object] = {
         "source": source,
         "config": config_path,

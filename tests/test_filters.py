@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
@@ -26,9 +25,9 @@ from sotto.db import MessageRow
 from sotto.few_shot import load_few_shot
 from sotto.filters import FilterContext, FilterVerdict, check_output
 from sotto.vocab import Vocab, parse_vocab
+from tests.packs import LEGACY_PACK
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SYSTEM_PROMPT = (REPO_ROOT / "prompts" / "system.txt").read_text(encoding="utf-8")
+SYSTEM_PROMPT = (LEGACY_PACK / "prompts" / "system.txt").read_text(encoding="utf-8")
 
 # --------------------------------------------------------------------------- #
 # Хелперы
@@ -531,7 +530,7 @@ async def test_filter_context_accepts_legacy_four_field_call() -> None:
 
 
 async def test_all_few_shot_speak_true_examples_pass_check_output() -> None:
-    items = load_few_shot(REPO_ROOT / "few_shot.yaml")
+    items = load_few_shot(LEGACY_PACK / "few_shot.yaml")
     speak_items = [item for item in items if item.speak]
     assert speak_items, "few_shot.yaml должен содержать хотя бы один пример speak=true"
 

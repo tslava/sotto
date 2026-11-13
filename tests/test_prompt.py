@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -28,6 +27,7 @@ from sotto.prompt import (
     situation_followup,
     situation_life,
 )
+from tests.packs import LEGACY_PACK
 
 TEMPLATE = (
     "Ты бот. Тебе {age} лет.\n\n"
@@ -768,11 +768,8 @@ def test_build_messages_avoid_strips_fake_delimiters() -> None:
 
 
 def test_real_system_prompt_has_avoid_slot_right_before_situation() -> None:
-    from pathlib import Path
 
-    template = (Path(__file__).resolve().parents[1] / "prompts" / "system.txt").read_text(
-        encoding="utf-8"
-    )
+    template = (LEGACY_PACK / "prompts" / "system.txt").read_text(encoding="utf-8")
 
     assert "{avoid}" in template
     assert "{avoid}\n\n{situation}" in template
@@ -938,7 +935,7 @@ def test_build_messages_diary_does_not_swallow_other_slots() -> None:
 
 
 def test_real_system_prompt_has_diary_slot_right_after_life() -> None:
-    template = (Path(__file__).parent.parent / "prompts" / "system.txt").read_text(encoding="utf-8")
+    template = (LEGACY_PACK / "prompts" / "system.txt").read_text(encoding="utf-8")
     life_at = template.index("{life}")
     diary_at = template.index("{diary}")
     assert diary_at > life_at
@@ -981,7 +978,7 @@ def test_build_messages_vocab_defaults_to_empty_string() -> None:
 
 
 def test_real_system_prompt_has_vocab_slot_after_diary_before_rules() -> None:
-    template = (Path(__file__).parent.parent / "prompts" / "system.txt").read_text(encoding="utf-8")
+    template = (LEGACY_PACK / "prompts" / "system.txt").read_text(encoding="utf-8")
     diary_at = template.index("{diary}")
     vocab_at = template.index("{vocab}")
     rules_at = template.index("КАК ТЫ ПИШЕШЬ")
@@ -1038,7 +1035,7 @@ def test_build_messages_jokes_does_not_swallow_other_slots() -> None:
 
 
 def test_real_system_prompt_has_jokes_slot_right_after_chat_memory() -> None:
-    template = (Path(__file__).parent.parent / "prompts" / "system.txt").read_text(encoding="utf-8")
+    template = (LEGACY_PACK / "prompts" / "system.txt").read_text(encoding="utf-8")
     memory_at = template.index("{chat_memory}")
     jokes_at = template.index("{jokes}")
     assert jokes_at > memory_at

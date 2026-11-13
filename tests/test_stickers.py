@@ -26,8 +26,9 @@ from sotto.stickers import (
     render_sticker_menu,
     sticker_allowed,
 )
+from tests.packs import LEGACY_PACK
 
-STICKER_PROMPT_PATH = Path("prompts/sticker.txt")
+STICKER_PROMPT_PATH = LEGACY_PACK / "prompts/sticker.txt"
 NOW = 1_768_003_200
 
 

@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import random
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -35,11 +34,12 @@ from sotto.patterns import Patterns
 from sotto.places import validate_fact
 from sotto.prompt import CHAT_OPEN, build_messages
 from sotto.sanitize import normalize_text, sanitize_display_name, stable_n
+from tests.packs import LEGACY_PACK
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 DAY_NOW = int(datetime(2026, 6, 10, 15, 0, tzinfo=WARSAW).timestamp())  # день, вне ночного окна
 
-JUDGE_PROMPT = Path("prompts/judge.txt").read_text(encoding="utf-8")
+JUDGE_PROMPT = (LEGACY_PACK / "prompts/judge.txt").read_text(encoding="utf-8")
 
 _GENERIC_TEMPLATE = (
     "Тебе {age} лет. Примеры: {few_shot}\n{context}\n{recent_replies}\n{places}\n{situation}"

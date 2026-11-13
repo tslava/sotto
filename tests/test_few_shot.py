@@ -1,14 +1,12 @@
 """few_shot.yaml: загрузка и рендер в формат промпта."""
 
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
 from sotto.few_shot import FewShot, load_few_shot, render_few_shot
+from tests.packs import LEGACY_PACK
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-FEW_SHOT_PATH = REPO_ROOT / "few_shot.yaml"
+FEW_SHOT_PATH = LEGACY_PACK / "few_shot.yaml"
 
 
 def test_load_real_few_shot_without_errors() -> None:

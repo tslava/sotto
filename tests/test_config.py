@@ -2,7 +2,6 @@
 
 import json
 from datetime import date
-from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -18,9 +17,9 @@ from sotto.config_models import (
     PlacesConfig,
     ReplyDelayBucket,
 )
+from tests.packs import LEGACY_PACK
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = REPO_ROOT / "config.yaml"
+CONFIG_PATH = LEGACY_PACK / "config.yaml"
 
 
 def test_load_real_config_without_errors() -> None:

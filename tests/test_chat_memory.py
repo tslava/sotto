@@ -23,10 +23,11 @@ from sotto.config_models import Config
 from sotto.db import ChatMemoryRow, Database
 from sotto.llm import LLMClient
 from sotto.patterns import Patterns
+from tests.packs import LEGACY_PACK
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 CHAT_ID = -100123
-MEMORY_PROMPT = Path("prompts/memory.txt").read_text(encoding="utf-8")
+MEMORY_PROMPT = (LEGACY_PACK / "prompts/memory.txt").read_text(encoding="utf-8")
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
@@ -528,8 +529,8 @@ async def test_job_survives_iteration_errors(
 
 # --- шутки чата и истории людей (CLAUDE.md, "шутки чата и истории людей") -------
 
-JOKES_PROMPT = Path("prompts/memory_jokes.txt").read_text(encoding="utf-8")
-THREADS_PROMPT = Path("prompts/memory_threads.txt").read_text(encoding="utf-8")
+JOKES_PROMPT = (LEGACY_PACK / "prompts/memory_jokes.txt").read_text(encoding="utf-8")
+THREADS_PROMPT = (LEGACY_PACK / "prompts/memory_threads.txt").read_text(encoding="utf-8")
 
 
 def _extras_memorizer(

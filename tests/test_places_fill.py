@@ -35,9 +35,9 @@ from sotto.places_fill import (
     run,
 )
 from sotto.settings import Settings
+from tests.packs import LEGACY_PACK
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-REAL_MANUAL_PATH = REPO_ROOT / "places_manual.yaml"
+REAL_MANUAL_PATH = LEGACY_PACK / "places_manual.yaml"
 API_KEY = "gp-test-key"
 
 

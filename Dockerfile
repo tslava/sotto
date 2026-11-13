@@ -30,8 +30,10 @@ WORKDIR /app
 COPY --from=builder --chown=bot:bot /app/.venv /app/.venv
 COPY --chown=bot:bot pyproject.toml uv.lock ./
 COPY --chown=bot:bot src ./src
-COPY --chown=bot:bot config.yaml few_shot.yaml places_manual.yaml stickers.yaml CHANGELOG.md ./
-COPY --chown=bot:bot prompts ./prompts
+COPY --chown=bot:bot CHANGELOG.md ./
+# Persona packs (personas/_legacy_ru until the demo pack lands). The image sets no
+# PERSONA_DIR: the pack is selected at run time and a missing mount fails closed.
+COPY --chown=bot:bot personas ./personas
 
 # /app/data — точка монтирования bind-volume из docker-compose.yml (см. README:
 # требуется chown 10001:10001 на хосте перед первым запуском).

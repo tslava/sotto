@@ -30,11 +30,11 @@ from sotto.gate_types import GateMessage, Verdict
 from sotto.settings import Settings
 from sotto.stores import ConfigStore, PromptStore
 from sotto.timeutil import local_dt
+from tests.packs import LEGACY_PACK
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_CONFIG_PATH = _REPO_ROOT / "config.yaml"
-_PROMPT_PATH = _REPO_ROOT / "prompts" / "system.txt"
-_FEW_SHOT_PATH = _REPO_ROOT / "few_shot.yaml"
+_CONFIG_PATH = LEGACY_PACK / "config.yaml"
+_PROMPT_PATH = LEGACY_PACK / "prompts" / "system.txt"
+_FEW_SHOT_PATH = LEGACY_PACK / "few_shot.yaml"
 
 OWN_CHAT_ID = -1001234567890
 ADMIN_ID = 555

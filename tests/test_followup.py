@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from pathlib import Path
 
 import httpx
 import pytest
@@ -13,11 +12,12 @@ from sotto.db import MessageRow
 from sotto.followup import FollowupChecker
 from sotto.llm import LLMClient
 from sotto.timeutil import day_key
+from tests.packs import LEGACY_PACK
 
 NOW = 1_768_003_200  # см. tests/test_llm.py
-FOLLOWUP_PROMPT_PATH = Path("prompts/followup.txt")
-CHECKIN_PREFILTER_PROMPT_PATH = Path("prompts/checkin_prefilter.txt")
-NAME_CHECK_PROMPT_PATH = Path("prompts/name_check.txt")
+FOLLOWUP_PROMPT_PATH = LEGACY_PACK / "prompts/followup.txt"
+CHECKIN_PREFILTER_PROMPT_PATH = LEGACY_PACK / "prompts/checkin_prefilter.txt"
+NAME_CHECK_PROMPT_PATH = LEGACY_PACK / "prompts/name_check.txt"
 
 
 class FakeStore:

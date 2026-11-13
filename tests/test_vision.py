@@ -11,7 +11,6 @@ import logging
 import random
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 
 import httpx
 import pytest
@@ -25,9 +24,10 @@ from sotto.vision import (
     pick_photo_size,
     should_describe,
 )
+from tests.packs import LEGACY_PACK
 
 NOW = 1_768_003_200  # см. tests/test_llm.py
-VISION_PROMPT_PATH = Path("prompts/vision.txt")
+VISION_PROMPT_PATH = LEGACY_PACK / "prompts/vision.txt"
 PROMPT_TEMPLATE = VISION_PROMPT_PATH.read_text(encoding="utf-8")
 
 IMAGE = b"\x89PNG\r\n\x1a\nfake-bytes-\xff\xd8"

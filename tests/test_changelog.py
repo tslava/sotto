@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import sotto
 from sotto.changelog import Release, latest_release, parse_changelog
+from tests.packs import LEGACY_PACK
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-REAL_CHANGELOG = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+REAL_CHANGELOG = (LEGACY_PACK / "CHANGELOG.md").read_text(encoding="utf-8")
 
 
 def test_sotto_version_is_0_9_1() -> None:

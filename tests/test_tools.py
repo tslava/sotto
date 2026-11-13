@@ -14,6 +14,7 @@ from tools.golden import canonical, runner
 from tools.golden.schema import load_scenarios, parse_offset
 
 REPO = Path(__file__).resolve().parent.parent
+PACK = REPO / "personas" / "_legacy_ru"
 
 MINI = """
 version: 1
@@ -119,7 +120,7 @@ def test_record_compare_roundtrip_and_cli(
 ) -> None:
     scenarios = write(tmp_path / "s.yaml", MINI)
     out = tmp_path / "base"
-    argv = ["--pack", str(REPO), "--scenarios", str(scenarios)]
+    argv = ["--pack", str(PACK), "--scenarios", str(scenarios)]
     assert (
         golden_cli.main(["record", *argv, "--out", str(out), "--only", "A", "--only", "D_mini"])
         == 0
@@ -142,7 +143,7 @@ def test_compare_reports_missing_and_extra(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     scenarios = load_scenarios(write(tmp_path / "s.yaml", MINI), enforce_minimums=False)
-    outputs = runner.run_scenarios(REPO, scenarios[:1])
+    outputs = runner.run_scenarios(PACK, scenarios[:1])
     base = tmp_path / "base"
     base.mkdir()
     (base / "Z_extra.json").write_text("{}\n", encoding="utf-8")
@@ -150,7 +151,7 @@ def test_compare_reports_missing_and_extra(
     assert result.missing == ["A_mini"] and result.extra == ["Z_extra"] and not result.ok
     # the same through the CLI path, which prints both kinds of problem
     path = tmp_path / "s.yaml"
-    code = runner.compare(REPO, path, base, only=["A"])
+    code = runner.compare(PACK, path, base, only=["A"])
     assert code == 1
     assert "MISSING baseline for A_mini" in capsys.readouterr().err
 
@@ -161,7 +162,7 @@ def test_record_removes_stale_files_and_select_rejects_unknown(tmp_path: Path) -
     out.mkdir()
     (out / "old.json").write_text("{}", encoding="utf-8")
     with pytest.raises(SystemExit, match="unknown scenario ids"):
-        runner.record(REPO, scenarios, out, only=["Q_none"])
+        runner.record(PACK, scenarios, out, only=["Q_none"])
     assert (out / "old.json").exists()
     assert runner.parse_allowed(None) == set()
     assert runner.parse_allowed(tmp_path / "missing.md") == set()

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from pathlib import Path
 
 import httpx
 import pytest
@@ -11,9 +10,10 @@ import pytest
 from sotto.config_models import Config
 from sotto.judge import Judge
 from sotto.llm import LLMClient
+from tests.packs import LEGACY_PACK
 
 NOW = 1_768_003_200  # см. tests/test_llm.py
-JUDGE_PROMPT_PATH = Path("prompts/judge.txt")
+JUDGE_PROMPT_PATH = LEGACY_PACK / "prompts/judge.txt"
 
 
 class FakeStore:

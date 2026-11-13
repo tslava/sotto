@@ -17,6 +17,7 @@ from tools.golden import runner
 from tools.golden.schema import GROUPS, load_scenarios
 
 REPO = Path(__file__).resolve().parent.parent
+PACK = REPO / "personas" / "_legacy_ru"
 SCENARIOS = REPO / "tools" / "golden" / "scenarios_ru.yaml"
 BASELINE = REPO / "tools" / "golden" / "baseline_synthetic"
 ALLOWED = REPO / "tools" / "golden" / "ALLOWED_DIFFS.md"
@@ -34,7 +35,7 @@ def copy_pack(destination: Path) -> Path:
     """Copy the repo-root pack files into ``destination``."""
     destination.mkdir(parents=True, exist_ok=True)
     for name in PACK_ITEMS:
-        source = REPO / name
+        source = PACK / name
         if source.is_dir():
             shutil.copytree(source, destination / name)
         else:
@@ -98,7 +99,7 @@ def test_every_group_has_a_mutation() -> None:
 
 def test_committed_baseline_matches() -> None:
     scenarios = load_scenarios(SCENARIOS)
-    outputs = runner.run_scenarios(REPO, scenarios)
+    outputs = runner.run_scenarios(PACK, scenarios)
     result = runner.diff_outputs(
         outputs, BASELINE, allowed=runner.parse_allowed(ALLOWED), check_extra=True
     )
@@ -107,8 +108,8 @@ def test_committed_baseline_matches() -> None:
 
 def test_record_twice_is_byte_identical(tmp_path: Path) -> None:
     scenarios = load_scenarios(SCENARIOS)[::6]
-    first = runner.run_scenarios(REPO, scenarios)
-    second = runner.run_scenarios(REPO, scenarios)
+    first = runner.run_scenarios(PACK, scenarios)
+    second = runner.run_scenarios(PACK, scenarios)
     assert first == second
     assert len(first) > 10
 
