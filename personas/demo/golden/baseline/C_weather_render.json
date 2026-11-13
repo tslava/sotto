@@ -1,0 +1,88 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_weather_render",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "code": 3,
+     "home": "Kettle Hill",
+     "max": 11.0,
+     "min": 5.0,
+     "place": "Lisbon",
+     "tcode": 61,
+     "temp": 9.4,
+     "tmax": 7.0,
+     "tmin": 2.0
+    },
+    "result": {
+     "describe": "overcast",
+     "home": "Weather outside (this is background, mention it only if it fits): right now +9 and overcast, during the day from +5 to +11.\nTomorrow from +2 to +7, rain.",
+     "none": "",
+     "place": "They are asking about the weather in Lisbon. Right now +9 and overcast, tomorrow from +2 to +7, rain."
+    }
+   },
+   {
+    "case": {
+     "code": 71,
+     "max": -1.0,
+     "min": -6.0,
+     "place": "Edinburgh",
+     "tcode": 0,
+     "temp": -3.2,
+     "tmax": -3.0,
+     "tmin": -8.0
+    },
+    "result": {
+     "describe": "snow",
+     "home": "Weather outside (this is background, mention it only if it fits): right now -3 and snow, during the day from -6 to -1.\nTomorrow from -8 to -3, clear.",
+     "none": "",
+     "place": "They are asking about the weather in Edinburgh. Right now -3 and snow, tomorrow from -8 to -3, clear."
+    }
+   },
+   {
+    "case": {
+     "code": 45,
+     "max": 1.0,
+     "min": -1.0,
+     "place": "Edinburgh",
+     "tcode": 95,
+     "temp": 0.0,
+     "tmax": 0.0,
+     "tmin": 0.0
+    },
+    "result": {
+     "describe": "fog",
+     "home": "Weather outside (this is background, mention it only if it fits): right now 0 and fog, during the day from -1 to +1.\nTomorrow from 0 to 0, thunderstorm.",
+     "none": "",
+     "place": "They are asking about the weather in Edinburgh. Right now 0 and fog, tomorrow from 0 to 0, thunderstorm."
+    }
+   },
+   {
+    "case": {
+     "code": 999,
+     "max": 25.0,
+     "min": 14.0,
+     "place": "Edinburgh",
+     "tcode": 80,
+     "temp": 21.5,
+     "tmax": 27.0,
+     "tmin": 15.0
+    },
+    "result": {
+     "describe": "",
+     "home": "Weather outside (this is background, mention it only if it fits): right now +22, during the day from +14 to +25.\nTomorrow from +15 to +27, showers.",
+     "none": "",
+     "place": "They are asking about the weather in Edinburgh. Right now +22, tomorrow from +15 to +27, showers."
+    }
+   }
+  ]
+ ],
+ "sent": []
+}

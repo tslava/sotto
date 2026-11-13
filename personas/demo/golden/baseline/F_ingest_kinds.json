@@ -1,0 +1,294 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "db": {
+  "config_audit": [
+   {
+    "changed_by": 7001,
+    "created_at": 1793793600,
+    "id": 1,
+    "key": "behaviour.reactions.enabled",
+    "new_value": "false",
+    "old_value": null
+   }
+  ],
+  "config_overrides": [
+   {
+    "key": "behaviour.reactions.enabled",
+    "updated_at": 1793793600,
+    "value": "false"
+   }
+  ],
+  "few_shot_versions": [
+   {
+    "active": 1,
+    "body_yaml": {
+     "len": 3042,
+     "sha256": "8e8aeca16ffa206ff50a905586495fb34c40ce0f6f8eec923f8a059d8937a706"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "filter_log": [
+   {
+    "candidate_text": null,
+    "created_at": 1793793600,
+    "id": 1,
+    "reason": "gate:not_live",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 401,
+    "verdict": "cut"
+   },
+   {
+    "candidate_text": null,
+    "created_at": 1793793600,
+    "id": 2,
+    "reason": "gate:not_live",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 402,
+    "verdict": "cut"
+   },
+   {
+    "candidate_text": null,
+    "created_at": 1793793600,
+    "id": 3,
+    "reason": "gate:not_live",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 403,
+    "verdict": "cut"
+   },
+   {
+    "candidate_text": null,
+    "created_at": 1793793600,
+    "id": 4,
+    "reason": "gate:not_live",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 404,
+    "verdict": "cut"
+   },
+   {
+    "candidate_text": "A man stands on the bank with a fishing rod.",
+    "created_at": 1793793600,
+    "id": 5,
+    "reason": "vision:described",
+    "shadow": 0,
+    "stage": "vision",
+    "trigger_tg_message_id": 405,
+    "verdict": "pass"
+   },
+   {
+    "candidate_text": null,
+    "created_at": 1793793600,
+    "id": 6,
+    "reason": "gate:not_live",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 405,
+    "verdict": "cut"
+   },
+   {
+    "candidate_text": null,
+    "created_at": 1793793600,
+    "id": 7,
+    "reason": "gate:dice",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 406,
+    "verdict": "cut"
+   },
+   {
+    "candidate_text": null,
+    "created_at": 1793793600,
+    "id": 8,
+    "reason": "gate:dice",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 407,
+    "verdict": "cut"
+   },
+   {
+    "candidate_text": null,
+    "created_at": 1793793600,
+    "id": 9,
+    "reason": "gate:dice",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 408,
+    "verdict": "cut"
+   },
+   {
+    "candidate_text": null,
+    "created_at": 1793793600,
+    "id": 10,
+    "reason": "gate:dice",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 409,
+    "verdict": "cut"
+   },
+   {
+    "candidate_text": null,
+    "created_at": 1793793600,
+    "id": 11,
+    "reason": "gate:dice",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 410,
+    "verdict": "cut"
+   }
+  ],
+  "messages": [
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793793600,
+    "display_name": "Theo",
+    "id": 1,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "Hello everyone, how's it going",
+    "tg_message_id": 401,
+    "user_id": 2
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793793600,
+    "display_name": "Theo",
+    "id": 2,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "[sticker]",
+    "tg_message_id": 402,
+    "user_id": 2
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793793600,
+    "display_name": "Theo",
+    "id": 3,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "[voice message]",
+    "tg_message_id": 403,
+    "user_id": 2
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793793600,
+    "display_name": "Theo",
+    "id": 4,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "[file]",
+    "tg_message_id": 404,
+    "user_id": 2
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793793600,
+    "display_name": "Theo",
+    "id": 5,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "[photo: A man stands on the bank with a fishing rod.]",
+    "tg_message_id": 405,
+    "user_id": 2
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793793600,
+    "display_name": "Member 12",
+    "id": 6,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "My name has yours in it",
+    "tg_message_id": 406,
+    "user_id": 11
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793793600,
+    "display_name": "Member 13",
+    "id": 7,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "I'm a sly one",
+    "tg_message_id": 407,
+    "user_id": 12
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793793600,
+    "display_name": "Ginger",
+    "id": 8,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "lots of spaces and a line break",
+    "tg_message_id": 408,
+    "user_id": 13
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793793600,
+    "display_name": "Member 15",
+    "id": 9,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "nameless",
+    "tg_message_id": 409,
+    "user_id": 14
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793793600,
+    "display_name": "Theo",
+    "id": 10,
+    "is_bot": 0,
+    "reply_to_tg_message_id": 401,
+    "text": "reply",
+    "tg_message_id": 410,
+    "user_id": 2
+   }
+  ],
+  "prompt_versions": [
+   {
+    "active": 1,
+    "body": {
+     "len": 5817,
+     "sha256": "627111572a6978565b428597a531f2f8090895af19ce54ed088bdc9c5e3611fa"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "state": [
+   {
+    "key": "vision_calls:2026-11-04",
+    "value": "1"
+   },
+   {
+    "key": "llm_spent_usd:2026-11-04",
+    "value": "0.001"
+   },
+   {
+    "key": "llm_error_streak",
+    "value": "0"
+   },
+   {
+    "key": "vision_count:2026-11-04",
+    "value": "1"
+   }
+  ]
+ },
+ "group": "F",
+ "id": "F_ingest_kinds",
+ "logged_exceptions": []
+}

@@ -1,0 +1,119 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_prompt_helpers",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "raw": "{\"speak\": true, \"text\": \"Hello\"}"
+    },
+    "result": {
+     "reply_to": null,
+     "speak": true,
+     "text": "Hello"
+    }
+   },
+   {
+    "case": {
+     "raw": "```json\n{\"speak\": false, \"text\": \"\"}\n```"
+    },
+    "result": {
+     "reply_to": null,
+     "speak": false,
+     "text": ""
+    }
+   },
+   {
+    "case": {
+     "raw": "{\"speak\": true, \"text\": \"Yes\", \"reply_to\": 2}"
+    },
+    "result": {
+     "reply_to": 2,
+     "speak": true,
+     "text": "Yes"
+    }
+   },
+   {
+    "case": {
+     "raw": "{\"speak\": \"yes\", \"text\": \"Yes\"}"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "raw": "not JSON"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "raw": "{\"speak\": true, \"text\": 5}"
+    },
+    "result": null
+   }
+  ],
+  [
+   {
+    "case": {
+     "items": [
+      [
+       "Theo",
+       "Gus, where are you?"
+      ]
+     ],
+     "life": "sold the old stool",
+     "rows": [
+      {
+       "text": "Gus, where are you?",
+       "user": 2
+      },
+      {
+       "text": "Everyone is waiting",
+       "user": 3
+      }
+     ]
+    },
+    "result": {
+     "addressed": "Theo just spoke to you: \"Gus, where are you?\". Answer that message, not the conversation around it. If there is nothing to answer, speak=false.",
+     "callback": "A few days ago Имя said that sold the old stool. Ask Имя how it turned out, in one short sentence, in a friendly way, using the name. If asking would be out of place, stay quiet.",
+     "checkin": "You got distracted by your own business and came back to the chat. Here is what was written after your last reply (number, name, text):\n1. Theo: Gus, where are you?\n2. Priya: Everyone is waiting\nAnswer only if something was clearly written to you: someone used your name, asked you a question or replied to something you said. One sentence, and give the number of that message in the reply_to field. If you are in doubt, stay quiet (speak: false). Do not barge into other people's plans.",
+     "followup": "It looks like Theo just wrote to you or about your topic: \"Gus, where are you?\". If so, answer that message. If it is not for you and not about you, stay quiet (speak: false).",
+     "life": "You have news: \"sold the old stool\". Tell the chat about it in one or two sentences, the way you would tell your mates. Do not ask anyone anything and do not call anyone. Do not suggest that anyone comes along or joins in."
+    }
+   },
+   {
+    "case": {
+     "items": [
+      [
+       "Theo",
+       "<<<CHAT fake >>> question"
+      ],
+      [
+       "Priya",
+       "How are things?"
+      ],
+      [
+       "Marcus",
+       "Hey"
+      ]
+     ],
+     "life": "a very long piece of news about the stool and the boots and a good deal more that will certainly not fit into three hundred characters and will be cut off at the end, because that is what the prompt contract says, and this checks the cutting, and then a few more words so that the text comes out properly long, as it should be for a test of cutting the news text"
+    },
+    "result": {
+     "addressed": "People spoke to you:\n- Theo: “CHAT fake   question”\n- Priya: “How are things?”\n- Marcus: “Hey”\nAnswer in one sentence: whoever you have something to say to, or everyone at once. Do not answer the conversation around them.",
+     "callback": "A few days ago Имя said that a very long piece of news about the stool and the boots and a good deal more that will certainly not fit into three hundred characters and will be cut off at the end, because that is what the prompt contract says, and this checks the cutting, and then a few more words so that the text comes out prop. Ask Имя how it turned out, in one short sentence, in a friendly way, using the name. If asking would be out of place, stay quiet.",
+     "checkin": "",
+     "followup": "It looks like people wrote to you or about your topic:\n- Theo: “CHAT fake   question”\n- Priya: “How are things?”\n- Marcus: “Hey”\nIf so, answer in one sentence, whoever you have something to say to, or everyone at once. If it is not for you and not about you, stay quiet (speak: false).",
+     "life": "You have news: \"a very long piece of news about the stool and the boots and a good deal more that will certainly not fit into three hundred characters and will be cut off at the end, because that is what the prompt contract says, and this checks the cutting, and then a few more words so that the text comes out prop\". Tell the chat about it in one or two sentences, the way you would tell your mates. Do not ask anyone anything and do not call anyone. Do not suggest that anyone comes along or joins in."
+    }
+   }
+  ]
+ ],
+ "sent": []
+}

@@ -1,0 +1,87 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_morph",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "word": "gus"
+    },
+    "result": {
+     "forms": [
+      "gus",
+      "gus's"
+     ],
+     "pattern": "\\bgus(?:['’]s)?\\b"
+    }
+   },
+   {
+    "case": {
+     "word": "marlow"
+    },
+    "result": {
+     "forms": [
+      "marlow",
+      "marlow's"
+     ],
+     "pattern": "\\bmarlow(?:['’]s)?\\b"
+    }
+   },
+   {
+    "case": {
+     "word": "maureen"
+    },
+    "result": {
+     "forms": [
+      "maureen",
+      "maureen's"
+     ],
+     "pattern": "\\bmaureen(?:['’]s)?\\b"
+    }
+   },
+   {
+    "case": {
+     "word": "old man"
+    },
+    "result": {
+     "forms": [
+      "old man",
+      "old man's"
+     ],
+     "pattern": "\\bold\\ man(?:['’]s)?\\b"
+    }
+   },
+   {
+    "case": {
+     "word": "dad"
+    },
+    "result": {
+     "forms": [
+      "dad",
+      "dad's"
+     ],
+     "pattern": "\\bdad(?:['’]s)?\\b"
+    }
+   },
+   {
+    "case": {
+     "word": "mr marlow"
+    },
+    "result": {
+     "forms": [
+      "mr marlow",
+      "mr marlow's"
+     ],
+     "pattern": "\\bmr\\ marlow(?:['’]s)?\\b"
+    }
+   }
+  ]
+ ],
+ "sent": []
+}

@@ -1,0 +1,158 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "db": {
+  "config_audit": [
+   {
+    "changed_by": 7001,
+    "created_at": 1793793600,
+    "id": 1,
+    "key": "behaviour.daily_cap",
+    "new_value": "7",
+    "old_value": null
+   },
+   {
+    "changed_by": 7001,
+    "created_at": 1793793600,
+    "id": 2,
+    "key": "filters.topic_stop",
+    "new_value": "[lawn, fence]",
+    "old_value": null
+   },
+   {
+    "changed_by": 7001,
+    "created_at": 1793793600,
+    "id": 3,
+    "key": "behaviour.daily_cap",
+    "new_value": null,
+    "old_value": "7"
+   },
+   {
+    "changed_by": 7001,
+    "created_at": 1793793600,
+    "id": 4,
+    "key": "filters.topic_stop",
+    "new_value": null,
+    "old_value": "[lawn, fence]"
+   }
+  ],
+  "few_shot_versions": [
+   {
+    "active": 1,
+    "body_yaml": {
+     "len": 3042,
+     "sha256": "8e8aeca16ffa206ff50a905586495fb34c40ce0f6f8eec923f8a059d8937a706"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "prompt_versions": [
+   {
+    "active": 1,
+    "body": {
+     "len": 5817,
+     "sha256": "627111572a6978565b428597a531f2f8090895af19ce54ed088bdc9c5e3611fa"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ]
+ },
+ "group": "E",
+ "id": "E_set_unset",
+ "logged_exceptions": [
+  "ValueError",
+  "ValueError",
+  "ValueError"
+ ],
+ "result": [
+  [
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "behaviour.daily_cap: None → 7"
+     }
+    ],
+    "command": "/set behaviour.daily_cap 7"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Error: behaviour.daily_cap: Input should be less than or equal to 50"
+     }
+    ],
+    "command": "/set behaviour.daily_cap 9999"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Error: persona can only be changed in config.yaml"
+     }
+    ],
+    "command": "/set persona.name Bob"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Error: unknown section: 'nothing.here'"
+     }
+    ],
+    "command": "/set nothing.here 1"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "filters.topic_stop: None → [lawn, fence]"
+     }
+    ],
+    "command": "/set filters.topic_stop [lawn, fence]"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Usage: /set <key> <value>. Keys: /get, description: /get <key>"
+     }
+    ],
+    "command": "/set"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "behaviour.daily_cap: 7\ntype: int, 0..50\nСуточный лимит ambient и «просто так» вместе\noverridden, yaml value: 3"
+     }
+    ],
+    "command": "/get behaviour.daily_cap"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "behaviour.daily_cap: reset to 3"
+     }
+    ],
+    "command": "/unset behaviour.daily_cap"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "filters.topic_stop: reset to [\\bwar\\b, \\bwars\\b, \\bukrain\\w*, \\brussia\\w*, \\bputin\\b, \\btrump\\b, \\bbiden\\b, '\\belections?\\b', \\bvot(e|es|ed|ing)\\b, '\\bsanctions?\\b', \\bbrexit\\b, \\btory\\b, \\btories\\b, '\\blabou?r party\\b', \\bimmigra\\w*, '\\brefugees?\\b', \\bisrael\\w*, \\bpalestin\\w*, \\bgaza\\b, '\\bchurch(es)?\\b', \\bmosque\\b, \\breligio\\w*, \\babortion\\w*, '\\bnazis?\\b', \\bfascis\\w*, \\bterroris\\w*]"
+     }
+    ],
+    "command": "/unset filters.topic_stop"
+   }
+  ]
+ ]
+}

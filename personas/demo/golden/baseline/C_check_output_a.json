@@ -1,0 +1,237 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_check_output_a",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "text": "Fine, you can walk it even without boots."
+    },
+    "result": {
+     "ok": true,
+     "reason": "pass",
+     "reasons": []
+    }
+   },
+   {
+    "case": {
+     "text": "A very long reply that tells you everything about the canal, boots, laces, flasks, weather, neighbours, the shed, the garden, prices, shops and so on, and on, and on, because the man likes to talk and cannot stop himself, and keeps going on and on without a pause until it runs past three hundred characters, and now it surely has, and a little more on top for good measure."
+    },
+    "result": {
+     "ok": false,
+     "reason": "regex:length",
+     "reasons": [
+      "regex:length"
+     ]
+    }
+   },
+   {
+    "case": {
+     "text": "- first\n- second"
+    },
+    "result": {
+     "ok": false,
+     "reason": "regex:markdown",
+     "reasons": [
+      "regex:markdown"
+     ]
+    }
+   },
+   {
+    "case": {
+     "text": "**important** bring boots"
+    },
+    "result": {
+     "ok": false,
+     "reason": "regex:markdown",
+     "reasons": [
+      "regex:markdown"
+     ]
+    }
+   },
+   {
+    "case": {
+     "text": "Dana, hi, how are you"
+    },
+    "result": {
+     "ok": true,
+     "reason": "pass",
+     "reasons": []
+    }
+   },
+   {
+    "case": {
+     "text": "Call me on +44 7700 900123 tonight"
+    },
+    "result": {
+     "ok": false,
+     "reason": "regex:phone",
+     "reasons": [
+      "regex:phone"
+     ]
+    }
+   },
+   {
+    "case": {
+     "text": "That is a good point. It is quiet there with few people. But the beer is dear. Oh well."
+    },
+    "result": {
+     "ok": false,
+     "reason": "regex:sentences",
+     "reasons": [
+      "regex:sentences"
+     ]
+    }
+   },
+   {
+    "case": {
+     "text": "Oh come on 🦄 that"
+    },
+    "result": {
+     "ok": false,
+     "reason": "regex:emoji",
+     "reasons": [
+      "regex:emoji"
+     ]
+    }
+   },
+   {
+    "case": {
+     "text": "Don't shout!! Don't!!"
+    },
+    "result": {
+     "ok": false,
+     "reason": "style:exclaim",
+     "reasons": [
+      "style:exclaim"
+     ]
+    }
+   },
+   {
+    "case": {
+     "text": "Try the Gamma Arms, it's fine"
+    },
+    "result": {
+     "ok": true,
+     "reason": "pass",
+     "reasons": []
+    }
+   },
+   {
+    "case": {
+     "text": "Need to check in the morning s'il vous plait"
+    },
+    "result": {
+     "ok": true,
+     "reason": "pass",
+     "reasons": []
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "Boots are serious business, never skimp on the laces."
+     ],
+     "text": "Boots are serious business, never skimp on the laces."
+    },
+    "result": {
+     "ok": false,
+     "reason": "dedup:jaccard",
+     "reasons": [
+      "dedup:jaccard",
+      "dedup:self_echo"
+     ]
+    }
+   }
+  ],
+  [
+   {
+    "case": {
+     "context": [
+      {
+       "text": "Bought new boots on Saturday morning",
+       "user": 2
+      }
+     ],
+     "text": "Buy the boots on Saturday morning, while the shop is open",
+     "trigger": "Bought new boots yesterday"
+    },
+    "result": {
+     "ok": false,
+     "reason": "regex:echo",
+     "reasons": [
+      "regex:echo"
+     ]
+    }
+   },
+   {
+    "case": {
+     "muted": [
+      "Priya"
+     ],
+     "text": "Priya said she was busy"
+    },
+    "result": {
+     "ok": false,
+     "reason": "regex:muted_name",
+     "reasons": [
+      "regex:muted_name"
+     ]
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "Agreed, but I'm not sure here."
+     ],
+     "text": "Agreed, but I'm not sure here."
+    },
+    "result": {
+     "ok": false,
+     "reason": "dedup:jaccard",
+     "reasons": [
+      "dedup:jaccard",
+      "dedup:self_echo"
+     ]
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "How are things?"
+     ],
+     "text": "Fine, and you?"
+    },
+    "result": {
+     "ok": false,
+     "reason": "style:question_x2",
+     "reasons": [
+      "style:question_x2"
+     ]
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "Now that is a very good idea, come on"
+     ],
+     "text": "Now that is a good idea"
+    },
+    "result": {
+     "ok": false,
+     "reason": "dedup:self_echo",
+     "reasons": [
+      "dedup:self_echo"
+     ]
+    }
+   }
+  ]
+ ],
+ "sent": []
+}

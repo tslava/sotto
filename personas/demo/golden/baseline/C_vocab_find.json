@@ -1,0 +1,138 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_vocab_find",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "text": "Another snickerwick outside the window"
+    },
+    "result": {
+     "explain": false,
+     "found": [
+      "snickerwick"
+     ],
+     "requested": false
+    }
+   },
+   {
+    "case": {
+     "text": "A bodgel on the gate again"
+    },
+    "result": {
+     "explain": false,
+     "found": [
+      "bodgel"
+     ],
+     "requested": false
+    }
+   },
+   {
+    "case": {
+     "text": "last night was snickerwicks, and no dreeper in sight"
+    },
+    "result": {
+     "explain": false,
+     "found": [
+      "snickerwick",
+      "dreeper"
+     ],
+     "requested": false
+    }
+   },
+   {
+    "case": {
+     "text": "a plimsey by the canal was nice"
+    },
+    "result": {
+     "explain": false,
+     "found": [
+      "plimsey"
+     ],
+     "requested": false
+    }
+   },
+   {
+    "case": {
+     "text": "bodgels all over the shed"
+    },
+    "result": {
+     "explain": false,
+     "found": [
+      "bodgel"
+     ],
+     "requested": false
+    }
+   },
+   {
+    "case": {
+     "text": "snickerwicked all day"
+    },
+    "result": {
+     "explain": false,
+     "found": [
+      "snickerwick"
+     ],
+     "requested": false
+    }
+   },
+   {
+    "case": {
+     "text": "say something from your words"
+    },
+    "result": {
+     "explain": false,
+     "found": [],
+     "requested": true
+    }
+   },
+   {
+    "case": {
+     "text": "say something in your dialect"
+    },
+    "result": {
+     "explain": false,
+     "found": [],
+     "requested": true
+    }
+   },
+   {
+    "case": {
+     "text": "I didn't get that, what does that mean"
+    },
+    "result": {
+     "explain": true,
+     "found": [],
+     "requested": false
+    }
+   },
+   {
+    "case": {
+     "text": "huh?"
+    },
+    "result": {
+     "explain": true,
+     "found": [],
+     "requested": false
+    }
+   },
+   {
+    "case": {
+     "text": "just a message"
+    },
+    "result": {
+     "explain": false,
+     "found": [],
+     "requested": false
+    }
+   }
+  ]
+ ],
+ "sent": []
+}

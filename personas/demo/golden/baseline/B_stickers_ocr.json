@@ -1,0 +1,41 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "B",
+ "id": "B_stickers_ocr",
+ "logged_exceptions": [],
+ "requests": [
+  {
+   "kind": "llm",
+   "max_tokens": 120,
+   "messages": [
+    {
+     "content": [
+      {
+       "text": "The sticker carries a caption. Answer with one JSON, no markdown: {\"text\": \"the caption word for word\", \"when\": \"when this sticker fits in a chat of friends, 3-8 words\"}. If there is no caption, text is empty.",
+       "type": "text"
+      },
+      {
+       "image_url": {
+        "url": "data:image/webp;base64,Z29sZGVuLXN0aWNrZXItYnl0ZXM="
+       },
+       "type": "image_url"
+      }
+     ],
+     "role": "user"
+    }
+   ],
+   "model": "anthropic/claude-sonnet-5",
+   "temperature": 0.8
+  }
+ ],
+ "result": [
+  [
+   "NOT SURE, DIDN'T CHECK",
+   "when nobody wants to answer"
+  ]
+ ],
+ "sent": []
+}

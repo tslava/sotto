@@ -1,0 +1,113 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_patterns_names",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "Gus, are you there?"
+    },
+    "result": "\\bgus(?:['’]s)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "ask Gus"
+    },
+    "result": "\\bgus(?:['’]s)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "Gus's boots are enormous"
+    },
+    "result": "\\bgus(?:['’]s)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "tell Marlow I said hello"
+    },
+    "result": "\\bmarlow(?:['’]s)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "don't argue with Marlow's sister"
+    },
+    "result": "\\bmarlow(?:['’]s)?\\b"
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "the old man rang yesterday"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "gusto and gusset"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "Gussie called again"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "Marlowe wrote that one"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "method": "name_trigger",
+     "text": "GUS"
+    },
+    "result": "\\bgus(?:['’]s)?\\b"
+   },
+   {
+    "case": {
+     "method": "mentions_bot",
+     "text": "@golden_bot hello"
+    },
+    "result": true
+   },
+   {
+    "case": {
+     "method": "mentions_bot",
+     "text": "hello@golden_bot"
+    },
+    "result": false
+   },
+   {
+    "case": {
+     "method": "mentions_bot",
+     "text": "@golden_botik hello"
+    },
+    "result": false
+   },
+   {
+    "case": {
+     "method": "mentions_bot",
+     "text": "@GOLDEN_BOT hello"
+    },
+    "result": true
+   }
+  ]
+ ],
+ "sent": []
+}

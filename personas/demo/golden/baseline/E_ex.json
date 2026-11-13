@@ -1,0 +1,218 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "db": {
+  "bot_replies": [
+   {
+    "created_at": 1793782800,
+    "delay_sec": 0,
+    "few_shot_version": 1,
+    "id": 1,
+    "prompt_version": 1,
+    "reply_to_tg_message_id": null,
+    "text": "Boots are serious business, never skimp on the laces.",
+    "tg_message_id": 5001,
+    "trigger": "mention",
+    "trigger_tg_message_id": 106
+   }
+  ],
+  "few_shot_versions": [
+   {
+    "active": 0,
+    "body_yaml": {
+     "len": 3042,
+     "sha256": "8e8aeca16ffa206ff50a905586495fb34c40ce0f6f8eec923f8a059d8937a706"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   },
+   {
+    "active": 0,
+    "body_yaml": {
+     "len": 2709,
+     "sha256": "0f821ce8b16e64b729f9a3c4c3f18d52d96509d115afd383d5401308b5ae5e0d"
+    },
+    "created_at": 1793793600,
+    "note": "/ex add by owner",
+    "version": 2
+   },
+   {
+    "active": 1,
+    "body_yaml": {
+     "len": 2558,
+     "sha256": "1fae6848201fdad251e5478e5ebadbb0e4eb0ff1d2b3ea4255706a509a56e124"
+    },
+    "created_at": 1793793600,
+    "note": "/ex rm by owner",
+    "version": 3
+   }
+  ],
+  "messages": [
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793790600,
+    "display_name": "Dana",
+    "id": 1,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "So who's up for the canal walk on Saturday?",
+    "tg_message_id": 101,
+    "user_id": 1
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793790720,
+    "display_name": "Theo",
+    "id": 2,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "I'd come if the weather holds",
+    "tg_message_id": 102,
+    "user_id": 2
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793790900,
+    "display_name": "Priya",
+    "id": 3,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "I need to check on my mum's flat but I'm free by the evening",
+    "tg_message_id": 103,
+    "user_id": 3
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793791200,
+    "display_name": "Dana",
+    "id": 4,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "Marcus, why so quiet?",
+    "tg_message_id": 104,
+    "user_id": 1
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793791320,
+    "display_name": "Marcus",
+    "id": 5,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "On shift till Friday, then we'll see",
+    "tg_message_id": 105,
+    "user_id": 4
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793791800,
+    "display_name": "Theo",
+    "id": 6,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "Bought new walking boots yesterday, dying to try them",
+    "tg_message_id": 106,
+    "user_id": 2
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793791920,
+    "display_name": "Jo",
+    "id": 7,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "Show us later, I'm curious which ones",
+    "tg_message_id": 107,
+    "user_id": 5
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793792100,
+    "display_name": "Theo",
+    "id": 8,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "Sure, on Saturday I'll show you",
+    "tg_message_id": 108,
+    "user_id": 2
+   }
+  ],
+  "prompt_versions": [
+   {
+    "active": 1,
+    "body": {
+     "len": 5817,
+     "sha256": "627111572a6978565b428597a531f2f8090895af19ce54ed088bdc9c5e3611fa"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ]
+ },
+ "group": "E",
+ "id": "E_ex",
+ "logged_exceptions": [
+  "ValueError"
+ ],
+ "result": [
+  [
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Dana: Gus what's the plan for your birthday → {\"speak\": true, \"text\": \"Cake, a candle, and Maureen telling everyone how old I am. Same as every year.\"}\nMarcus: just saw the funniest thing at the bus stop → {\"speak\": true, \"text\": \"Go on, then. Or is it one of those you had to be there for?\"}\nJo: my sourdough came out like a brick → {\"speak\": true, \"text\": \"A brick has its uses. Ask Theo, he needs a doorstop.\"}\nPriya: night all → {\"speak\": false, \"text\": \"\"}\nTheo: what do you all think about the new road layout → {\"speak\": false, \"text\": \"\"}"
+     }
+    ],
+    "command": "/ex last"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Priya: night all → {\"speak\": false, \"text\": \"\"}\nTheo: what do you all think about the new road layout → {\"speak\": false, \"text\": \"\"}"
+     }
+    ],
+    "command": "/ex last 2"
+   },
+   {
+    "answers": [],
+    "command": "/ex add"
+   },
+   {
+    "answers": [],
+    "command": "/ex add"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Theo: Bought new walking boots yesterday, dying to try them → {\"speak\": true, \"text\": \"Boots are serious business, never skimp on the laces.\"}"
+     }
+    ],
+    "command": "/ex last 1"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "few-shot: version 3 (example 1 from the end removed)"
+     }
+    ],
+    "command": "/ex rm"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Error: index 500 is out of range: there are 21 examples"
+     }
+    ],
+    "command": "/ex rm 500"
+   }
+  ]
+ ]
+}

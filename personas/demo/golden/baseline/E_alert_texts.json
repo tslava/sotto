@@ -1,0 +1,104 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "db": {
+  "few_shot_versions": [
+   {
+    "active": 1,
+    "body_yaml": {
+     "len": 3042,
+     "sha256": "8e8aeca16ffa206ff50a905586495fb34c40ce0f6f8eec923f8a059d8937a706"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "prompt_versions": [
+   {
+    "active": 1,
+    "body": {
+     "len": 5817,
+     "sha256": "627111572a6978565b428597a531f2f8090895af19ce54ed088bdc9c5e3611fa"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "state": [
+   {
+    "key": "llm_calls:2026-11-04",
+    "value": "1"
+   },
+   {
+    "key": "llm_error_streak",
+    "value": "1"
+   },
+   {
+    "key": "llm_last_refusal",
+    "value": "1793793600|402"
+   },
+   {
+    "key": "alert_next:llm_402",
+    "value": "1793880000"
+   }
+  ]
+ },
+ "group": "E",
+ "id": "E_alert_texts",
+ "logged_exceptions": [],
+ "requests": [
+  {
+   "kind": "llm",
+   "max_tokens": 10,
+   "messages": [
+    {
+     "content": "ping",
+     "role": "user"
+    }
+   ],
+   "model": "anthropic/claude-sonnet-5",
+   "temperature": 0.8
+  }
+ ],
+ "result": [
+  {
+   "error": "llm:http",
+   "rendered": [
+    {
+     "status": 400,
+     "text": "OpenRouter refused the request: 400, request rejected.\nModel: vendor/model.\nResponse: bad request\nUntil this is fixed, the bot stays silent wherever this model is needed. The next message like this will come in 24 h at the earliest."
+    },
+    {
+     "status": 401,
+     "text": "OpenRouter refused the request: 401, the OpenRouter key was not accepted, check OPENROUTER_API_KEY.\nModel: vendor/model.\nResponse: No auth credentials found\nUntil this is fixed, the bot stays silent wherever this model is needed. The next message like this will come in 24 h at the earliest."
+    },
+    {
+     "status": 402,
+     "text": "OpenRouter refused the request: 402, out of credits, top up at openrouter.ai/settings/credits.\nModel: vendor/main.\nResponse: Insufficient credits\nUntil this is fixed, the bot stays silent wherever this model is needed. The next message like this will come in 24 h at the earliest."
+    },
+    {
+     "status": 403,
+     "text": "OpenRouter refused the request: 403, request rejected.\nModel: vendor/model.\nResponse: forbidden\nUntil this is fixed, the bot stays silent wherever this model is needed. The next message like this will come in 24 h at the earliest."
+    },
+    {
+     "status": 404,
+     "text": "OpenRouter refused the request: 404, request rejected.\nModel: vendor/model.\nResponse: model not found\nUntil this is fixed, the bot stays silent wherever this model is needed. The next message like this will come in 24 h at the earliest."
+    }
+   ]
+  }
+ ],
+ "sent": [
+  {
+   "chat": 7001,
+   "id": 9001,
+   "op": "send_message",
+   "reply_to": null,
+   "t": 0,
+   "text": "OpenRouter refused the request: 402, out of credits, top up at openrouter.ai/settings/credits.\nModel: anthropic/claude-sonnet-5.\nResponse: Insufficient credits\nUntil this is fixed, the bot stays silent wherever this model is needed. The next message like this will come in 24 h at the earliest."
+  }
+ ]
+}

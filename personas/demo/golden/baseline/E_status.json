@@ -1,0 +1,23 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "E",
+ "id": "E_status",
+ "logged_exceptions": [],
+ "result": [
+  [
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "sotto v0.9.1\nPanic: no\nStopped until: none\nLLM circuit breaker: closed, consecutive errors: 0, last provider refusal: none in 24 h\nPrompt: v1, few-shot: v1\nModels: main=anthropic/claude-sonnet-5, judge=openai/gpt-5.4-nano\nShadow: yes\nToday: ambient=2, mention=5, llm_calls=17, llm_spent=$0.42, reactions=3/8, semantic calls 0/40, stickers=0/1 (4 in the catalog)\nPending: 0\nNight queue: 0\nlife events: 1 (1)\nchat memory: none\nhot window: until 12:08 (2/8)\nfollowup calls: 0/300\nvision: 1/20\ndiary: 0, calls 0/30\njokes: 0, people: 0, callback: none\ncheckin: none\npresence: 0/3 (people 8)\nabout himself over 3 days: ambient 0/0, addressed 1/2, other 0/0\nvocab: 0/0 dictionaries (0 words), today 0/2, last -\nweather: +7, overcast, updated 12:00"
+     }
+    ],
+    "command": "/status"
+   }
+  ]
+ ],
+ "sent": []
+}

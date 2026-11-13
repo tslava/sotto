@@ -1,0 +1,248 @@
+{
+ "clock": {
+  "elapsed_sec": 1050,
+  "start": "2026-11-08T23:59:30+00:00"
+ },
+ "db": {
+  "bot_replies": [
+   {
+    "created_at": 1794182370,
+    "delay_sec": 0,
+    "few_shot_version": 1,
+    "id": 1,
+    "prompt_version": 1,
+    "reply_to_tg_message_id": null,
+    "text": "Sitting here sorting screws by size.",
+    "tg_message_id": 9001,
+    "trigger": "spontaneous",
+    "trigger_tg_message_id": null
+   },
+   {
+    "created_at": 1794183419,
+    "delay_sec": 441,
+    "few_shot_version": 1,
+    "id": 2,
+    "prompt_version": 1,
+    "reply_to_tg_message_id": 701,
+    "text": "Here.",
+    "tg_message_id": 9002,
+    "trigger": "mention",
+    "trigger_tg_message_id": 701
+   }
+  ],
+  "config_audit": [
+   {
+    "changed_by": 7001,
+    "created_at": 1794182370,
+    "id": 1,
+    "key": "behaviour.spontaneous.per_week",
+    "new_value": "50",
+    "old_value": null
+   },
+   {
+    "changed_by": 7001,
+    "created_at": 1794182370,
+    "id": 2,
+    "key": "behaviour.spontaneous.window",
+    "new_value": "[\"22:00\", \"03:00\"]",
+    "old_value": null
+   }
+  ],
+  "config_overrides": [
+   {
+    "key": "behaviour.spontaneous.per_week",
+    "updated_at": 1794182370,
+    "value": "50"
+   },
+   {
+    "key": "behaviour.spontaneous.window",
+    "updated_at": 1794182370,
+    "value": "[\"22:00\", \"03:00\"]"
+   }
+  ],
+  "few_shot_versions": [
+   {
+    "active": 1,
+    "body_yaml": {
+     "len": 3042,
+     "sha256": "8e8aeca16ffa206ff50a905586495fb34c40ce0f6f8eec923f8a059d8937a706"
+    },
+    "created_at": 1794182370,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "filter_log": [
+   {
+    "candidate_text": "Sitting here sorting screws by size.",
+    "created_at": 1794182370,
+    "id": 1,
+    "reason": "send:spontaneous",
+    "shadow": 0,
+    "stage": "send",
+    "trigger_tg_message_id": null,
+    "verdict": "pass"
+   },
+   {
+    "candidate_text": null,
+    "created_at": 1794182972,
+    "id": 2,
+    "reason": "pass:mention",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 701,
+    "verdict": "pass"
+   },
+   {
+    "candidate_text": "Here.",
+    "created_at": 1794183419,
+    "id": 3,
+    "reason": "send:mention",
+    "shadow": 0,
+    "stage": "send",
+    "trigger_tg_message_id": 701,
+    "verdict": "pass"
+   }
+  ],
+  "messages": [
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1794164370,
+    "display_name": "Dana",
+    "id": 1,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "So who's up for the canal walk on Saturday?",
+    "tg_message_id": 101,
+    "user_id": 1
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1794182972,
+    "display_name": "Theo",
+    "id": 2,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "@golden_bot are you there?",
+    "tg_message_id": 701,
+    "user_id": 2
+   }
+  ],
+  "pending_replies": [
+   {
+    "created_at": 1794182978,
+    "done_at": 1794183419,
+    "due_at": 1794183419,
+    "id": 1,
+    "trigger": "mention",
+    "trigger_tg_message_id": 701,
+    "user_id": 2
+   }
+  ],
+  "prompt_versions": [
+   {
+    "active": 1,
+    "body": {
+     "len": 5817,
+     "sha256": "627111572a6978565b428597a531f2f8090895af19ce54ed088bdc9c5e3611fa"
+    },
+    "created_at": 1794182370,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "state": [
+   {
+    "key": "replies_since_sticker",
+    "value": "2"
+   },
+   {
+    "key": "llm_calls:2026-11-08",
+    "value": "2"
+   },
+   {
+    "key": "llm_spent_usd:2026-11-08",
+    "value": "0.003"
+   },
+   {
+    "key": "llm_error_streak",
+    "value": "0"
+   },
+   {
+    "key": "ambient_count:2026-11-08",
+    "value": "1"
+   },
+   {
+    "key": "last_ambient_at",
+    "value": "1794182370"
+   },
+   {
+    "key": "spontaneous_count:2026-W45",
+    "value": "1"
+   },
+   {
+    "key": "diary_calls:2026-11-08",
+    "value": "1"
+   },
+   {
+    "key": "llm_calls:2026-11-09",
+    "value": "2"
+   },
+   {
+    "key": "llm_spent_usd:2026-11-09",
+    "value": "0.003"
+   },
+   {
+    "key": "mention_count:2026-11-09",
+    "value": "1"
+   },
+   {
+    "key": "last_mention_reply_at",
+    "value": "1794183419"
+   },
+   {
+    "key": "last_mention_reply_at:2",
+    "value": "1794183419"
+   },
+   {
+    "key": "diary_calls:2026-11-09",
+    "value": "1"
+   }
+  ]
+ },
+ "group": "F",
+ "id": "F_state_before_midnight",
+ "logged_exceptions": [],
+ "sent": [
+  {
+   "action": "typing",
+   "chat": -1001234500001,
+   "n": 1,
+   "op": "typing",
+   "t": 0
+  },
+  {
+   "chat": -1001234500001,
+   "id": 9001,
+   "op": "send_message",
+   "reply_to": null,
+   "t": 2,
+   "text": "Sitting here sorting screws by size."
+  },
+  {
+   "action": "typing",
+   "chat": -1001234500001,
+   "n": 1,
+   "op": "typing",
+   "t": 1049
+  },
+  {
+   "chat": -1001234500001,
+   "id": 9002,
+   "op": "send_message",
+   "reply_to": 701,
+   "t": 1050,
+   "text": "Here."
+  }
+ ]
+}

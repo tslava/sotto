@@ -1,0 +1,145 @@
+{
+ "clock": {
+  "elapsed_sec": 16201,
+  "start": "2026-11-04T03:00:00+00:00"
+ },
+ "db": {
+  "bot_replies": [
+   {
+    "created_at": 1793777400,
+    "delay_sec": 0,
+    "few_shot_version": 1,
+    "id": 1,
+    "prompt_version": 1,
+    "reply_to_tg_message_id": null,
+    "text": "Slept it off, now I'm here.",
+    "tg_message_id": 9001,
+    "trigger": "morning",
+    "trigger_tg_message_id": null
+   }
+  ],
+  "few_shot_versions": [
+   {
+    "active": 1,
+    "body_yaml": {
+     "len": 3042,
+     "sha256": "8e8aeca16ffa206ff50a905586495fb34c40ce0f6f8eec923f8a059d8937a706"
+    },
+    "created_at": 1793761200,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "filter_log": [
+   {
+    "candidate_text": null,
+    "created_at": 1793761200,
+    "id": 1,
+    "reason": "gate:night_queued",
+    "shadow": 0,
+    "stage": "gate",
+    "trigger_tg_message_id": 801,
+    "verdict": "cut"
+   },
+   {
+    "candidate_text": "Slept it off, now I'm here.",
+    "created_at": 1793777400,
+    "id": 2,
+    "reason": "send:morning",
+    "shadow": 0,
+    "stage": "send",
+    "trigger_tg_message_id": null,
+    "verdict": "pass"
+   }
+  ],
+  "messages": [
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793760000,
+    "display_name": "Dana",
+    "id": 1,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "Can't sleep for some reason",
+    "tg_message_id": 101,
+    "user_id": 1
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793761200,
+    "display_name": "Theo",
+    "id": 2,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "@golden_bot are you asleep?",
+    "tg_message_id": 801,
+    "user_id": 2
+   }
+  ],
+  "night_queue": [
+   {
+    "answered_at": 1793777401,
+    "created_at": 1793761200,
+    "display_name": "Theo",
+    "id": 1,
+    "text": "@golden_bot are you asleep?",
+    "tg_message_id": 801,
+    "user_id": 2
+   }
+  ],
+  "prompt_versions": [
+   {
+    "active": 1,
+    "body": {
+     "len": 5817,
+     "sha256": "627111572a6978565b428597a531f2f8090895af19ce54ed088bdc9c5e3611fa"
+    },
+    "created_at": 1793761200,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "state": [
+   {
+    "key": "llm_calls:2026-11-04",
+    "value": "2"
+   },
+   {
+    "key": "llm_spent_usd:2026-11-04",
+    "value": "0.003"
+   },
+   {
+    "key": "llm_error_streak",
+    "value": "0"
+   },
+   {
+    "key": "replies_since_sticker",
+    "value": "1"
+   },
+   {
+    "key": "diary_calls:2026-11-04",
+    "value": "1"
+   }
+  ]
+ },
+ "group": "F",
+ "id": "F_night_queue",
+ "logged_exceptions": [],
+ "sent": [
+  {
+   "action": "typing",
+   "chat": -1001234500001,
+   "n": 1,
+   "op": "typing",
+   "t": 16200
+  },
+  {
+   "chat": -1001234500001,
+   "id": 9001,
+   "op": "send_message",
+   "reply_to": null,
+   "t": 16201,
+   "text": "Slept it off, now I'm here."
+  }
+ ]
+}

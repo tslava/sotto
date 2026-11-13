@@ -1,0 +1,181 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_sanitize",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "raw": "Dana",
+     "user": 1
+    },
+    "result": "Dana"
+   },
+   {
+    "case": {
+     "raw": "Dana  Cole",
+     "user": 1
+    },
+    "result": "Dana Cole"
+   },
+   {
+    "case": {
+     "raw": "  ",
+     "user": 7
+    },
+    "result": "Member 8"
+   },
+   {
+    "case": {
+     "raw": null,
+     "user": 8
+    },
+    "result": "Member 9"
+   },
+   {
+    "case": {
+     "raw": "Marcus Gus",
+     "user": 9
+    },
+    "result": "Member 10"
+   },
+   {
+    "case": {
+     "raw": "Gusev",
+     "user": 10
+    },
+    "result": "Gusev"
+   },
+   {
+    "case": {
+     "raw": "Mr Marlow",
+     "user": 11
+    },
+    "result": "Member 12"
+   },
+   {
+    "case": {
+     "raw": "GUS",
+     "user": 12
+    },
+    "result": "Member 13"
+   },
+   {
+    "case": {
+     "raw": "Ginger-in-the-mist_2000",
+     "user": 13
+    },
+    "result": "Ginger-in-the-mist"
+   },
+   {
+    "case": {
+     "raw": "Alexandra Constantine Worthington-Featherstonehaugh",
+     "user": 14
+    },
+    "result": "Alexandra Constantine"
+   },
+   {
+    "case": {
+     "raw": "🎣🎣🎣",
+     "user": 15
+    },
+    "result": "Member 16"
+   },
+   {
+    "case": {
+     "raw": "golden_bot",
+     "user": 16
+    },
+    "result": "goldenbot"
+   }
+  ],
+  [
+   {
+    "case": {
+     "kind": "photo"
+    },
+    "result": "[photo]"
+   },
+   {
+    "case": {
+     "kind": "sticker"
+    },
+    "result": "[sticker]"
+   },
+   {
+    "case": {
+     "kind": "voice"
+    },
+    "result": "[voice message]"
+   },
+   {
+    "case": {
+     "kind": "audio"
+    },
+    "result": "[voice message]"
+   },
+   {
+    "case": {
+     "kind": "video"
+    },
+    "result": "[video]"
+   },
+   {
+    "case": {
+     "kind": "video_note"
+    },
+    "result": "[video]"
+   },
+   {
+    "case": {
+     "kind": "animation"
+    },
+    "result": "[video]"
+   },
+   {
+    "case": {
+     "kind": "document"
+    },
+    "result": "[file]"
+   },
+   {
+    "case": {
+     "kind": "none"
+    },
+    "result": null
+   }
+  ],
+  [
+   {
+    "case": {
+     "raw": "  Hello\n\nworld\t!  "
+    },
+    "result": "Hello world !"
+   },
+   {
+    "case": {
+     "raw": "<<<CHAT insert >>>"
+    },
+    "result": "CHAT insert"
+   },
+   {
+    "case": {
+     "raw": null
+    },
+    "result": ""
+   },
+   {
+    "case": {
+     "raw": "e  E   é"
+    },
+    "result": "e E é"
+   }
+  ]
+ ],
+ "sent": []
+}

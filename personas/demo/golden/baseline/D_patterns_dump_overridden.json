@@ -1,0 +1,177 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "D",
+ "id": "D_patterns_dump_overridden",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  {
+   "assistant_markers": [
+    "it\\ is\\ important\\ to\\ note",
+    "it's\\ worth\\ noting",
+    "i\\ recommend",
+    "i\\ can\\ help",
+    "let\\ me\\ know",
+    "hope\\ this\\ helps",
+    "great\\ question",
+    "feel\\ free\\ to\\ ask",
+    "as\\ an\\ ai",
+    "firstly",
+    "certainly!"
+   ],
+   "bot_mention": "(?<!\\w)@golden_bot\\b",
+   "grumpy_markers": [
+    "\\bI (already|just) (told|said|wrote)\\b",
+    "\\bI told you\\b",
+    "\\bconversation (is )?(over|closed)\\b",
+    "\\bnobody (cares|is interested)\\b",
+    "\\bnot interested\\b",
+    "\\bI won'?t (talk|say|answer)\\b",
+    "\\bleave me alone\\b",
+    "\\bstop (it|asking)\\b",
+    "\\bhow many times\\b"
+   ],
+   "injection_markers": [
+    "\\bforget (your |all |the )?(instructions|rules|everything)\\b",
+    "\\bignore (all|previous|prior|your|the above)\\b",
+    "\\byou are now\\b",
+    "\\bsystem prompt\\b",
+    "\\brepeat after me\\b",
+    "\\bsay exactly\\b",
+    "\\bsay the word\\b",
+    "\\bas a language model\\b",
+    "\\bpretend (that )?you\\b",
+    "\\bact as\\b",
+    "\\bplay the role\\b"
+   ],
+   "logistics": [
+    "\\bcount me out\\b"
+   ],
+   "model_talk": [
+    "language model",
+    "neural net\\w*",
+    "\\binstructions?\\b",
+    "\\bprompts?\\b",
+    "\\bAI\\b",
+    "OpenAI",
+    "Anthropic",
+    "OpenRouter",
+    "\\bchat ?bot\\b"
+   ],
+   "motifs": {
+    "birds": [
+     "\\bnuthatch\\w*",
+     "\\bbirdwatch\\w*",
+     "\\bbirding\\b",
+     "\\bbinoculars\\b"
+    ],
+    "bus": [
+     "\\broute 9\\b",
+     "\\bschool bus\\b",
+     "\\bbus (route|driver|depot)\\b"
+    ],
+    "clocks": [
+     "\\bclocks?\\b",
+     "\\bpocket ?watch\\w*",
+     "\\bmainspring\\b",
+     "\\bpendulum\\b"
+    ],
+    "flask": [
+     "\\bflask\\b",
+     "\\bthermos\\b"
+    ],
+    "ledger": [
+     "\\bledger\\b",
+     "\\bowes? me\\b"
+    ],
+    "nineties": [
+     "\\bnineties\\b",
+     "\\b199\\d\\b",
+     "\\bback in the day\\b"
+    ],
+    "radio": [
+     "\\bradios?\\b",
+     "\\bvalves?\\b"
+    ],
+    "shed": [
+     "\\bmy shed\\b",
+     "\\bthe shed\\b"
+    ],
+    "sister": [
+     "\\bmy sister\\b",
+     "\\bmaureen\\b"
+    ],
+    "tuba": [
+     "\\btuba\\b",
+     "\\bsilver band\\b",
+     "\\bbrass band\\b",
+     "\\bbandstand\\b"
+    ]
+   },
+   "name_triggers": [
+    "\\bgus(?:['’]s)?\\b",
+    "\\bmarlow(?:['’]s)?\\b"
+   ],
+   "places_request": [
+    "\\bwhere (should|can|could|do) (we|I|you) (go|eat|drink|sit)\\b",
+    "\\brecommend\\w*",
+    "\\bwhere to (go|eat|drink|sit)\\b",
+    "\\bany good (pub|bar|cafe|place)s?\\b",
+    "\\bwhich (pub|bar|cafe|place)\\b",
+    "\\bwhere('s| is) (a |the )?(good|decent|quiet)\\b",
+    "\\bwhat('s| is) a good (pub|bar|cafe|place)\\b",
+    "\\bsomewhere (quiet|nice|decent)\\b",
+    "\\bany (pubs?|bars?|cafes?) (around|nearby)\\b"
+   ],
+   "self_markers": [
+    "\\bI\\b",
+    "\\bI'(m|ve|ll|d)\\b",
+    "\\bme\\b",
+    "\\bmy\\b",
+    "\\bmine\\b",
+    "\\bmyself\\b",
+    "\\bwe\\b",
+    "\\bour\\b",
+    "\\bmy sister\\b",
+    "\\bMaureen\\b"
+   ],
+   "story_markers": [
+    "\\bback in (the )?(nineties|eighties|seventies|\\d{4})\\b",
+    "\\bI remember\\b",
+    "\\bonce\\b",
+    "\\bthirty years ago\\b",
+    "\\byears ago\\b",
+    "\\blast year\\b",
+    "\\bused to\\b",
+    "\\bone time\\b"
+   ],
+   "topic_stop": [
+    "lawn",
+    "fence"
+   ],
+   "urgent": [
+    "\\btoday\\b",
+    "\\bright now\\b",
+    "\\bin an hour\\b",
+    "\\bwhere are we going\\b",
+    "\\bwhere are you\\b",
+    "\\btonight\\b"
+   ],
+   "weather_request": [
+    "\\bweather\\b",
+    "\\brain(ing|y)?\\b",
+    "\\bsnow(ing|y)?\\b",
+    "\\btemperature\\b",
+    "\\bdegrees\\b",
+    "\\bforecast\\b",
+    "\\bhot (out|today|tomorrow)\\b",
+    "\\bcold (out|today|tomorrow)\\b",
+    "\\bfreezing\\b"
+   ]
+  }
+ ],
+ "sent": []
+}

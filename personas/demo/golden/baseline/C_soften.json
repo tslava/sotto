@@ -1,0 +1,91 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_soften",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "recent": [],
+     "text": "Word — word, and one more – too"
+    },
+    "result": {
+     "fixes": [
+      "fix:dash"
+     ],
+     "text": "Word - word, and one more - too"
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "Well played 👍"
+     ],
+     "text": "Oh come on 😂"
+    },
+    "result": {
+     "fixes": [
+      "fix:emoji_freq"
+     ],
+     "text": "Oh come on"
+    }
+   },
+   {
+    "case": {
+     "recent": [],
+     "text": "Fine 😂 good 👍 okay 🙂"
+    },
+    "result": {
+     "fixes": [
+      "fix:emoji_count"
+     ],
+     "text": "Fine 😂 good okay"
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "Hello 👍"
+     ],
+     "text": "😂"
+    },
+    "result": {
+     "fixes": [
+      "fix:emoji_freq"
+     ],
+     "text": ""
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "Hello 👍"
+     ],
+     "text": "Nothing of the sort"
+    },
+    "result": {
+     "fixes": [],
+     "text": "Nothing of the sort"
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "[sticker #3] something"
+     ],
+     "text": "Not bad - so-so, well-known"
+    },
+    "result": {
+     "fixes": [],
+     "text": "Not bad - so-so, well-known"
+    }
+   }
+  ]
+ ],
+ "sent": []
+}

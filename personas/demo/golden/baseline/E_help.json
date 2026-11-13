@@ -1,0 +1,41 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "E",
+ "id": "E_help",
+ "logged_exceptions": [],
+ "result": [
+  [
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Commands:\n\nIn the chat (everyone):\n/stop - silence for the whole chat for 24 hours\n/mute - no reply: mute yourself; as a reply to someone else, owner only\n/unmute - no reply: unmute yourself; as a reply to someone else, owner only\n/ex add - as a reply to a bot message, owner only: add the pair to few-shot\n\nIn a private chat (owner only):\n/panic - stop until /resume\n/resume - clear panic and /stop\n/status - short state of the bot\n/last [n] - the bot's latest replies (default 5, max 20)\n/why [hours] - why the bot stayed silent in the last N hours (default 1)\n/get [key|prefix] - config parameters; an exact key shows its description, type and range\n/set <key> <value> - change a parameter without a restart; lists in YAML: [a, b]\n/unset <key> - reset a parameter to the yaml default\n/prompt [full] - the current system prompt\n/rollback <version> - roll the prompt back to a version\n/ex last [n] - the latest few-shot examples\n/ex rm [n] - delete the n-th few-shot example from the end\n/life <text> - news about yourself: remember it and tell the chat right away\n/life list | rm N | post N - events: list, delete, repeat\n/say <text> - say this to the chat word for word\n/ask <text> - what the bot would answer to such a message; nothing is sent to the chat\n/memory [list|rm N|run] - long-term chat memory: weekly summaries\n/diary [rm N] - facts about itself from the past week (day diary): list, delete\n/jokes [rm N] - the chat's jokes it remembers: list, delete\n/people [rm N] - open stories about people for a follow-up question: list, delete\n/words [show|on|off|rm <name>] - word dictionaries; to upload, send a file captioned /words\n/changelog [owner|<version>] - what is new: the chat block or the owner block\n/help - this help"
+     }
+    ],
+    "command": "/help"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Commands:\n\nIn the chat (everyone):\n/stop - silence for the whole chat for 24 hours\n/mute - no reply: mute yourself; as a reply to someone else, owner only\n/unmute - no reply: unmute yourself; as a reply to someone else, owner only\n/ex add - as a reply to a bot message, owner only: add the pair to few-shot\n\nIn a private chat (owner only):\n/panic - stop until /resume\n/resume - clear panic and /stop\n/status - short state of the bot\n/last [n] - the bot's latest replies (default 5, max 20)\n/why [hours] - why the bot stayed silent in the last N hours (default 1)\n/get [key|prefix] - config parameters; an exact key shows its description, type and range\n/set <key> <value> - change a parameter without a restart; lists in YAML: [a, b]\n/unset <key> - reset a parameter to the yaml default\n/prompt [full] - the current system prompt\n/rollback <version> - roll the prompt back to a version\n/ex last [n] - the latest few-shot examples\n/ex rm [n] - delete the n-th few-shot example from the end\n/life <text> - news about yourself: remember it and tell the chat right away\n/life list | rm N | post N - events: list, delete, repeat\n/say <text> - say this to the chat word for word\n/ask <text> - what the bot would answer to such a message; nothing is sent to the chat\n/memory [list|rm N|run] - long-term chat memory: weekly summaries\n/diary [rm N] - facts about itself from the past week (day diary): list, delete\n/jokes [rm N] - the chat's jokes it remembers: list, delete\n/people [rm N] - open stories about people for a follow-up question: list, delete\n/words [show|on|off|rm <name>] - word dictionaries; to upload, send a file captioned /words\n/changelog [owner|<version>] - what is new: the chat block or the owner block\n/help - this help"
+     }
+    ],
+    "command": "/unknown"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Commands:\n\nIn the chat (everyone):\n/stop - silence for the whole chat for 24 hours\n/mute - no reply: mute yourself; as a reply to someone else, owner only\n/unmute - no reply: unmute yourself; as a reply to someone else, owner only\n/ex add - as a reply to a bot message, owner only: add the pair to few-shot\n\nIn a private chat (owner only):\n/panic - stop until /resume\n/resume - clear panic and /stop\n/status - short state of the bot\n/last [n] - the bot's latest replies (default 5, max 20)\n/why [hours] - why the bot stayed silent in the last N hours (default 1)\n/get [key|prefix] - config parameters; an exact key shows its description, type and range\n/set <key> <value> - change a parameter without a restart; lists in YAML: [a, b]\n/unset <key> - reset a parameter to the yaml default\n/prompt [full] - the current system prompt\n/rollback <version> - roll the prompt back to a version\n/ex last [n] - the latest few-shot examples\n/ex rm [n] - delete the n-th few-shot example from the end\n/life <text> - news about yourself: remember it and tell the chat right away\n/life list | rm N | post N - events: list, delete, repeat\n/say <text> - say this to the chat word for word\n/ask <text> - what the bot would answer to such a message; nothing is sent to the chat\n/memory [list|rm N|run] - long-term chat memory: weekly summaries\n/diary [rm N] - facts about itself from the past week (day diary): list, delete\n/jokes [rm N] - the chat's jokes it remembers: list, delete\n/people [rm N] - open stories about people for a follow-up question: list, delete\n/words [show|on|off|rm <name>] - word dictionaries; to upload, send a file captioned /words\n/changelog [owner|<version>] - what is new: the chat block or the owner block\n/help - this help"
+     }
+    ],
+    "command": "/start"
+   }
+  ]
+ ],
+ "sent": []
+}

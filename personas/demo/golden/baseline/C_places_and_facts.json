@@ -1,0 +1,57 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_places_and_facts",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {},
+    "result": "Venues you have been to (only these, you name no others). If nobody asked about a place, mention none. If they did, name one, two at most, that suit the quiet and the district, with no opening hours and no prices:\n- The Lantern Room, Old Mill, pub, quiet, quiet, board games\n- Thistle and Anchor, Lower Quay, craft, noisy"
+   }
+  ],
+  [
+   {
+    "case": {
+     "raw": "quiet, board games"
+    },
+    "result": "quiet, board games"
+   },
+   {
+    "case": {
+     "raw": "Quiet"
+    },
+    "result": "Quiet"
+   },
+   {
+    "case": {
+     "raw": "noisy at weekends and really very very noisy on every day of the week"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "raw": "lantern 5 stars"
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "raw": ""
+    },
+    "result": null
+   },
+   {
+    "case": {
+     "raw": "cheap - and cheerful"
+    },
+    "result": "cheap - and cheerful"
+   }
+  ]
+ ],
+ "sent": []
+}

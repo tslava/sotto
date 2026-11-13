@@ -1,0 +1,281 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "db": {
+  "bot_replies": [
+   {
+    "created_at": 1793721600,
+    "delay_sec": 0,
+    "few_shot_version": 1,
+    "id": 1,
+    "prompt_version": 1,
+    "reply_to_tg_message_id": null,
+    "text": "Boots are serious business, never skimp on the laces.",
+    "tg_message_id": 5001,
+    "trigger": "mention",
+    "trigger_tg_message_id": null
+   },
+   {
+    "created_at": 1793725200,
+    "delay_sec": 0,
+    "few_shot_version": 1,
+    "id": 2,
+    "prompt_version": 1,
+    "reply_to_tg_message_id": null,
+    "text": "Walked it once, it was longer than I remembered.",
+    "tg_message_id": 5002,
+    "trigger": "name",
+    "trigger_tg_message_id": null
+   }
+  ],
+  "chat_jokes": [
+   {
+    "created_at": 1793620800,
+    "id": 2,
+    "last_used_at": 1793707200,
+    "text": "tea o'clock",
+    "uses": 1
+   }
+  ],
+  "config_audit": [
+   {
+    "changed_by": 7001,
+    "created_at": 1793793600,
+    "id": 1,
+    "key": "diary:rm",
+    "new_value": "gone to the market",
+    "old_value": null
+   },
+   {
+    "changed_by": 7001,
+    "created_at": 1793793600,
+    "id": 2,
+    "key": "jokes:rm",
+    "new_value": "the strategic pigeon",
+    "old_value": null
+   },
+   {
+    "changed_by": 7001,
+    "created_at": 1793793600,
+    "id": 3,
+    "key": "people:rm",
+    "new_value": "waiting for a call from the garage",
+    "old_value": null
+   }
+  ],
+  "few_shot_versions": [
+   {
+    "active": 1,
+    "body_yaml": {
+     "len": 3042,
+     "sha256": "8e8aeca16ffa206ff50a905586495fb34c40ce0f6f8eec923f8a059d8937a706"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "messages": [
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793790600,
+    "display_name": "Dana",
+    "id": 1,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "So who's up for the canal walk on Saturday?",
+    "tg_message_id": 101,
+    "user_id": 1
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793790720,
+    "display_name": "Theo",
+    "id": 2,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "I'd come if the weather holds",
+    "tg_message_id": 102,
+    "user_id": 2
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793790900,
+    "display_name": "Priya",
+    "id": 3,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "I need to check on my mum's flat but I'm free by the evening",
+    "tg_message_id": 103,
+    "user_id": 3
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793791200,
+    "display_name": "Dana",
+    "id": 4,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "Marcus, why so quiet?",
+    "tg_message_id": 104,
+    "user_id": 1
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793791320,
+    "display_name": "Marcus",
+    "id": 5,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "On shift till Friday, then we'll see",
+    "tg_message_id": 105,
+    "user_id": 4
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793791800,
+    "display_name": "Theo",
+    "id": 6,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "Bought new walking boots yesterday, dying to try them",
+    "tg_message_id": 106,
+    "user_id": 2
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793791920,
+    "display_name": "Jo",
+    "id": 7,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "Show us later, I'm curious which ones",
+    "tg_message_id": 107,
+    "user_id": 5
+   },
+   {
+    "chat_id": -1001234500001,
+    "created_at": 1793792100,
+    "display_name": "Theo",
+    "id": 8,
+    "is_bot": 0,
+    "reply_to_tg_message_id": null,
+    "text": "Sure, on Saturday I'll show you",
+    "tg_message_id": 108,
+    "user_id": 2
+   }
+  ],
+  "people_threads": [
+   {
+    "asked_at": 1793793600,
+    "closed": 1,
+    "created_at": 1793361600,
+    "display_name": "Marcus",
+    "id": 2,
+    "text": "repairing a bike",
+    "user_id": 4
+   }
+  ],
+  "prompt_versions": [
+   {
+    "active": 1,
+    "body": {
+     "len": 5817,
+     "sha256": "627111572a6978565b428597a531f2f8090895af19ce54ed088bdc9c5e3611fa"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "self_facts": [
+   {
+    "bot_reply_tg_message_id": null,
+    "created_at": 1793685600,
+    "id": 2,
+    "text": "mending a fence"
+   }
+  ]
+ },
+ "group": "E",
+ "id": "E_diary_jokes_people",
+ "logged_exceptions": [],
+ "result": [
+  [
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "#2 03.11 06:00 mending a fence\n#1 04.11 10:00 gone to the market"
+     }
+    ],
+    "command": "/diary"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Fact #1 deleted."
+     }
+    ],
+    "command": "/diary rm 1"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "#2 tea o'clock (used 03.11)\n#1 the strategic pigeon (used -)"
+     }
+    ],
+    "command": "/jokes"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Joke #1 deleted."
+     }
+    ],
+    "command": "/jokes rm 1"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "#2 Marcus: repairing a bike (asked 04.11)\n#1 Priya: waiting for a call from the garage (open)"
+     }
+    ],
+    "command": "/people"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Story #1 deleted."
+     }
+    ],
+    "command": "/people rm 1"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "#2 tea o'clock (used 03.11)"
+     }
+    ],
+    "command": "/jokes"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "#2 Marcus: repairing a bike (asked 04.11)"
+     }
+    ],
+    "command": "/people"
+   }
+  ]
+ ]
+}

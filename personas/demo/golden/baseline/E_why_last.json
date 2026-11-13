@@ -1,0 +1,59 @@
+{
+ "clock": {
+  "elapsed_sec": 249,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "E",
+ "id": "E_why_last",
+ "logged_exceptions": [],
+ "result": [
+  null,
+  [
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "send:mention 1"
+     }
+    ],
+    "command": "/why"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "send:mention 1"
+     }
+    ],
+    "command": "/why 24"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "12:04 04.11 | mention | p1/f1 | +244s | Walked it when I was young.\n17:00 03.11 | name | p1/f1 | +0s | Walked it once, it was longer than I remembered.\n16:00 03.11 | mention | p1/f1 | +0s | Boots are serious business, never skimp on the laces."
+     }
+    ],
+    "command": "/last"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "12:04 04.11 | mention | p1/f1 | +244s | Walked it when I was young.\n17:00 03.11 | name | p1/f1 | +0s | Walked it once, it was longer than I remembered."
+     }
+    ],
+    "command": "/last 2"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "12:04 04.11 | mention | p1/f1 | +244s | Walked it when I was young.\n17:00 03.11 | name | p1/f1 | +0s | Walked it once, it was longer than I remembered.\n16:00 03.11 | mention | p1/f1 | +0s | Boots are serious business, never skimp on the laces."
+     }
+    ],
+    "command": "/last 50"
+   }
+  ]
+ ]
+}

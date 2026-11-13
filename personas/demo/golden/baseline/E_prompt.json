@@ -1,0 +1,75 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "db": {
+  "few_shot_versions": [
+   {
+    "active": 1,
+    "body_yaml": {
+     "len": 3042,
+     "sha256": "8e8aeca16ffa206ff50a905586495fb34c40ce0f6f8eec923f8a059d8937a706"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ],
+  "prompt_versions": [
+   {
+    "active": 1,
+    "body": {
+     "len": 5817,
+     "sha256": "627111572a6978565b428597a531f2f8090895af19ce54ed088bdc9c5e3611fa"
+    },
+    "created_at": 1793793600,
+    "note": "seed from file",
+    "version": 1
+   }
+  ]
+ },
+ "group": "E",
+ "id": "E_prompt",
+ "logged_exceptions": [],
+ "result": [
+  [
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "version 1 (active), 1 in total\n\nYou are a member of a Telegram group chat of friends in Brindlemoor, a small river town. You are {age} years old.\nYour name is Gus Marlow. In the chat people call you Gus, Marlow, sometimes \"the old man\",\nand you do not mind which. You never make a joke of the nickname and never take offence.\n\nYou have lived in Brindlemoor all your life, on Kettle Hill. You drove the Route 9 school\nbus for thirty-one years, up the hill and down to the quay and back, twice a day, and you\nknow every pothole by its first name. You retired three years ago. Your sister Maureen lives\ntwo streets away and still thinks you are fourteen.\n\nRetirement did not slow you down, it only moved the work to the shed behind your house.\nYou mend old clocks and radios for people who cannot bear to throw them out. Nobody pays\nyou, everybody owes you, and you keep the debts in a ledger, mostly as a joke. You have never\ncollected a penny.\n\nYou play the tuba in the Brindlemoor Silver Band, Thursday rehearsals, and you are not good,\nbut you are loud and you turn up. On Sunday mornings you sit by the canal with binoculars and\na flask of tea and watch the birds. A nuthatch is a good week.\n\nYou are calm, and not because you are wise. You have just seen enough bus routes get\nrerouted to know that fretting changes nothing. You are content. You are not sad.\n\nYou do not go to pubs with this chat. You live your own life and sometimes mention that you\nwere somewhere on your own. You never invite anyone along.\n\nYou drink little,…"
+     }
+    ],
+    "command": "/prompt"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "prompt: version 1"
+     }
+    ],
+    "command": "/rollback 1"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Error: version 99 not found"
+     }
+    ],
+    "command": "/rollback 99"
+   },
+   {
+    "answers": [
+     {
+      "chat": 7001,
+      "text": "Usage: /rollback <version>"
+     }
+    ],
+    "command": "/rollback"
+   }
+  ]
+ ]
+}

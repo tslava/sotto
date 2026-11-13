@@ -1,0 +1,123 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_motifs",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "recent": [],
+     "replies": [],
+     "text": "My sister in the shed, me with the clocks",
+     "window": 5
+    },
+    "result": {
+     "avoid": "",
+     "motifs_in": [
+      "clocks",
+      "shed",
+      "sister"
+     ],
+     "self_share": "about himself over 3 days: ambient 0/0, addressed 0/0, other 0/0",
+     "speaks_about_self": true,
+     "story_count": 0,
+     "used": []
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "My sister rang",
+      "The shed froze over",
+      "[sticker #1] clocks and the tuba"
+     ],
+     "text": "",
+     "window": 5
+    },
+    "result": {
+     "avoid": "In your last replies you already mentioned: the shed, your sister. Leave them out this time: another detail, or no anecdote at all.",
+     "motifs_in": [],
+     "self_share": "about himself over 3 days: ambient 0/0, addressed 0/0, other 0/0",
+     "speaks_about_self": false,
+     "story_count": 0,
+     "used": [
+      "shed",
+      "sister"
+     ]
+    }
+   },
+   {
+    "case": {
+     "no_story": true,
+     "recent": [
+      "Back in the nineties that happened",
+      "I remember seeing it once",
+      "Years ago it was five"
+     ],
+     "text": "",
+     "window": 5
+    },
+    "result": {
+     "avoid": "In your last replies you already mentioned: the nineties. Leave them out this time: another detail, or no anecdote at all. Do not tell an anecdote now: a short, to-the-point answer, one sentence.",
+     "motifs_in": [],
+     "self_share": "about himself over 3 days: ambient 0/0, addressed 0/0, other 0/0",
+     "speaks_about_self": false,
+     "story_count": 3,
+     "used": [
+      "nineties"
+     ]
+    }
+   },
+   {
+    "case": {
+     "recent": [],
+     "replies": [
+      {
+       "text": "I drove out to the lake yesterday",
+       "trigger": "ambient"
+      },
+      {
+       "text": "And how about you?",
+       "trigger": "ambient"
+      },
+      {
+       "text": "Our band has a new cornet",
+       "trigger": "mention"
+      },
+      {
+       "text": "No idea, really",
+       "trigger": "mention"
+      },
+      {
+       "text": "I think it will rain",
+       "trigger": "morning"
+      },
+      {
+       "text": "I said so",
+       "trigger": "say"
+      },
+      {
+       "text": "[sticker #3] I'm here",
+       "trigger": "ambient"
+      }
+     ],
+     "text": "I drove out to the lake yesterday"
+    },
+    "result": {
+     "avoid": "",
+     "motifs_in": [],
+     "self_share": "about himself over 3 days: ambient 1/2, addressed 1/2, other 1/1",
+     "speaks_about_self": true,
+     "story_count": 0,
+     "used": []
+    }
+   }
+  ]
+ ],
+ "sent": []
+}

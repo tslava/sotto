@@ -1,0 +1,135 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "D",
+ "id": "D_cards_basic",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  {
+   "behaviour.daily_cap": {
+    "bounds": "0..50",
+    "default": "3",
+    "description": "Суточный лимит ambient и «просто так» вместе",
+    "key": "behaviour.daily_cap",
+    "overridden": false,
+    "settable": true,
+    "type_name": "int",
+    "value": "3"
+   },
+   "behaviour.live_talk.window_min": {
+    "bounds": "1..1440",
+    "default": "20",
+    "description": "Окно в минутах, за которое считается разговор",
+    "key": "behaviour.live_talk.window_min",
+    "overridden": false,
+    "settable": true,
+    "type_name": "int",
+    "value": "20"
+   },
+   "behaviour.quiet_window": {
+    "bounds": "",
+    "default": "['01:00', '07:00']",
+    "description": "Окно полной тишины, включая прямые обращения",
+    "key": "behaviour.quiet_window",
+    "overridden": false,
+    "settable": true,
+    "type_name": "tuple[str, str]",
+    "value": "['01:00', '07:00']"
+   },
+   "behaviour.reactions.emoji": {
+    "bounds": "",
+    "default": "{🍾: 'worth a toast: a celebration, big good news', 👍: 'approve, for real: a sound idea, a job well done', 👏: 'well done: finished it, pulled it off', 🔥: 'impressive: a trip, a purchase, something made by hand', 😁: 'made you grin: a good joke, not a belly laugh', 🤣: 'laugh-out-loud funny: a joke that really got you'}",
+    "description": "Эмодзи -> когда уместно (видит модель); только из набора реакций Telegram",
+    "key": "behaviour.reactions.emoji",
+    "overridden": false,
+    "settable": true,
+    "type_name": "dict[str, str]",
+    "value": "{🍾: 'worth a toast: a celebration, big good news', 👍: 'approve, for real: a sound idea, a job well done', 👏: 'well done: finished it, pulled it off', 🔥: 'impressive: a trip, a purchase, something made by hand', 😁: 'made you grin: a good joke, not a belly laugh', 🤣: 'laugh-out-loud funny: a joke that really got you'}"
+   },
+   "behaviour.reactions.enabled": {
+    "bounds": "",
+    "default": "true",
+    "description": "Включает реакции-эмодзи вместо молчания",
+    "key": "behaviour.reactions.enabled",
+    "overridden": false,
+    "settable": true,
+    "type_name": "bool",
+    "value": "true"
+   },
+   "behaviour.reply_delay_buckets": {
+    "bounds": "",
+    "default": "[{range_sec: [30, 180], weight: 0.6}, {range_sec: [180, 900], weight: 0.3}, {range_sec: [900, 3600], weight: 0.1}]",
+    "description": "Бакеты задержки ответа на обращение, вес и диапазон секунд",
+    "key": "behaviour.reply_delay_buckets",
+    "overridden": false,
+    "settable": true,
+    "type_name": "list[ReplyDelayBucket]",
+    "value": "[{range_sec: [30, 180], weight: 0.6}, {range_sec: [180, 900], weight: 0.3}, {range_sec: [900, 3600], weight: 0.1}]"
+   },
+   "filters.topic_stop": {
+    "bounds": "",
+    "default": "[\\bwar\\b, \\bwars\\b, \\bukrain\\w*, \\brussia\\w*, \\bputin\\b, \\btrump\\b, \\bbiden\\b, '\\belections?\\b', \\bvot(e|es|ed|ing)\\b, '\\bsanctions?\\b', \\bbrexit\\b, \\btory\\b, \\btories\\b, '\\blabou?r party\\b', \\bimmigra\\w*, '\\brefugees?\\b', \\bisrael\\w*, \\bpalestin\\w*, \\bgaza\\b, '\\bchurch(es)?\\b', \\bmosque\\b, \\breligio\\w*, \\babortion\\w*, '\\bnazis?\\b', \\bfascis\\w*, \\bterroris\\w*]",
+    "description": "Стоп-лист тем (вход и выход), регулярки по границам слов",
+    "key": "filters.topic_stop",
+    "overridden": false,
+    "settable": true,
+    "type_name": "list[str]",
+    "value": "[\\bwar\\b, \\bwars\\b, \\bukrain\\w*, \\brussia\\w*, \\bputin\\b, \\btrump\\b, \\bbiden\\b, '\\belections?\\b', \\bvot(e|es|ed|ing)\\b, '\\bsanctions?\\b', \\bbrexit\\b, \\btory\\b, \\btories\\b, '\\blabou?r party\\b', \\bimmigra\\w*, '\\brefugees?\\b', \\bisrael\\w*, \\bpalestin\\w*, \\bgaza\\b, '\\bchurch(es)?\\b', \\bmosque\\b, \\breligio\\w*, \\babortion\\w*, '\\bnazis?\\b', \\bfascis\\w*, \\bterroris\\w*]"
+   },
+   "llm.daily_budget_usd": {
+    "bounds": "0..1000",
+    "default": "2.0",
+    "description": "Суточный бюджет в долларах; сверх — молчит",
+    "key": "llm.daily_budget_usd",
+    "overridden": false,
+    "settable": true,
+    "type_name": "float",
+    "value": "2.0"
+   },
+   "llm.main_model": {
+    "bounds": "",
+    "default": "anthropic/claude-sonnet-5",
+    "description": "Id основной модели в OpenRouter",
+    "key": "llm.main_model",
+    "overridden": false,
+    "settable": true,
+    "type_name": "str",
+    "value": "anthropic/claude-sonnet-5"
+   },
+   "persona.name": {
+    "bounds": "",
+    "default": "Gus",
+    "description": "Имя персонажа",
+    "key": "persona.name",
+    "overridden": false,
+    "settable": false,
+    "type_name": "str",
+    "value": "Gus"
+   },
+   "persona.timezone": {
+    "bounds": "",
+    "default": "Europe/London",
+    "description": "Таймзона персонажа для суток и окон времени",
+    "key": "persona.timezone",
+    "overridden": false,
+    "settable": false,
+    "type_name": "str",
+    "value": "Europe/London"
+   },
+   "places.min_rating": {
+    "bounds": "0..5",
+    "default": "4.2",
+    "description": "Минимальный рейтинг заведения для белого списка",
+    "key": "places.min_rating",
+    "overridden": false,
+    "settable": true,
+    "type_name": "float",
+    "value": "4.2"
+   }
+  }
+ ],
+ "sent": []
+}

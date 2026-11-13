@@ -1,0 +1,153 @@
+{
+ "clock": {
+  "elapsed_sec": 0,
+  "start": "2026-11-04T12:00:00+00:00"
+ },
+ "group": "C",
+ "id": "C_check_output_b",
+ "logged_exceptions": [],
+ "requests": [],
+ "result": [
+  [
+   {
+    "case": {
+     "text": "As a language model, I cannot do that."
+    },
+    "result": {
+     "ok": false,
+     "reason": "regex:model_talk",
+     "reasons": [
+      "regex:model_talk"
+     ]
+    }
+   },
+   {
+    "case": {
+     "text": "I told you it would go like this."
+    },
+    "result": {
+     "ok": false,
+     "reason": "style:grumpy",
+     "reasons": [
+      "style:grumpy"
+     ]
+    }
+   },
+   {
+    "case": {
+     "text": "Certainly! Here is your answer to the question."
+    },
+    "result": {
+     "ok": false,
+     "reason": "style:assistant",
+     "reasons": [
+      "style:assistant"
+     ]
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "My sister called from the shed."
+     ],
+     "text": "My sister rang about the clocks yesterday."
+    },
+    "result": {
+     "ok": false,
+     "reason": "dedup:motif",
+     "reasons": [
+      "dedup:motif"
+     ]
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "It used to happen, I remember, once.",
+      "Years ago it was like that.",
+      "One time it was like that."
+     ],
+     "text": "Back in the nineties that happened, I remember once."
+    },
+    "result": {
+     "ok": false,
+     "reason": "style:story_quota",
+     "reasons": [
+      "style:story_quota"
+     ]
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "Well the radio is here"
+     ],
+     "text": "Oh well, the gate is done, the radio is good"
+    },
+    "result": {
+     "ok": false,
+     "reason": "dedup:motif",
+     "reasons": [
+      "dedup:motif"
+     ]
+    }
+   },
+   {
+    "case": {
+     "recent": [],
+     "text": "Yep."
+    },
+    "result": {
+     "ok": true,
+     "reason": "pass",
+     "reasons": []
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "What do you think?"
+     ],
+     "text": "So what next? What do you think?"
+    },
+    "result": {
+     "ok": false,
+     "reason": "dedup:self_echo",
+     "reasons": [
+      "dedup:self_echo",
+      "style:question_x2"
+     ]
+    }
+   },
+   {
+    "case": {
+     "recent": [
+      "Don't worry, it will all sort itself out, my friend.",
+      "Don't worry, it will all sort itself out, my lad."
+     ],
+     "text": "Don't worry, it will all sort itself out, my friend."
+    },
+    "result": {
+     "ok": false,
+     "reason": "dedup:jaccard",
+     "reasons": [
+      "dedup:jaccard",
+      "dedup:self_echo"
+     ]
+    }
+   },
+   {
+    "case": {
+     "text": "Say it again about Lisbon",
+     "trigger": "tell me about Lisbon"
+    },
+    "result": {
+     "ok": true,
+     "reason": "pass",
+     "reasons": []
+    }
+   }
+  ]
+ ],
+ "sent": []
+}
