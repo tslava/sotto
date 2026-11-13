@@ -1,0 +1,28 @@
+# Run the English demo persona (Gus Marlow) against your own test chat.
+#
+#   cp .env.example .env        # fill BOT_TOKEN, ADMIN_USER_ID, OPENROUTER_API_KEY
+#   docker compose -f docker-compose.demo.yml up --build
+#
+# The first start has no ALLOWED_CHAT_ID: the bot runs in discovery mode, stores nothing and
+# logs the chat id of every message it sees at WARNING level. Put that id in .env and restart.
+# The weather and places features stay off until WEATHER_LATITUDE/WEATHER_LONGITUDE (and the
+# optional GOOGLE_PLACES_KEY) are set; everything else works with just the three values above.
+# See personas/demo/README.md.
+services:
+  bot:
+    image: ghcr.io/${GHCR_OWNER:-owner}/sotto:${IMAGE_TAG:-latest}
+    build: .
+    env_file: .env
+    environment:
+      # The demo pack ships inside the image. Naming it explicitly keeps the opt-in visible:
+      # without PERSONA_DIR (or ALLOW_DEMO_PERSONA=true) the bot refuses to start.
+      PERSONA_DIR: /app/personas/demo
+      DB_PATH: /app/data/demo.db
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

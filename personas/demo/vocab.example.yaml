@@ -1,0 +1,19 @@
+# Example vocabulary for the demo persona. Every word here is invented.
+# Load it: send this file to the bot in a private message with the caption /words.
+# A file with the same name replaces the old dictionary. Keep real dictionaries out of the
+# repository: they live in the bot's database.
+name: brindlemoor
+about: words they use on Kettle Hill          # one line for the model: where the words come from
+words:
+  - word: snickerwick
+    meaning: a sudden, short rain shower that stops before you find your umbrella
+    example: Just a snickerwick, give it five minutes.
+  - word: bodgel
+    meaning: a clumsy home repair that holds, but only just
+    example: The gate is a bodgel, mind how you shut it.
+  - word: tuppenny-dreep
+    meaning: someone who talks a lot and says very little
+    forms: [tuppenny-dreep, tuppenny-dreeps]
+  - word: hobnailing
+    meaning: walking about on pointless errands to avoid real work
+    example: He spent the whole morning hobnailing round the market.

@@ -1,0 +1,39 @@
+# Manual fields for the venue cache (places_fill.py). Google does not know whether you can talk
+# somewhere (quiet) and guesses the category unreliably, so these are set by hand and override
+# what the search returned. Every venue below is invented: Brindlemoor does not exist.
+#
+# Matched to a Google displayName by whole words, case-insensitive. Run the demo with
+# `python -m sotto.places_fill --manual-only`.
+#
+# category: craft | cheap | outskirts | pub
+# district: overrides the one worked out from the address when set.
+
+- name: The Lantern Room
+  quiet: true
+  category: craft
+  district: Old Mill
+
+- name: Thistle and Anchor
+  quiet: false
+  category: pub
+  district: Lower Quay
+
+- name: Barrow's Hatch
+  quiet: false
+  category: cheap
+  district: Tannery Row
+
+- name: The Copper Kettle
+  quiet: true
+  category: pub
+  district: Kettle Hill
+
+- name: Hollin's Oast
+  quiet: true
+  category: outskirts
+  district: Fenwick Green
+
+- name: Brass Band Tap
+  quiet: false
+  category: pub
+  district: Westfield

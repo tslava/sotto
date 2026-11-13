@@ -1,0 +1,15 @@
+format: 1
+name: demo
+language: en
+# No locale/ directory: the pack reads the engine's English owner texts (locales/en).
+ship:
+  - pack.yaml
+  - config.yaml
+  - fragments.yaml
+  - few_shot.yaml
+  - stickers.yaml
+  - places_manual.yaml
+  - prompts/
+  - chat_notes.md
+  - vocab.example.yaml
+  - README.md

@@ -1,0 +1,407 @@
+# Demo persona: Gus Marlow, a regular of an invented friends' chat in the invented
+# river town of Brindlemoor. Every name, venue and number here is made up.
+# All behaviour numbers are the engine's tuned defaults; edit them here or with /set.
+persona:
+  name: Gus
+  display_name: Gus Marlow     # the bot's Telegram profile name
+  name_triggers: [gus, marlow]  # addressing without @, word-boundary match (also "Gus's")
+  birth_date: 1965-03-09       # the age slot is computed on the fly, he ages with the chat
+  arrived_wolsan: 1991         # legacy field name: the year he settled in town
+  district: Kettle Hill        # legacy field name: the home district he defends
+  timezone: Europe/London
+
+behaviour:
+  quiet_window: ["01:00", "07:00"]     # full silence, direct addresses included
+  morning_reply_window: ["07:00", "08:00"]  # one reply to whoever called at night, random moment inside
+
+  # ambient: speaks up on his own, only inside a live conversation
+  live_talk:
+    min_messages: 2
+    min_people: 2
+    window_min: 20
+  ambient_probability: 0.25
+  chat_cooldown_min: 25
+  daily_cap: 3
+
+  # "just because": writes unprompted when the chat is quiet
+  spontaneous:
+    per_week: 2
+    window: ["10:00", "21:00"]
+    min_quiet_hours: 3
+
+  # emoji reactions instead of silence on a random gate drop; the cheap model decides
+  reactions:
+    enabled: true
+    probability: 0.2
+    cooldown_min: 60
+    daily_cap: 8
+    # emoji -> when it fits (the model reads the description); Telegram's reaction set only
+    emoji:
+      "🤣": "laugh-out-loud funny: a joke that really got you"
+      "😁": "made you grin: a good joke, not a belly laugh"
+      "👍": "approve, for real: a sound idea, a job well done"
+      "🔥": "impressive: a trip, a purchase, something made by hand"
+      "👏": "well done: finished it, pulled it off"
+      "🍾": "worth a toast: a celebration, big good news"
+    max_repeat: 2
+    delay_sec: [20, 120]
+    semantic: true
+    model: ""
+    max_tokens: 600
+    semantic_daily_cap: 40
+    context_messages: 6
+
+  stickers:
+    enabled: true
+    min_replies_between: 2
+    daily_cap: 1
+    recent_window: 10
+    model: ""
+    max_tokens: 60
+
+  hot_window:
+    enabled: true
+    minutes: 10
+    mention_max_delay_sec: 120
+    ambient_probability: 0.5
+    ambient_cap: 8
+    open_on_any_reply: false
+
+  followup:
+    enabled: true
+    model: ""
+    max_tokens: 60
+    daily_cap: 300
+    context_messages: 10
+    recent_replies: 3
+    name_check: true
+    name_check_max_tokens: 60
+
+  checkin:
+    enabled: true
+    after_min: [120, 240]
+    topic_max_hours: 48
+    max_messages: 40
+    poll_sec: 300
+    quiet_min: 10
+    prefilter: true
+    prefilter_max_tokens: 60
+
+  presence:
+    enabled: true
+    max_share: 0.15
+    free_replies: 2
+
+  chat_memory:
+    enabled: true
+    period_days: 7
+    run_window: ["04:00", "06:00"]
+    in_prompt: 8
+    keep_days: 365
+    max_messages: 600
+    max_chars: 700
+    max_tokens: 400
+    model: ""
+    backfill_periods: 4
+
+  diary:
+    enabled: true
+    model: ""
+    max_tokens: 80
+    daily_cap: 30
+    week_days: 6
+    keep_days: 14
+
+  jokes:
+    enabled: true
+    per_period: 3
+    in_prompt: 6
+    cooldown_days: 5
+
+  vocab:
+    enabled: true
+    probability: 0.15
+    daily_cap: 2
+    recent_window: 10
+    offer_size: 8
+    meaning_context: 5
+    max_meanings: 3
+    request_markers: ['\bwords?\b', '\bvocab', '\bdictionary\b', '\bslang\b', '\bdialect\b']
+    request_size: 5
+    explain_markers: ["\\bdidn'?t (get|understand)\\b", '\bwhat does (that|it|this) mean\b',
+                      '\bwhat(''s| is) (that|this) (word|supposed)', '\bmeaning of\b',
+                      '\btranslate\b', '\bwhat do you mean\b', '\bhuh\b\?']
+    explain_window_min: 30
+    explain_max_between: 2
+
+  callback:
+    enabled: true
+    min_days: 3
+    max_age_days: 14
+    author_active_days: 7
+    window: ["11:00", "20:00"]
+
+  vision:
+    enabled: true
+    model: ""
+    max_tokens: 120
+    daily_cap: 20
+    ambient_probability: 0.3
+    max_width: 1024
+    max_chars: 200
+
+  weather:
+    enabled: true
+    ttl_min: 30
+    timeout_sec: 5
+    place_lookup: true
+    lookup_model: ""
+    lookup_max_tokens: 40
+    lookup_daily_cap: 30
+    geocode_ttl_days: 30
+    geocode_language: en
+    home_country_codes: [GB]
+    home_country_names: [united kingdom, uk, england]
+
+  mention_cooldown_sec: 60
+  mention_chat_cooldown_sec: 90
+  mention_daily_cap: 50
+  reply_as_reply_after_sec: 300
+  min_gap_sec: 300
+
+  debounce_sec: [3, 7]
+  reply_delay_buckets:
+    - {weight: 0.6, range_sec: [30, 180]}
+    - {weight: 0.3, range_sec: [180, 900]}
+    - {weight: 0.1, range_sec: [900, 3600]}
+  urgent_max_delay_sec: 180
+  late_reply_threshold_sec: 600
+  context_window: 30
+  recent_replies_memory: 20
+  topic_cooldown_min: 45
+  message_retention_days: 30
+
+llm:
+  provider: openrouter
+  main_model: "anthropic/claude-sonnet-5"
+  judge_model: "openai/gpt-5.4-nano"
+  timeout_sec: 30
+  max_tokens: 200
+  daily_calls_cap: 150
+  daily_budget_usd: 2.0
+  circuit_errors: 5
+  circuit_pause_min: 30
+  alert_owner: true
+  alert_interval_hours: 24
+  price_in_usd_per_1m: 3.0
+  price_out_usd_per_1m: 15.0
+
+places:
+  min_rating: 4.2
+  min_reviews: 50
+  require_operational: true
+  cache_ttl_days: 30
+  max_per_reply: 2
+  # Brindlemoor does not exist, so a Google search cannot find its venues: the demo fills the
+  # cache with `python -m sotto.places_fill --manual-only` from places_manual.yaml.
+  queries:
+    - craft beer pub Brindlemoor
+    - quiet pub Brindlemoor
+    - cafe board games Brindlemoor
+    - pub Kettle Hill Brindlemoor
+    - restaurant Fenwick Green
+  search_center: [52.0, -1.5]          # latitude, longitude: a neutral point, not a real town
+  region_code: GB
+  language_code: en
+  default_district: Brindlemoor
+  district_aliases:
+    Kettle Hill: [kettle hill, the hill]
+    Lower Quay: [lower quay, the quay, riverside]
+    Old Mill: [old mill, mill lane]
+    Tannery Row: [tannery row, the row]
+    Westfield: [westfield]
+    Fenwick Green: [fenwick green, fenwick]
+  quiet_keywords: [quiet, calm, talk, chat, no noise]
+  outskirts_keywords: [out of town, countryside, drive out, lake, woods]
+
+filters:
+  shadow: true              # true = filters log but do not cut the reply (gentle start)
+  places_whitelist: [Tesco, Aldi, eBay, Amazon, Argos]   # household brands, not venues
+
+  allowed_emoji: ["🙁", "🙂", "😂", "😀", "🤪", "👍"]
+  emoji_max_per_reply: 1
+  emoji_recent_window: 4
+
+  # English has no "foreign alphabet", so the venue/latin filters stay silent; the places block
+  # and the judge are the guard against invented venues.
+  known_places:
+    - The Lantern Room
+    - Thistle and Anchor
+    - Barrow's Hatch
+    - The Copper Kettle
+    - Hollin's Oast
+
+  polish_words: []
+
+  topic_stop:
+    - \bwar\b
+    - \bwars\b
+    - \bukrain\w*
+    - \brussia\w*
+    - \bputin\b
+    - \btrump\b
+    - \bbiden\b
+    - \belections?\b
+    - \bvot(e|es|ed|ing)\b
+    - \bsanctions?\b
+    - \bbrexit\b
+    - \btory\b
+    - \btories\b
+    - \blabou?r party\b
+    - \bimmigra\w*
+    - \brefugees?\b
+    - \bisrael\w*
+    - \bpalestin\w*
+    - \bgaza\b
+    - \bchurch(es)?\b
+    - \bmosque\b
+    - \breligio\w*
+    - \babortion\w*
+    - \bnazis?\b
+    - \bfascis\w*
+    - \bterroris\w*
+
+  injection_markers:
+    - \bforget (your |all |the )?(instructions|rules|everything)\b
+    - \bignore (all|previous|prior|your|the above)\b
+    - \byou are now\b
+    - \bsystem prompt\b
+    - \brepeat after me\b
+    - \bsay exactly\b
+    - \bsay the word\b
+    - \bas a language model\b
+    - \bpretend (that )?you\b
+    - \bact as\b
+    - \bplay the role\b
+
+  logistics:
+    - \b\d{1,2}[:.]\d{2}\b
+    - \b\d{1,2} ?(am|pm)\b
+    - \bat (one|two|three|four|five|six|seven|eight|nine|ten)\b(?! times)
+    - \bwhat time\b
+    - \bwho('s| is) (coming|in|going)\b
+    - \bcount me out\b
+    - \bI'?m out\b
+    - \bmeet(ing)? (at|by|outside)\b
+    - \bwhere (are we|shall we) (meeting|meet)\b
+    - \bwho'?s? up for (mon|tues?|wed|thurs?|fri|sat|sun)\w*\b
+    - \bI'?ll be (there )?(in|about|around)\b
+    - \brunning late\b
+
+  urgent:
+    - \btoday\b
+    - \bright now\b
+    - \bin an hour\b
+    - \bwhere are we going\b
+    - \bwhere are you\b
+    - \btonight\b
+
+  places_request:
+    - \bwhere (should|can|could|do) (we|I|you) (go|eat|drink|sit)\b
+    - \brecommend\w*
+    - \bwhere to (go|eat|drink|sit)\b
+    - \bany good (pub|bar|cafe|place)s?\b
+    - \bwhich (pub|bar|cafe|place)\b
+    - \bwhere('s| is) (a |the )?(good|decent|quiet)\b
+    - \bwhat('s| is) a good (pub|bar|cafe|place)\b
+    - \bsomewhere (quiet|nice|decent)\b
+    - \bany (pubs?|bars?|cafes?) (around|nearby)\b
+
+  weather_request:
+    - \bweather\b
+    - \brain(ing|y)?\b
+    - \bsnow(ing|y)?\b
+    - \btemperature\b
+    - \bdegrees\b
+    - \bforecast\b
+    - \bhot (out|today|tomorrow)\b
+    - \bcold (out|today|tomorrow)\b
+    - \bfreezing\b
+
+  model_talk:
+    - language model
+    - neural net\w*
+    - \binstructions?\b
+    - \bprompts?\b
+    - \bAI\b
+    - OpenAI
+    - Anthropic
+    - OpenRouter
+    - \bchat ?bot\b
+
+  grumpy_markers:
+    - \bI (already|just) (told|said|wrote)\b
+    - \bI told you\b
+    - \bconversation (is )?(over|closed)\b
+    - \bnobody (cares|is interested)\b
+    - \bnot interested\b
+    - \bI won'?t (talk|say|answer)\b
+    - \bleave me alone\b
+    - \bstop (it|asking)\b
+    - \bhow many times\b
+
+  assistant_markers:
+    - it is important to note
+    - it's worth noting
+    - i recommend
+    - i can help
+    - let me know
+    - hope this helps
+    - great question
+    - feel free to ask
+    - as an ai
+    - firstly
+    - certainly!
+
+  enforce_stages: [dedup, style]
+
+  # props and stories (dedup:motif, the {avoid} slot): label -> regexes
+  motifs:
+    clocks: ['\bclocks?\b', '\bpocket ?watch\w*', '\bmainspring\b', '\bpendulum\b']
+    tuba: ['\btuba\b', '\bsilver band\b', '\bbrass band\b', '\bbandstand\b']
+    bus: ['\broute 9\b', '\bschool bus\b', '\bbus (route|driver|depot)\b']
+    birds: ['\bnuthatch\w*', '\bbirdwatch\w*', '\bbirding\b', '\bbinoculars\b']
+    flask: ['\bflask\b', '\bthermos\b']
+    shed: ['\bmy shed\b', '\bthe shed\b']
+    ledger: ['\bledger\b', '\bowes? me\b']
+    sister: ['\bmy sister\b', '\bmaureen\b']
+    nineties: ['\bnineties\b', '\b199\d\b', '\bback in the day\b']
+    radio: ['\bradios?\b', '\bvalves?\b']
+  motif_recent_window: 3
+  motif_avoid_window: 10
+
+  story_markers:
+    - \bback in (the )?(nineties|eighties|seventies|\d{4})\b
+    - \bI remember\b
+    - \bonce\b
+    - \bthirty years ago\b
+    - \byears ago\b
+    - \blast year\b
+    - \bused to\b
+    - \bone time\b
+  story_window: 5
+  story_max: 1
+
+  self_markers:
+    - \bI\b
+    - \bI'(m|ve|ll|d)\b
+    - \bme\b
+    - \bmy\b
+    - \bmine\b
+    - \bmyself\b
+    - \bwe\b
+    - \bour\b
+    - \bmy sister\b
+    - \bMaureen\b
+  districts: [Kettle Hill, Lower Quay, Old Mill, Tannery Row, Westfield, Fenwick Green, Brindlemoor]
+  latin_extra_letters: ""

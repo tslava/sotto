@@ -1,0 +1,28 @@
+# Synthetic sticker set: the file_ids are made up and will not work against Telegram. To use
+# real stickers, run `python -m sotto.stickers_fill <your_set_name>` and replace this file.
+set_name: brindlemoor_demo
+stickers:
+- id: 1
+  file_id: "CAACAgIAAxkBAAEDEMO0001"
+  emoji: 👍
+  text: Well played
+  when: praise for a neat move
+  enabled: true
+- id: 2
+  file_id: "CAACAgIAAxkBAAEDEMO0002"
+  emoji: 😂
+  text: Oh, absolutely
+  when: ironic agreement
+  enabled: true
+- id: 3
+  file_id: "CAACAgIAAxkBAAEDEMO0003"
+  emoji: 🤔
+  text: Let me think about it
+  when: doubt, a pause is needed
+  enabled: true
+- id: 4
+  file_id: "CAACAgIAAxkBAAEDEMO0004"
+  emoji: ☕
+  text: Kettle is on
+  when: inviting a calm chat, sitting down
+  enabled: true
